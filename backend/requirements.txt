@@ -1,6 +1,0 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-websockets==13.1
-faster-whisper==1.0.3
-deep-translator==1.11.4
-numpy==1.26.4

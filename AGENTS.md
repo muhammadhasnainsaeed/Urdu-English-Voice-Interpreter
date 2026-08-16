@@ -76,18 +76,21 @@ Complete. See `docs/CURRENT_STATE.md`.
 
 Complete. See `docs/CURRENT_STATE.md`.
 
-### Milestone 3 — Speech-to-Text & Translation Pipeline (NEXT)
+### Milestone 3 — Speech-to-Text (Urdu)
 
-Not started. Do not begin until Milestone 2 is verified and the user says
+Complete. See `docs/CURRENT_STATE.md`.
+
+### Milestone 4 — Urdu → English Translation (NEXT)
+
+Not started. Do not begin until Milestone 3 is verified and the user says
 to continue.
 
 ## Do NOT implement yet
 
-- Speech-to-text
 - Translation API
 - Text-to-speech
 - BlackHole
-- Real-time audio streaming
+- Real-time audio streaming (to a virtual output)
 - Authentication
 - Database
 - Backend server

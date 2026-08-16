@@ -26,7 +26,7 @@ async function build() {
     entryPoints: ['src/main/index.ts'],
     outfile: 'dist/main/index.js',
     platform: 'node',
-    external: ['electron'],
+    external: ['electron', 'microsoft-cognitiveservices-speech-sdk'],
   });
 
   // Preload Script

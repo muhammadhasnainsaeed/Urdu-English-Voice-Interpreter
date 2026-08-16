@@ -3,8 +3,10 @@ import type {
   ApplicationStatus,
   AudioDevice,
   PermissionStatus,
+  SttStatus,
 } from "@shared/index";
 import MicrophonePanel from "../components/MicrophonePanel";
+import SttPanel from "../components/SttPanel";
 
 interface HomeScreenProps {
   permission: PermissionStatus;
@@ -16,6 +18,12 @@ interface HomeScreenProps {
   onSelectDevice: (deviceId: string) => void;
   onStart: () => void;
   onStop: () => void;
+  sttStatus: SttStatus;
+  sttPartialText: string;
+  sttFinalText: string;
+  sttError: string | null;
+  onSttStart: () => void;
+  onSttStop: () => void;
 }
 
 export default function HomeScreen(props: HomeScreenProps) {
@@ -23,7 +31,26 @@ export default function HomeScreen(props: HomeScreenProps) {
     <div className="screen home-screen">
       <h1>Urdu → English Interpreter</h1>
 
-      <MicrophonePanel {...props} />
+      <MicrophonePanel
+        permission={props.permission}
+        status={props.status}
+        devices={props.devices}
+        selectedDeviceId={props.selectedDeviceId}
+        level={props.level}
+        error={props.error}
+        onSelectDevice={props.onSelectDevice}
+        onStart={props.onStart}
+        onStop={props.onStop}
+      />
+
+      <SttPanel
+        status={props.sttStatus}
+        partialText={props.sttPartialText}
+        finalText={props.sttFinalText}
+        error={props.sttError}
+        onStart={props.onSttStart}
+        onStop={props.onSttStop}
+      />
 
       <div className="field">
         <label>Output</label>
@@ -43,8 +70,9 @@ export default function HomeScreen(props: HomeScreenProps) {
       </div>
 
       <p className="hint">
-        Milestone 2: local microphone capture and audio level monitoring.
-        Translation will be added in Milestone 3.
+        Milestone 3: real-time Urdu speech-to-text. Speak into the microphone
+        and watch the live transcript. Urdu → English translation arrives in
+        Milestone 4.
       </p>
     </div>
   );

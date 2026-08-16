@@ -1,10 +1,14 @@
+import 'dotenv/config';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import type { ApplicationStatus } from '@shared/index';
 import { registerAudioIpc } from './ipc/audio';
+import { registerSttIpc } from './ipc/stt';
+
+let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 480,
     height: 680,
     minWidth: 420,
@@ -17,6 +21,10 @@ function createWindow() {
     },
   });
 
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   // Open DevTools in development
@@ -27,6 +35,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   registerAudioIpc();
+  registerSttIpc(() => mainWindow);
   createWindow();
 
   app.on('activate', () => {

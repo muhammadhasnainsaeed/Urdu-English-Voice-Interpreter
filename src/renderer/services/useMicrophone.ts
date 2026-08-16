@@ -5,6 +5,12 @@ import type {
   PermissionStatus,
 } from "@shared/index";
 
+export interface MicrophoneCaptureResult {
+  ok: boolean;
+  stream: MediaStream | null;
+  audioContext: AudioContext | null;
+}
+
 function captureErrorMessage(err: unknown): string {
   if (err instanceof DOMException) {
     switch (err.name) {
@@ -35,10 +41,15 @@ export function useMicrophone() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number>(0);
   const permissionRef = useRef(permission);
+  const statusRef = useRef<ApplicationStatus>("idle");
 
   useEffect(() => {
     permissionRef.current = permission;
   }, [permission]);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   const refreshDevices = useCallback(async (): Promise<AudioDevice[]> => {
     try {
@@ -93,25 +104,35 @@ export function useMicrophone() {
     }
   }, []);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (): Promise<MicrophoneCaptureResult> => {
     setError(null);
+
+    if (statusRef.current === "listening") {
+      return {
+        ok: true,
+        stream: streamRef.current,
+        audioContext: audioContextRef.current,
+      };
+    }
 
     let granted = permission === "granted";
     if (!granted) granted = await requestPermission();
-    if (!granted) return;
+    if (!granted) {
+      return { ok: false, stream: null, audioContext: null };
+    }
 
     const currentDevices = await refreshDevices();
     if (currentDevices.length === 0) {
       setStatus("error");
       setError("No microphone found.");
-      return;
+      return { ok: false, stream: null, audioContext: null };
     }
 
     const deviceId = selectedDeviceId ?? currentDevices[0].deviceId;
     if (!deviceId) {
       setStatus("error");
       setError("No microphone is selected.");
-      return;
+      return { ok: false, stream: null, audioContext: null };
     }
 
     try {
@@ -161,9 +182,11 @@ export function useMicrophone() {
 
       setStatus("listening");
       refreshDevices();
+      return { ok: true, stream, audioContext };
     } catch (err) {
       setStatus("error");
       setError(captureErrorMessage(err));
+      return { ok: false, stream: null, audioContext: null };
     }
   }, [permission, requestPermission, refreshDevices, selectedDeviceId]);
 

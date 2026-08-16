@@ -280,3 +280,71 @@ body {
 .permission-unknown {
   color: #9aa0ac;
 }
+
+/* ----- Milestone 3: speech recognition panel ----- */
+
+.stt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid #2a2e37;
+  border-radius: 12px;
+  padding: 16px;
+  background: #13161c;
+}
+
+.stt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stt-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stt-lang {
+  border: 1px solid #2a2e37;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: #9aa0ac;
+}
+
+.transcript-box {
+  border: 1px solid #2a2e37;
+  border-radius: 8px;
+  padding: 12px;
+  background: #181b22;
+  min-height: 96px;
+  max-height: 160px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  line-height: 1.7;
+  font-family: "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", serif;
+  font-size: 18px;
+}
+
+.transcript-empty {
+  color: #5b616c;
+  font-size: 13px;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+}
+
+.transcript-final {
+  color: #f5f6f8;
+}
+
+.transcript-partial {
+  color: #9aa0ac;
+  font-style: italic;
+}
+
+.status-starting,
+.status-stopping,
+.status-processing {
+  color: #fbbf24;
+}

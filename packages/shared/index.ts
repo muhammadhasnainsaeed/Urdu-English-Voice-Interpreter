@@ -37,8 +37,32 @@ export interface TranslationState {
 
 export type AIProviderState = "uninitialized" | "ready" | "connecting" | "active" | "error";
 
+export type SttStatus =
+  | "idle"
+  | "starting"
+  | "listening"
+  | "processing"
+  | "stopping"
+  | "error";
+
+export type SttEvent =
+  | { type: "started"; message?: string }
+  | { type: "partial"; text: string }
+  | { type: "final"; text: string }
+  | { type: "error"; message: string }
+  | { type: "stopped"; message?: string };
+
+export interface SttStartResult {
+  ok: boolean;
+  message?: string;
+}
+
 export interface ElectronAPI {
   getAppStatus: () => Promise<ApplicationStatus>;
   getMicPermission: () => Promise<PermissionStatus>;
   requestMicPermission: () => Promise<PermissionStatus>;
+  startStt: () => Promise<SttStartResult>;
+  sendSttAudio: (chunk: ArrayBuffer) => void;
+  stopStt: () => Promise<void>;
+  onSttEvent: (handler: (event: SttEvent) => void) => () => void;
 }

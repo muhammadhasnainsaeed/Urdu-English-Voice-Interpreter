@@ -3,6 +3,71 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-16 — Milestone 3: speech-to-text (Urdu)
+
+Implemented real-time Urdu speech-to-text using the existing Milestone 2 mic
+capture. STT runs in the main process behind a swappable provider abstraction;
+the renderer taps the live WebRTC stream, resamples it to 16 kHz mono 16-bit
+PCM, and streams it over IPC.
+
+- **Provider abstraction** — `src/main/services/stt/provider.ts`
+  (`SttProvider` interface), `manager.ts` (singleton `SttSession` + provider
+  selection via `STT_PROVIDER` env), `providers/azure.ts` (Azure Speech SDK,
+  `ur-PK`, continuous recognition with interim results via a
+  `PushAudioInputStream`), `providers/mock.ts` (keyless dev/test provider
+  triggered by real audio chunks). Azure is loaded lazily via dynamic
+  `import()` so mock mode never loads the SDK. Missing keys / unknown
+  provider → `{ok:false, message}` — never a crash.
+- **STT IPC** — `src/main/ipc/stt.ts`: `stt:start` (invoke), `stt:audio-data`
+  (fire-and-forget send; payload validated to `ArrayBuffer`/typed arrays),
+  `stt:stop` (invoke), `stt:event` broadcasts
+  (`started | partial | final | error | stopped`).
+- **Main wiring** — `src/main/index.ts` now imports `dotenv/config`, tracks
+  the current `BrowserWindow`, and registers `registerSttIpc()`. `.env`
+  holds `STT_PROVIDER`, `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION` (added to
+  `.env.example`); keys never reach the renderer.
+- **Preload** — added `startStt()`, `sendSttAudio(chunk)`, `stopStt()`,
+  `onSttEvent(handler) → unsubscribe` to `ElectronAPI`.
+- **Renderer** — `src/renderer/services/useStt.ts`: taps the M2 capture with
+  a `ScriptProcessorNode` through a zero-gain node (no audible feedback),
+  resamples to 16 kHz (linear interpolation + carry-over tail), converts to
+  Int16 PCM, and maintains `SttStatus` + partial/final transcript + errors.
+  New `SttPanel` component (Language: Urdu, Status, Live Transcript with
+  partial vs final distinguished, Start/Stop Listening). `App.tsx` wires
+  `useMicrophone` + `useStt` (STT start ensures mic capture; stopping either
+  stops the other).
+- **Shared types** — added `SttStatus`, `SttEvent`, `SttStartResult`;
+  extended `ElectronAPI`.
+- **Dependencies** — added `dotenv` and
+  `microsoft-cognitiveservices-speech-sdk` (esbuild marks the SDK external
+  for the main bundle).
+- **Docs** — `ARCHITECTURE.md` documents the provider decision (Azure vs
+  Google Cloud STT / Deepgram / OpenAI Whisper / Vosk), the 16 kHz mono PCM
+  audio format, the streaming approach, security model, cost/free tier, and
+  known limitations.
+
+**Provider decision:** Azure Speech chosen over Google Cloud STT
+(service-account auth; last-place real-time accuracy in 2026 benchmarks),
+Deepgram (newer/less-proven Urdu), OpenAI Whisper (no true streaming), and
+Vosk (native dep + Electron ABI rebuild). Azure offers true streaming with
+interim results, `ur-PK` Urdu, ~320 ms latency, key + region auth in the
+official npm SDK, and a 5 free-hours/month tier. Swappable behind
+`SttProvider`.
+
+Validation:
+- `npm run type-check` — 0 errors
+- `npm run build` — succeeds; SDK external in `dist/main/index.js`; renderer
+  bundle clean of keys/SDK/`process.env` (grepped)
+- Main-process harness: mock lifecycle (`STT_MOCK_PASS`), missing-key +
+  unknown-provider errors (`STT_ERR_PASS`)
+- Electron UI harness (real preload + real renderer, `STT_PROVIDER=mock`):
+  API surface, panel render (Urdu), Start Listening, live partial + final
+  transcript, Stop Listening, mic auto-stop, and missing-key error path
+  (`STT_MISSING_KEY_UI_PASS`) — all passed, app stays alive throughout
+- `npx electron .` — launches and stays alive with no errors
+- Real Azure recognition (API key + spoken Urdu) is a manual user step; see
+  `docs/CURRENT_STATE.md`.
+
 ## 2026-08-16 — Milestone 2 follow-up: auto-refresh microphone device list
 
 Fixed: the device dropdown did not update when a headset/microphone was

@@ -11,7 +11,21 @@ export interface AudioDevice {
   type: "input" | "output";
 }
 
-export type ApplicationStatus = "idle" | "starting" | "listening" | "processing" | "speaking" | "error";
+export type ApplicationStatus =
+  | "idle"
+  | "requesting-permission"
+  | "ready"
+  | "listening"
+  | "processing"
+  | "speaking"
+  | "error";
+
+export type PermissionStatus =
+  | "granted"
+  | "denied"
+  | "not-determined"
+  | "restricted"
+  | "unknown";
 
 export interface TranslationState {
   status: ApplicationStatus;
@@ -25,4 +39,6 @@ export type AIProviderState = "uninitialized" | "ready" | "connecting" | "active
 
 export interface ElectronAPI {
   getAppStatus: () => Promise<ApplicationStatus>;
+  getMicPermission: () => Promise<PermissionStatus>;
+  requestMicPermission: () => Promise<PermissionStatus>;
 }

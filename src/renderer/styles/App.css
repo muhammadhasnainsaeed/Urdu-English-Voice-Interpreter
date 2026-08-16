@@ -25,8 +25,9 @@ body {
 /* ----- Home screen ----- */
 
 .home-screen {
-  justify-content: center;
+  justify-content: flex-start;
   gap: 18px;
+  overflow-y: auto;
 }
 
 .home-screen h1 {
@@ -189,4 +190,93 @@ body {
   font-size: 14px;
   outline: none;
   width: 100%;
+}
+
+/* ----- Milestone 2: microphone panel ----- */
+
+.mic-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid #2a2e37;
+  border-radius: 12px;
+  padding: 16px;
+  background: #13161c;
+}
+
+.mic-status-row {
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mic-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.mic-actions .primary-btn,
+.mic-actions .secondary-btn {
+  flex: 1;
+}
+
+.primary-btn:disabled,
+.secondary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.level-meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.level-blocks {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.level-block {
+  flex: 1;
+  height: 18px;
+  border-radius: 3px;
+  background: #262b35;
+  transition: background-color 60ms ease;
+}
+
+.level-block.filled {
+  background: #4f7cff;
+}
+
+.level-percent {
+  font-size: 13px;
+  font-weight: 600;
+  color: #9aa0ac;
+  min-width: 38px;
+  text-align: right;
+}
+
+.status-ready,
+.status-listening,
+.permission-granted {
+  color: #4ade80;
+}
+
+.status-requesting-permission {
+  color: #fbbf24;
+}
+
+.status-error,
+.permission-denied,
+.permission-restricted {
+  color: #ff6b6b;
+}
+
+.permission-not-determined,
+.permission-unknown {
+  color: #9aa0ac;
 }

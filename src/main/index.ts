@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import type { ApplicationStatus } from '@shared/index';
+import { registerAudioIpc } from './ipc/audio';
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -25,6 +26,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  registerAudioIpc();
   createWindow();
 
   app.on('activate', () => {

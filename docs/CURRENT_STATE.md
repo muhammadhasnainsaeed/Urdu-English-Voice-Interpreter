@@ -6,77 +6,113 @@ _Last updated: 2026-08-16_
 
 Status: **COMPLETE** (verified from code on 2026-08-16)
 
-## What is done
+## Milestone 2 — Microphone Capture & Audio Device Detection
 
-- **Electron main process** — `src/main/index.ts` creates the window with
-  secure `webPreferences` (`contextIsolation: true`, `nodeIntegration: false`),
-  registers the `get-app-status` IPC handler, and handles macOS window lifecycle.
-- **Secure preload bridge** — `src/preload/index.ts` exposes a typed
-  `window.electron` API (`getAppStatus`) via `contextBridge`. No Node.js APIs
-  are exposed to the renderer.
-- **React + TypeScript renderer** — `src/renderer/`:
-  - `App.tsx` manages application state and screen switching (Home ↔ Live).
-  - `pages/HomeScreen.tsx` — microphone/output placeholders, language pills,
-    Start Translation button.
-  - `pages/LiveTranslationScreen.tsx` — Urdu/English subtitle boxes + status bar
-    + Stop button.
-  - `components/SubtitleDisplay.tsx`, `components/StatusBar.tsx`.
-  - `styles/App.css` — dark theme UI shell.
-  - `types/electron.d.ts` — global `Window.electron` type declaration.
-- **Shared types** — `packages/shared/index.ts` defines `TranslationResult`,
-  `AudioDevice`, `ApplicationStatus`, `TranslationState`, `AIProviderState`,
-  and `ElectronAPI`.
-- **Build system** — `esbuild.config.js` bundles main, preload, and renderer
-  into `dist/` and copies `index.html` to `dist/renderer/index.html`.
-- **Config** — root `package.json`, `tsconfig.json`, `.env.example`.
-- **Electron toolchain** — Electron `^42.4.0` (installed `42.9.1`). Upgraded
-  from `^31.0.0` because a 2026 macOS XProtect update flags the Electron 31.7.7
-  macOS binary as malware (a known false positive affecting stale/unsigned
-  Electron builds) and deletes it from `node_modules`. See `docs/CHANGELOG.md`.
-- **Python removed** — legacy `backend/` (FastAPI, faster-whisper,
-  deep-translator) and legacy `electron/` directories were deleted. The MVP is
-  now Node.js-only with a single source of truth.
+Status: **COMPLETE** (verified on 2026-08-16)
 
-## Functional application states (Milestone 1)
+## What is done (Milestone 2)
 
-- `idle`, `starting`, `error` are functional in the UI.
-- `listening`, `processing`, `speaking` are defined in
-  `packages/shared/index.ts` but reserved for future milestones.
+- **Main process audio service** — `src/main/services/audio.ts`:
+  - `getMicrophonePermission()` — reads macOS TCC status via Electron's
+    `systemPreferences.getMediaAccessStatus('microphone')` (no native
+    dependencies).
+  - `requestMicrophonePermission()` — triggers the macOS prompt via
+    `systemPreferences.askForMediaAccess('microphone')`.
+- **IPC handlers** — `src/main/ipc/audio.ts` registers
+  `mic:get-permission` and `mic:request-permission` (registered in
+  `src/main/index.ts` on `app.whenReady`).
+- **Preload bridge** — `src/preload/index.ts` now also exposes
+  `getMicPermission()` and `requestMicPermission()`.
+- **Renderer capture hook** — `src/renderer/services/useMicrophone.ts`:
+  permission lifecycle, device enumeration, `getUserMedia` capture from the
+  selected device, WebAudio `AnalyserNode` → real-time audio level (0–1),
+  graceful start/stop, and error mapping (`NotAllowedError`,
+  `NotFoundError`, `NotReadableError`, `OverconstrainedError`).
+- **UI** — `MicrophonePanel` (`src/renderer/components/MicrophonePanel.tsx`):
+  device `<select>`, Status, Permission, Audio Level meter, Start/Stop buttons,
+  error messages, and a System Settings hint when permission is denied.
+  `AudioLevelMeter` renders a 10-block bar + percentage.
+- **Home screen** — `src/renderer/pages/HomeScreen.tsx` now hosts the real
+  microphone panel; `App.tsx` renders it and owns the `useMicrophone` hook.
+  The "Start Translation" placeholder flow was removed — Milestone 2 focuses on
+  local capture only.
+- **Shared types** — added `PermissionStatus`
+  (`granted | denied | not-determined | restricted | unknown`); extended
+  `ApplicationStatus` with `requesting-permission` and `ready` (replaced the
+  `starting` placeholder); added the two permission calls to `ElectronAPI`.
 
-## Validation (latest run)
+## Milestone 2 states
+
+- `idle`, `requesting-permission`, `ready`, `listening`, `error` are used by
+  the microphone UI.
+- `processing`, `speaking` remain defined in `packages/shared/index.ts` and
+  are reserved for Milestone 3 (translation).
+
+## Validation (Milestone 2, latest run)
 
 - `npm run type-check` — passes (0 errors)
 - `npm run build` — succeeds; `dist/renderer/index.html` is produced
-- Automated Electron smoke test — loads the built renderer through the real
-  preload bridge and calls `window.electron.getAppStatus()` → `'idle'`
-  (`SMOKE_PASS`)
-- `npx electron .` — app launches and stays alive with no errors
-- Note: the Electron 31.7.7 binary was blocked by macOS XProtect; upgraded to
-  Electron 42.9.1 which runs cleanly
+- Automated Electron smoke tests (real main service + real preload + real
+  renderer bundle):
+  - `SMOKE_PASS` — `window.electron` exposes all 3 methods; `getAppStatus` →
+    `'idle'`; `getMicPermission` → `'granted'` on this machine; 3 input devices
+    detected ("Default – External Microphone (Built-in)", "External
+    Microphone (Built-in)", "MacBook Air Microphone (Built-in)");
+    `getUserMedia` + `AnalyserNode` capture returned a real (non-zero) RMS.
+  - `UI_CAPTURE_PASS` — clicking Start in the real rendered UI → button becomes
+    "Stop", status "Listening", level meter live (reacted to ambient audio,
+    e.g. 100%); clicking Stop → back to "Start", level 0%.
+  - `UI_SELECT_PASS` — device selection in the real UI switches the selected
+    device (e.g. to "MacBook Air Microphone (Built-in)").
+  - `UI_DENY_PASS` — with a simulated denied permission: UI shows
+    "Permission: Denied" + hint, Start stays clickable, clicking it shows the
+    denial error message, status → "error", and the app keeps running (no
+    crash, no page errors).
+- `npx electron .` — real app launches and stays alive with no errors.
+- Note: permission was already granted on this machine, so the real macOS
+  prompt was not triggered during automated testing. The prompt + speaking
+  test require the user to run the app manually (see below).
+
+## Manual verification still needed (by the user)
+
+Automation cannot click the native macOS permission dialog or speak into a
+microphone. Please run `npm start` and confirm:
+
+1. Microphones are detected and shown.
+2. A microphone can be selected.
+3. macOS permission is requested when needed (on this machine it is already
+   granted).
+4. Start begins capture (Status → Listening).
+5. Audio level changes while speaking.
+6. Stop ends capture.
+7. Permission denial does not crash the app.
 
 ## What is NOT implemented (intentionally)
 
-Microphone capture, audio device detection, speech-to-text, translation,
-text-to-speech, BlackHole, AI providers, authentication, database, backend
-server, Python. These belong to Milestone 2+.
+Speech-to-text, Urdu → English translation, AI APIs, text-to-speech, BlackHole,
+virtual microphone output, meeting-app integration, database, authentication,
+backend server, Python. These belong to Milestone 3+.
 
 ## Next task
 
-Milestone 2 — Microphone Capture & Audio Device Detection.
-
-- **Do not begin** until the user confirms Milestone 1 is accepted.
-- After starting it, capture the expected work here (device enumeration via
-  macOS, permission handling, exposing devices through IPC, device selection
-  in the Home screen).
+Milestone 3 — Speech-to-Text and translation pipeline (STT from the captured
+microphone audio, Urdu → English translation, live subtitles UI; the existing
+`LiveTranslationScreen` / `SubtitleDisplay` / `StatusBar` components are the
+starting point).
 
 ## Files at a glance
 
 ```text
 src/main/index.ts
+src/main/services/audio.ts
+src/main/ipc/audio.ts
 src/preload/index.ts
 src/renderer/{App.tsx,index.tsx,index.html}
-src/renderer/pages/{HomeScreen,LiveTranslationScreen}.tsx
-src/renderer/components/{SubtitleDisplay,StatusBar}.tsx
+src/renderer/pages/HomeScreen.tsx
+src/renderer/components/{MicrophonePanel,AudioLevelMeter}.tsx
+src/renderer/components/{SubtitleDisplay,StatusBar}.tsx        (M3 stubs)
+src/renderer/pages/LiveTranslationScreen.tsx                   (M3 stub)
+src/renderer/services/useMicrophone.ts
 src/renderer/styles/App.css
 src/renderer/types/electron.d.ts
 packages/shared/index.ts

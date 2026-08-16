@@ -3,6 +3,57 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-16 — Milestone 2: microphone capture & audio device detection
+
+Implemented the local microphone foundation for macOS.
+
+- **Main process** — new `src/main/services/audio.ts` and
+  `src/main/ipc/audio.ts`:
+  - `mic:get-permission` → `systemPreferences.getMediaAccessStatus('microphone')`
+  - `mic:request-permission` → `systemPreferences.askForMediaAccess('microphone')`
+  - No native dependencies were added (Electron's `systemPreferences` API
+    covers macOS TCC permission handling).
+- **Preload** — added `getMicPermission()` / `requestMicPermission()` to the
+  typed bridge (`ElectronAPI`).
+- **Renderer** — new `useMicrophone` hook (`src/renderer/services/useMicrophone.ts`)
+  plus `MicrophonePanel` and `AudioLevelMeter` components:
+  - Enumerates input devices via `navigator.mediaDevices.enumerateDevices()`
+    (device IDs match `getUserMedia` exactly).
+  - Captures from the selected device via `getUserMedia` and computes a
+    real-time level with a WebAudio `AnalyserNode` (time-domain RMS, 0–1).
+  - Handles: no device, permission denied, device busy/unavailable, invalid
+    selection, `OverconstrainedError` fallback to the default device.
+  - `App.tsx` now renders the microphone panel on the Home screen; the
+    placeholder "Start Translation" navigation to the live screen was removed
+    (Milestone 2 is capture-only). `LiveTranslationScreen`,
+    `SubtitleDisplay`, and `StatusBar` remain as Milestone 3 stubs.
+- **Shared types** — added `PermissionStatus`; extended `ApplicationStatus`
+  with `requesting-permission` and `ready` (replacing the `starting`
+  placeholder); extended `ElectronAPI`.
+- **UI** — Status (Idle / Requesting permission… / Ready / Listening / Error),
+  Permission (Granted / Denied / Not requested / Restricted), 10-block audio
+  level meter with percentage, Start/Stop buttons, and actionable error text.
+
+**Architectural decision (documented in `docs/ARCHITECTURE.md`):** capture and
+device enumeration live in the sandboxed renderer using Chromium's WebRTC
+stack, while macOS permission is orchestrated by the main process. This keeps
+the renderer free of Node.js APIs, requires zero native dependencies (no
+node-gyp rebuilds against Electron's ABI, no code-signing friction on Apple
+Silicon), and guarantees the device IDs shown in the UI are the exact IDs
+`getUserMedia` accepts. A native main-process capture module can be added later
+if Milestone 3/4 (STT or BlackHole routing) requires it.
+
+Validation:
+- `npm run type-check` — 0 errors
+- `npm run build` — succeeds
+- Automated Electron tests through the real main service, preload, and renderer
+  bundle: device detection (3 input devices), capture + RMS level, Start/Stop
+  lifecycle in the rendered UI, device selection, and a simulated permission
+  denial (graceful error, no crash).
+- `npx electron .` — app launches and stays alive with no errors.
+- The native macOS permission prompt and "level changes while speaking" were
+  not verifiable by automation; they are listed as manual steps for the user.
+
 ## 2026-08-16 — Milestone 1 completion (opencode)
 
 Continued from the Gemini session log (removed on 2026-08-16; its content is

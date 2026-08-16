@@ -68,18 +68,21 @@ docs/          Architecture, current state, changelog, agent session logs
 
 ## Milestones
 
-### Milestone 1 — Project Architecture & Electron Foundation (CURRENT)
+### Milestone 1 — Project Architecture & Electron Foundation
 
 Complete. See `docs/CURRENT_STATE.md`.
 
-### Milestone 2 — Microphone Capture & Audio Device Detection (NEXT)
+### Milestone 2 — Microphone Capture & Audio Device Detection
 
-Not started. Do not begin until Milestone 1 is verified and the user says
+Complete. See `docs/CURRENT_STATE.md`.
+
+### Milestone 3 — Speech-to-Text & Translation Pipeline (NEXT)
+
+Not started. Do not begin until Milestone 2 is verified and the user says
 to continue.
 
 ## Do NOT implement yet
 
-- Microphone capture
 - Speech-to-text
 - Translation API
 - Text-to-speech

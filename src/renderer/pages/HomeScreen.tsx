@@ -1,29 +1,35 @@
 import React from "react";
+import type {
+  ApplicationStatus,
+  AudioDevice,
+  PermissionStatus,
+} from "@shared/index";
+import MicrophonePanel from "../components/MicrophonePanel";
 
 interface HomeScreenProps {
-  onStart: () => void;
+  permission: PermissionStatus;
+  status: ApplicationStatus;
+  devices: AudioDevice[];
+  selectedDeviceId: string | null;
+  level: number;
   error: string | null;
+  onSelectDevice: (deviceId: string) => void;
+  onStart: () => void;
+  onStop: () => void;
 }
 
-export default function HomeScreen({ onStart, error }: HomeScreenProps) {
+export default function HomeScreen(props: HomeScreenProps) {
   return (
     <div className="screen home-screen">
       <h1>Urdu → English Interpreter</h1>
 
-      <div className="device-select-container">
-        <div className="device-field">
-          <label>Microphone</label>
-          <select className="device-select" disabled>
-            <option>Default Microphone</option>
-          </select>
-        </div>
+      <MicrophonePanel {...props} />
 
-        <div className="device-field">
-          <label>Output</label>
-          <select className="device-select" disabled>
-            <option>BlackHole 2ch (Not Detected)</option>
-          </select>
-        </div>
+      <div className="field">
+        <label>Output</label>
+        <select className="device-select" disabled>
+          <option>BlackHole (Milestone 3+)</option>
+        </select>
       </div>
 
       <div className="field">
@@ -36,14 +42,9 @@ export default function HomeScreen({ onStart, error }: HomeScreenProps) {
         <div className="pill">English</div>
       </div>
 
-      <button className="primary-btn" onClick={onStart}>
-        Start Translation
-      </button>
-
-      {error && <p className="error-text">{error}</p>}
-
       <p className="hint">
-        Milestone 1: UI Shell. Microphone and BlackHole detection will be implemented in future milestones.
+        Milestone 2: local microphone capture and audio level monitoring.
+        Translation will be added in Milestone 3.
       </p>
     </div>
   );

@@ -44,7 +44,7 @@ export function useMicrophone() {
     try {
       const list = await navigator.mediaDevices.enumerateDevices();
       const inputs: AudioDevice[] = list
-        .filter((d) => d.kind === "audioinput")
+        .filter((d) => d.kind === "audioinput" && d.deviceId !== "")
         .map((d) => ({
           deviceId: d.deviceId,
           label: d.label || "Microphone",
@@ -58,6 +58,9 @@ export function useMicrophone() {
       if (inputs.length === 0) {
         setStatus((s) => (s === "listening" ? s : "error"));
         setError("No microphone found.");
+      } else {
+        setError(null);
+        setStatus((s) => (s === "error" ? "ready" : s));
       }
       return inputs;
     } catch {
@@ -195,8 +198,16 @@ export function useMicrophone() {
           setError("Could not read microphone permission from the main process.");
         }
       });
+
+    const onDeviceChange = () => {
+      if (cancelled) return;
+      refreshDevices();
+    };
+    navigator.mediaDevices.addEventListener("devicechange", onDeviceChange);
+
     return () => {
       cancelled = true;
+      navigator.mediaDevices.removeEventListener("devicechange", onDeviceChange);
       stop();
     };
   }, [refreshDevices, stop]);

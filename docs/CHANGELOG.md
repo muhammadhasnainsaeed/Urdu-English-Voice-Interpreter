@@ -3,6 +3,33 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-16 — Milestone 2 follow-up: auto-refresh microphone device list
+
+Fixed: the device dropdown did not update when a headset/microphone was
+plugged in or unplugged while the app was idle.
+
+- `src/renderer/services/useMicrophone.ts` now listens to the browser
+  `navigator.mediaDevices` `devicechange` event: the listener is registered
+  when the hook initializes and removed on unmount, and every `devicechange`
+  fires `refreshDevices()` so the dropdown updates automatically (no Start/Stop
+  needed).
+- `refreshDevices()` was hardened as part of this:
+  - filters out entries with empty `deviceId` (avoids placeholder rows before
+    permission is granted),
+  - clears a stale "No microphone found." error when devices are present
+    again,
+  - restores status `error` → `ready` once a device is available again.
+- Capture and audio-level behavior unchanged.
+
+Validation:
+- `npm run type-check` — 0 errors
+- `npm run build` — succeeds
+- Automated Electron test simulating unplug (one device, then all) and plug
+  back in via a stubbed `enumerateDevices` + synthetic `devicechange` events
+  through the real renderer: dropdown updated automatically (3 → 2 → none →
+  3), status/error recovered, and the Start → Listening → Stop lifecycle still
+  works with no page errors (`DEVICECHANGE_PASS`).
+
 ## 2026-08-16 — Milestone 2: microphone capture & audio device detection
 
 Implemented the local microphone foundation for macOS.

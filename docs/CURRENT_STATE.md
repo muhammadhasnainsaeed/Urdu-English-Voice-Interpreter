@@ -28,6 +28,11 @@ Status: **COMPLETE** (verified on 2026-08-16)
   selected device, WebAudio `AnalyserNode` → real-time audio level (0–1),
   graceful start/stop, and error mapping (`NotAllowedError`,
   `NotFoundError`, `NotReadableError`, `OverconstrainedError`).
+  The device list auto-refreshes via the `navigator.mediaDevices`
+  `devicechange` event (listener added on init, removed on unmount), so the
+  dropdown updates when headsets/microphones are plugged in or unplugged while
+  the app is idle. `refreshDevices()` also clears stale errors and recovers
+  status `error` → `ready` when devices become available again.
 - **UI** — `MicrophonePanel` (`src/renderer/components/MicrophonePanel.tsx`):
   device `<select>`, Status, Permission, Audio Level meter, Start/Stop buttons,
   error messages, and a System Settings hint when permission is denied.
@@ -68,6 +73,11 @@ Status: **COMPLETE** (verified on 2026-08-16)
     "Permission: Denied" + hint, Start stays clickable, clicking it shows the
     denial error message, status → "error", and the app keeps running (no
     crash, no page errors).
+  - `DEVICECHANGE_PASS` — simulated unplug (one device, then all) and plug
+    back in via a stubbed `enumerateDevices` + synthetic `devicechange` events:
+    the dropdown auto-updated (3 → 2 → none → 3), status recovered from
+    `error` to `ready`, stale errors cleared, and Start → Listening → Stop
+    still worked with no page errors.
 - `npx electron .` — real app launches and stays alive with no errors.
 - Note: permission was already granted on this machine, so the real macOS
   prompt was not triggered during automated testing. The prompt + speaking

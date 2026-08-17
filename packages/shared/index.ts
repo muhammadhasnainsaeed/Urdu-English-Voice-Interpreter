@@ -55,6 +55,7 @@ export type SttEvent =
 export interface SttStartResult {
   ok: boolean;
   message?: string;
+  provider?: string;
 }
 
 export interface ElectronAPI {

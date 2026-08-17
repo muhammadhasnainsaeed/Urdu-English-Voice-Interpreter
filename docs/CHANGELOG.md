@@ -3,6 +3,110 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-17 — Milestone 3 quality fix: explicit Urdu, energy gate, normalization
+
+Fixed the core M3 STT quality issue (whisper not reliably transcribing Urdu).
+
+- **Language default changed to `ur`** (`WHISPER_LANGUAGE=ur`). The earlier
+  "auto-detect to avoid hallucination" approach was based on a harness bug
+  (each `pushAudio` sent the whole file due to `subarray().buffer` returning
+  the parent ArrayBuffer, not a copy of the slice). With the corrected
+  harness, real Urdu audio with forced `-l ur` is accurate and fast (~1.7 s
+  per window on M1); the hallucination trigger is low-energy/noise windows,
+  not the language flag.
+- **Energy gate** — new constants: `BASE_ENERGY_SKIP_RMS=500` (just above
+  quiet-room ambient), `ENERGY_FLOOR_RMS=200`, ratchet on every consecutive
+  skip (factor 0.85, floor 200), `RUN_TIMEOUT_MS=12000` (was 30 s). The gate
+  drops windows that contain no meaningful speech before Whisper sees them,
+  which eliminates the hallucinating decode loop on noise. The threshold only
+  ratchets DOWN within a session, never up, so a quiet mic is still heard
+  within a few windows.
+- **Per-window gain normalization** — `normalizeSamples()` boosts quiet input
+  to a target RMS of 6000 (max gain 8×). Verified on real mic captures:
+  faint speech (RMS ~600) transcribed noticeably better after boost.
+- **Overlap dedup improved** — `stripRepeated` now tolerates a single
+  inflection-variant word at the overlap boundary (same first character,
+  different suffix — e.g. "ہوں" vs "ہم"), preventing visible duplicates
+  across consecutive windows.
+- **Mock provider speedup** — `providers/mock.ts`: first partial emitted
+  IMMEDIATELY on first `pushAudio` (no 300 ms delay), STEP_MS=250 (was 500),
+  full 5-word cycle ~1 s (was ~3 s).
+- **Harnessed bug corrected** — `.subarray(...).buffer` → `.subarray(...).slice().buffer`
+  in all harnesses (run.js, run-ur.js, run-urdu.js); the earlier "30 s
+  pathological hang" on forced-ur English audio was a harness artifact (the
+  file was re-sent each window, causing MAX_SAMPLES cap and infinite retry).
+
+Validation:
+- `npm run type-check` — 0 errors
+- `npm run build` — succeeds
+- Urugu TTS single sentence: PARTIAL at 3.3 s, FINAL at 4.0 s, no
+  hallucination
+- Urugu TTS 3 sentences: all 3 transcribed, overlap dedup working
+- Real mic capture (quiet, RMS 500-900): all 3 sentences transcribed (gate
+  base 500 + normalization)
+- Silence-only (30 pushes): zero output (energy gate works)
+- English + auto: 4 partials + 1 final, correct, no hangs
+- English + forced ur: bounded (12 s timeout), no 30 s hang
+- `npx electron .` — app launches and stays alive
+
+## 2026-08-17 — Milestone 3 extension: local offline Whisper STT provider
+
+Added `whisper` as a third `SttProvider` (alongside `azure` default and
+`mock`): fully offline speech-to-text via whisper.cpp `whisper-cli` spawned as
+a child process in the Electron main process, with the same
+renderer → IPC → main pipeline. No changes to the capture/IPC surface.
+
+- **`src/main/services/stt/providers/whisper.ts`** (new) —
+  `createWhisperSttProvider()` (`name: "whisper"`). Windowed near-real-time
+  decoding: 2 s windows with the previous window's final ~1 s kept as context
+  (`OVERLAP_MS`), segments inside the overlap dropped, punctuation-aware
+  leading-word dedup (`stripRepeated`), growing phrase emitted as `partial`,
+  idle (1.2 s) or stop forces `final`, whisper special tokens (`[BLANK_AUDIO]`,
+  …) stripped. Each window is encoded to a temp WAV (`os.tmpdir()`) and
+  decoded with `execFile(whisper-cli -m <model> -f <wav> -l <lang> -t 4 -np)`
+  with a 30 s timeout. `start()` validates exe + model with actionable errors
+  referencing `npm run setup:whisper`. A slow/timed-out window is skipped and
+  the session continues; only 3 consecutive failures hard-stop with `error`.
+  `stop()` busy-waits for an in-flight decode then forces the final (no
+  trailing speech lost).
+- **Language default `WHISPER_LANGUAGE=auto`** — measured that forcing `-l ur`
+  on English/low-energy windows can trigger whisper.cpp's hallucinating decode
+  loop (single 3.5 s window burning 36 CPU-s / ~10 s wall, or worse); whisper's
+  auto-detection avoids it (1.7 s) and yields correct output. Forcing
+  `WHISPER_LANGUAGE=ur` is available for pure-Urdu speech.
+- **Manager/UI wiring** — `manager.ts` lazy-imports the whisper provider and
+  `stt:start` returns `{ok:true, provider}`; `packages/shared/index.ts`
+  `SttStartResult` gained `provider?: string`; `useStt.ts` exposes the provider
+  and `SttPanel.tsx` shows "Provider: Local Whisper" (small debug row in
+  `.mic-status-row.provider-row`).
+- **Setup** — `scripts/setup-whisper.sh` (new; `npm run setup:whisper`):
+  requires arm64 + `cc`/`cmake`/`curl`, clones whisper.cpp into
+  `~/.cache/urdu-english-interpreter/`, configures CMake with the M1-safe
+  flags needed to avoid the default `-mcpu=native+i8mm` configure hang
+  (`-DGGML_NATIVE=OFF -DGGML_CPU_ARM_ARCH=armv8.2-a -DGGML_ACCELERATE=ON
+  -DGGML_METAL=OFF`), builds `whisper-cli`, and downloads
+  `ggml-${WHISPER_MODEL:-base}.bin`. cmake is a build-time-only tool
+  (Homebrew); nothing native is bundled with the app.
+- **Env** — `.env.example` documents `WHISPER_EXECUTABLE_PATH`,
+  `WHISPER_MODEL_PATH`, `WHISPER_LANGUAGE`, `WHISPER_THREADS`.
+- **Debugging findings recorded** — the whisper.cpp CMake configure hang on
+  M1 (SMMLA via `-mcpu=native+i8mm` hangs instead of SIGILL); the content-
+  and language-dependent pathological decode under forced `-l ur`; temp-file
+  capture and standalone reproduction used to isolate each.
+
+Validation:
+- `npm run type-check` — 0 errors
+- `npm run build` — succeeds; `dist/main/index.js` contains the whisper
+  provider strings; renderer bundle stays clean of keys/`process.env`
+- Whisper harness (real `whisper-cli` + `ggml-base.bin`, jfk.wav PCM):
+  `WHISPER_PIPE_AUTO` (4 clean partials + 1 final, no dups, no hang),
+  `WHISPER_PIPE_UR` (forced-ur on English audio degrades to skips instead of
+  session death), `WHISPER_ERR_PASS` (missing exe/model → actionable
+  `start()` errors)
+- `npx electron .` — app launches and stays alive with no errors
+- Real Urdu transcription (a human speaking Urdu) remains a manual user step;
+  see `docs/CURRENT_STATE.md`.
+
 ## 2026-08-16 — Milestone 3: speech-to-text (Urdu)
 
 Implemented real-time Urdu speech-to-text using the existing Milestone 2 mic

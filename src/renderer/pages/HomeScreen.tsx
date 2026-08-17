@@ -22,6 +22,7 @@ interface HomeScreenProps {
   sttPartialText: string;
   sttFinalText: string;
   sttError: string | null;
+  sttProvider: string | null;
   onSttStart: () => void;
   onSttStop: () => void;
 }
@@ -48,6 +49,7 @@ export default function HomeScreen(props: HomeScreenProps) {
         partialText={props.sttPartialText}
         finalText={props.sttFinalText}
         error={props.sttError}
+        provider={props.sttProvider}
         onStart={props.onSttStart}
         onStop={props.onSttStop}
       />

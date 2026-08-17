@@ -43,6 +43,7 @@ export function useStt() {
   const [partialText, setPartialText] = useState("");
   const [finalText, setFinalText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [provider, setProvider] = useState<string | null>(null);
 
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -119,10 +120,10 @@ export function useStt() {
       case "stopped":
         stopFeeding();
         setStatus("idle");
+        setProvider(null);
         break;
     }
   }, [stopFeeding]);
-
   useEffect(() => {
     const unsubscribe = window.electron.onSttEvent(onEvent);
     return unsubscribe;
@@ -175,6 +176,7 @@ export function useStt() {
         stopFeeding();
         return false;
       }
+      setProvider(result.provider ?? null);
       return true;
     },
     [stopFeeding]
@@ -207,6 +209,7 @@ export function useStt() {
     partialText,
     finalText,
     error,
+    provider,
     isActive,
     start,
     stop,

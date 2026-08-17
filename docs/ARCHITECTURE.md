@@ -16,7 +16,7 @@ Electron
    │     ├── services/stt/         (speech-to-text provider abstraction)
    │     │     ├── provider.ts          (SttProvider interface)
    │     │     ├── manager.ts           (session lifecycle + provider selection)
-   │     │     └── providers/{azure,mock}.ts
+   │     │     └── providers/{azure,mock,whisper}.ts
    │     ├── ipc/audio.ts          (mic:get-permission, mic:request-permission)
    │     └── ipc/stt.ts            (stt:start, stt:audio-data, stt:stop, stt:event)
    │
@@ -150,13 +150,17 @@ from the environment (loaded by `dotenv` from `.env`):
 
 - `azure` (default) — Azure Speech service, requires `AZURE_SPEECH_KEY` +
   `AZURE_SPEECH_REGION`. The provider is loaded lazily (dynamic `import()`),
-  so `mock` mode never loads the ~25 MB SDK.
+  so `mock`/`whisper` mode never loads the ~25 MB SDK.
 - `mock` — no API key, emits fake incremental Urdu partial/final text. Used
   for development and automated tests. The mock cycle is triggered by real
   audio chunks arriving over `stt:audio-data`, so it exercises the full
   renderer → IPC → main path.
-- anything else / missing Azure keys — `stt:start` returns
-  `{ok:false, message}` and the UI shows the error without crashing.
+- `whisper` — fully offline, no API key, no network. Runs the local
+  whisper.cpp engine (`whisper-cli` child process) in the main process. See
+  "Whisper provider (local offline)" below.
+- anything else / missing Azure keys / missing whisper engine or model —
+  `stt:start` returns `{ok:false, message}` and the UI shows the error
+  without crashing.
 
 **Provider abstraction** — `provider.ts` defines:
 
@@ -172,6 +176,75 @@ interface SttProvider {
 A translation provider in Milestone 4 and future STT providers (Google,
 Deepgram, local) plug in behind the same interface; the renderer and IPC
 surface never change.
+
+### Whisper provider (local offline)
+
+`src/main/services/stt/providers/whisper.ts` provides **fully offline** Urdu
+STT with no API key and zero network. Whisper has no true streaming API, so it
+runs chunked near-real-time decoding:
+
+```text
+Renderer                                        Main (whisper provider)
+   ... sendSttAudio(chunk) ──IPC──►  buffer windows (CHUNK_MS=2000)
+                                     every 2 s flush():
+                                       check energy gate (RMS < 500? skip)
+                                       input = [tail 1 s context] + pending
+                                       normalize quiet input to target RMS 6000
+                                       encode temp WAV (16 kHz Int16 PCM)
+                                       execFile whisper-cli -m ggml-base.bin
+                                         -f <wav> -l ur -t 4 -np
+                                       parse segments, drop overlap,
+                                       dedup leading repeats → partial
+                                       idle 1.2 s / stop → final
+```
+
+- **Engine**: whisper.cpp `whisper-cli`, spawned per window via
+  `child_process.execFile` with a 12 s timeout. Chosen over `faster-whisper`
+  (Python/CTranslate2 — Python is excluded from the MVP) and over Node native
+  addons (`whisper-node` and similar are stale and need a node-gyp rebuild +
+  repackage against Electron's ABI). A child process keeps the crash surface
+  isolated from Electron, needs no ABI coupling, and works on Apple Silicon.
+  Main-process-only — the renderer still gets no Node APIs.
+- **Setup**: `scripts/setup-whisper.sh` (`npm run setup:whisper`) clones
+  whisper.cpp into `~/.cache/urdu-english-interpreter/`, configures CMake with
+  M1-safe flags, builds `whisper-cli`, and downloads `ggml-base.bin`
+  (141 MB; `WHISPER_MODEL=tiny` for `ggml-tiny.bin`). The default CMake
+  `-mcpu=native+i8mm` probe HANGS on Apple Silicon M1 (it executes the
+  unsupported SMMLA instruction inside `check_cxx_source_runs`); the fix is
+  `-DGGML_NATIVE=OFF -DGGML_CPU_ARM_ARCH=armv8.2-a -DGGML_ACCELERATE=ON
+  -DGGML_METAL=OFF`. cmake is a build-time-only Homebrew tool — nothing native
+  is bundled with the app.
+- **Language**: default `WHISPER_LANGUAGE=ur` (explicit Urdu, not
+  auto-detection). Whisper's auto-detect is unreliable on the 2-3 s windows
+  the chunked pipeline feeds it (a short Urdu window is often mis-detected as
+  another language). Forced `-l ur` is accurate and fast (~1.7 s/window) on
+  real Urdu speech. The hallucination trigger is low-energy/noise windows (not
+  the language flag), handled by the energy gate and timeout.
+- **Energy gate** — windows whose RMS is below a threshold are dropped before
+  Whisper sees them, preventing the hallucinating decode loop on noise. The
+  threshold starts at `BASE_ENERGY_SKIP_RMS=500` (just above quiet-room
+  ambient, ~50-500 RMS) and only ratchets DOWN on consecutive skips (factor
+  0.85 per skip, floor 200) — never up — so a quiet mic is heard within a
+  few windows. Resets to the base at session start.
+- **Per-window gain normalization** — quiet input is boosted to a target RMS
+  of 6000 (max gain 8×) so whisper's features match its training
+  distribution. Already-normal audio is unchanged.
+- **Latency (M1, ggml-base)**: first partial ~3.3-4.0 s (cold model load —
+  the model is loaded per window), then a partial every ~2 s while speaking,
+  final ~0.2 s after the phrase ends. Decode-only is ~1.2-1.7 s per window.
+  whisper.cpp's bundled `examples/server` (`POST /inference`, multipart) keeps
+  the model resident and would cut windows to ~0.4 s; it is a documented
+  future improvement, not implemented (MVP prefers a dependency-light child
+  process).
+- **Robustness**: a slow or timed-out window (12 s) is skipped and the session
+  continues; only 3 consecutive failures hard-stop with an `error`. `stop()`
+  busy-waits for an in-flight decode before forcing a final so trailing speech
+  is not lost. Whisper special tokens (`[BLANK_AUDIO]`, `[NO_SPEECH]`, …) are
+  stripped.
+- **Offline trade-off**: no cloud cost, works with no key, Urdu transcription
+  verifiable without Azure. Accuracy tracks the small model (base); a larger
+  model (`small`/`medium`) improves Urdu quality at the cost of latency and
+  RAM.
 
 **Audio format** — 16 kHz, mono, 16-bit signed little-endian PCM (the Azure
 Speech SDK default input format). The renderer resamples from the
@@ -210,6 +283,13 @@ is therefore free under the monthly free allowance.
 - No endpointing: audio keeps streaming until the user presses
   "Stop Listening" (silence-based utterance finalization is handled by the
   provider).
+- Whisper provider (local offline): no true streaming — windowed
+  near-real-time with ~2 s cadence; per-window model load dominates latency
+  (~3.3-4.0 s first partial; `whisper-server` is the planned fix); small models
+  can mis-transcribe certain Urdu pronunciations; the energy gate handles
+  low-energy noise windows but very faint background speech may occasionally
+  slip through (bounded by 12 s timeout).
+  (windows are skipped rather than hanging the session).
 
 ### Build & tooling
 
@@ -228,7 +308,7 @@ is therefore free under the monthly free allowance.
 ```text
 Microphone
    ↓
-Speech-to-Text (main process / Azure Speech)     ✓ Milestone 3 (Urdu text)
+Speech-to-Text (main process / Azure Speech or local Whisper) ✓ M3 (Urdu text)
    ↓
 Urdu → English Translation (AI provider)           M4
    ↓
@@ -286,5 +366,13 @@ Zoom / Google Meet / Microsoft Teams
   OpenAI Whisper (best raw Urdu accuracy but no true streaming — batch/chunked
   only), and local Vosk (native dep, Electron ABI rebuild). The provider
   abstraction lets any of these replace Azure without touching the renderer.
+- **whisper.cpp as the local offline STT provider** (added 2026-08-17 behind
+  the same `SttProvider`): chosen over `faster-whisper` (Python — excluded
+  from the MVP) and over Node native addons (stale, node-gyp + Electron ABI
+  rebuild/packaging risk). Spawned as a `whisper-cli` child process per
+  window: no ABI coupling, first-class Apple Silicon, offline, crash-isolated.
+  The planned `whisper-server` (examples/server) upgrade keeps the model
+  resident to cut per-window latency from ~1.7 s to ~0.4 s.
 - **`dotenv` for main-process config**: `.env` holds `AZURE_SPEECH_KEY`,
-  `AZURE_SPEECH_REGION`, and `STT_PROVIDER`; keys never enter the renderer.
+  `AZURE_SPEECH_REGION`, `STT_PROVIDER`, and the optional whisper overrides;
+  keys never enter the renderer.

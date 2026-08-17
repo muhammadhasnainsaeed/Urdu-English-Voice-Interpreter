@@ -6,6 +6,7 @@ interface SttPanelProps {
   partialText: string;
   finalText: string;
   error: string | null;
+  provider: string | null;
   onStart: () => void;
   onStop: () => void;
 }
@@ -19,11 +20,18 @@ const STT_STATUS_LABELS: Record<SttStatus, string> = {
   error: "Error",
 };
 
+const PROVIDER_LABELS: Record<string, string> = {
+  azure: "Azure Speech",
+  whisper: "Local Whisper",
+  mock: "Mock (dev)",
+};
+
 export default function SttPanel({
   status,
   partialText,
   finalText,
   error,
+  provider,
   onStart,
   onStop,
 }: SttPanelProps) {
@@ -47,6 +55,15 @@ export default function SttPanel({
           {STT_STATUS_LABELS[status]}
         </span>
       </div>
+
+      {provider && (
+        <div className="mic-status-row provider-row">
+          <span className="status-label">Provider:</span>{" "}
+          <span className="status-value">
+            {PROVIDER_LABELS[provider] ?? provider}
+          </span>
+        </div>
+      )}
 
       <div className="field">
         <label>Live Transcript</label>

@@ -8,6 +8,7 @@
     "build": "node esbuild.config.js",
     "watch": "node esbuild.config.js --watch",
     "start": "npm run build && electron .",
+    "setup:whisper": "bash scripts/setup-whisper.sh",
     "type-check": "tsc --noEmit"
   },
   "devDependencies": {

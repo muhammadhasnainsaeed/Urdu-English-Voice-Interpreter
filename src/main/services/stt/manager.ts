@@ -22,6 +22,11 @@ async function createConfiguredProvider(): Promise<SttProvider | null> {
     return createAzureSttProvider(key, region, "ur-PK");
   }
 
+  if (providerName === "whisper") {
+    const { createWhisperSttProvider } = await import("./providers/whisper");
+    return createWhisperSttProvider();
+  }
+
   return null;
 }
 
@@ -43,7 +48,7 @@ class SttSession {
       return {
         ok: false,
         message:
-          "No speech-to-text provider is configured. Set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION in .env (or set STT_PROVIDER=mock for development).",
+          "No speech-to-text provider is configured. Set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION in .env (Azure), set STT_PROVIDER=whisper for local Whisper, or set STT_PROVIDER=mock for development.",
       };
     }
 
@@ -61,7 +66,7 @@ class SttSession {
     try {
       await provider.start(this.handlers);
       emit({ type: "started" });
-      return { ok: true };
+      return { ok: true, provider: provider.name };
     } catch (err) {
       this.provider = null;
       this.handlers = null;

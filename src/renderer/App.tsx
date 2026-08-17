@@ -42,6 +42,7 @@ export default function App() {
       sttPartialText={stt.partialText}
       sttFinalText={stt.finalText}
       sttError={stt.error}
+      sttProvider={stt.provider}
       onSttStart={handleSttStart}
       onSttStop={handleSttStop}
     />

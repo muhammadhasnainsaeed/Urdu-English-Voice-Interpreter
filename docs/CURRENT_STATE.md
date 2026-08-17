@@ -33,8 +33,10 @@ Status: **COMPLETE** (verified on 2026-08-17)
     Configurable voice via `AZURE_TTS_VOICE` (default `en-US-JennyNeural`).
     Returns raw PCM via `result.audioData` (`Raw24Khz16BitMonoPcm` format).
   - `providers/say.ts` — macOS built-in `say` command. Zero dependencies,
-    fully offline. Writes WAV to temp file, parses WAV header, returns PCM slice.
-    `stop()` kills via `killall say`. Platform-isolated for future Windows/Linux porting.
+    fully offline. Uses `--file-format=WAVE --data-format=LEI16@24000` to produce
+    24 kHz 16-bit mono PCM WAV matching the existing `AudioChunk` format.
+    Walks RIFF chunks to locate the `data` chunk (handles non-standard padding
+    chunks like FLLR). `stop()` kills via `killall say`.
   - `providers/mock.ts` — 200 ms simulated delay. Returns silence ArrayBuffer.
 - **TtsManager** — `src/main/services/tts/manager.ts`:
   - Session lifecycle, queue-based sequential speech.

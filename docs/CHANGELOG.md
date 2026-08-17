@@ -8,6 +8,26 @@ their changes after finishing work.
 Refactored TTS to decouple synthesis from audio routing, added
 AudioOutputProvider abstraction, and wired renderer-based playback.
 
+## 2026-08-17 — Fix: macOS `say` TTS provider WAV output
+
+Fixed `Opening output file failed: fmt?` error when running macOS `say` to
+produce WAV files.
+
+- **Root cause**: `say` without explicit `--file-format` and `--data-format`
+  picks an incompatible default. Additionally, macOS `say` inserts a non-standard
+  `FLLR` padding chunk before the `data` chunk, so the PCM audio does not start
+  at the standard byte-44 offset — the hardcoded `raw.subarray(44)` read the
+  wrong bytes.
+- **Fix**: `say` command now passes `--file-format=WAVE --data-format=LEI16@24000`
+  to produce a signed 16-bit little-endian PCM WAV at 24000 Hz, matching the
+  existing `AudioChunk` format (no conversion needed).
+- **Fix**: New `findDataChunk()` function walks RIFF chunks to locate the `data`
+  chunk by ID instead of assuming a fixed offset. Handles any number of
+  intermediate chunks (FLLR, etc.).
+- **Verified**: `"Your voice is heard"` produces a valid WAV with PCM at
+  24000 Hz / 16-bit / mono. All 24 existing tests pass. Type-check and build
+  clean.
+
 ## 2026-08-17 — Milestone 6: Device-targeted playback + BlackHole detection (COMPLETE)
 
 Implemented `setSinkId()` for device-targeted output, real renderer-side device

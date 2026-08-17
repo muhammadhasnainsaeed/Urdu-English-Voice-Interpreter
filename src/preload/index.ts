@@ -7,6 +7,8 @@ import type {
   SttStartResult,
   TranslationEvent,
   TranslationStartResult,
+  TtsEvent,
+  TtsStartResult,
 } from "@shared/index";
 
 const api: ElectronAPI = {
@@ -39,6 +41,18 @@ const api: ElectronAPI = {
     ipcRenderer.on("translation:event", listener);
     return () => {
       ipcRenderer.removeListener("translation:event", listener);
+    };
+  },
+  startTts: () =>
+    ipcRenderer.invoke("tts:start") as Promise<TtsStartResult>,
+  stopTts: () =>
+    ipcRenderer.invoke("tts:stop") as Promise<void>,
+  onTtsEvent: (handler: (event: TtsEvent) => void) => {
+    const listener = (_event: unknown, payload: TtsEvent) =>
+      handler(payload);
+    ipcRenderer.on("tts:event", listener);
+    return () => {
+      ipcRenderer.removeListener("tts:event", listener);
     };
   },
 };

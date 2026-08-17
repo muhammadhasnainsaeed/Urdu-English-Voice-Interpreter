@@ -3,7 +3,7 @@
 Current and planned architecture for the Real-Time Urdu → English Voice
 Interpreter (macOS).
 
-## Current architecture (Milestone 4 in progress)
+## Current architecture (Milestone 5 in progress)
 
 Node.js-only MVP. Electron + React + TypeScript. **Python is not part of the
 MVP.**
@@ -21,15 +21,20 @@ Electron
    │     │     ├── provider.ts          (TranslationProvider interface)
    │     │     ├── manager.ts           (session lifecycle + provider selection)
    │     │     └── providers/{azure,mock,mymemory}.ts
+   │     ├── services/tts/           (text-to-speech provider abstraction)
+   │     │     ├── provider.ts          (TtsProvider interface)
+   │     │     ├── manager.ts           (session lifecycle, dedup, queue)
+   │     │     └── providers/{azure,mock,say}.ts
    │     ├── ipc/audio.ts          (mic:get-permission, mic:request-permission)
    │     ├── ipc/stt.ts            (stt:start, stt:audio-data, stt:stop, stt:event)
-   │     └── ipc/translation.ts    (translation:start, translation:stop, translation:event)
+   │     ├── ipc/translation.ts    (translation:start, translation:stop, translation:event)
+   │     └── ipc/tts.ts            (tts:start, tts:stop, tts:event)
    │
    ├── Preload             src/preload/index.ts
    │     └── contextBridge.exposeInMainWorld('electron', ...)
    │
    └── React Renderer      src/renderer/
-         ├── App.tsx (owns useMicrophone + useStt + useTranslation hooks)
+          ├── App.tsx (owns useMicrophone + useStt + useTranslation + useTts hooks)
          ├── services/useMicrophone.ts (devices, capture, level)
          ├── services/useStt.ts (resample 48k→16k, Int16 PCM → IPC, events)
          ├── services/useTranslation.ts (translation events → english text)
@@ -45,7 +50,7 @@ Build: esbuild -> dist/  (main, preload, renderer bundle + index.html)
 
 | Process | Responsibility |
 | --- | --- |
-| Main | Window lifecycle, secure config, IPC handlers, macOS microphone permission (via `systemPreferences`), speech-to-text session (Azure Speech SDK) |
+| Main | Window lifecycle, secure config, IPC handlers, macOS microphone permission (via `systemPreferences`), speech-to-text session (Azure Speech SDK), text-to-speech session (Azure TTS SDK or macOS `say`) |
 | Preload | Only safe bridge between renderer and main; exposes `window.electron` |
 | Renderer | React UI + local microphone capture (Chromium WebRTC) + PCM resampling/encoding. Has no direct Node.js / fs / process access |
 
@@ -71,6 +76,9 @@ interface ElectronAPI {
   startTranslation: () => Promise<TranslationStartResult>;
   stopTranslation: () => Promise<void>;
   onTranslationEvent: (handler: (event: TranslationEvent) => void) => () => void;
+  startTts: () => Promise<TtsStartResult>;
+  stopTts: () => Promise<void>;
+  onTtsEvent: (handler: (event: TtsEvent) => void) => () => void;
 }
 ```
 
@@ -88,6 +96,9 @@ Channels:
 | `translation:start` | renderer → main (invoke) | starts translation; returns `{ok, provider?}` |
 | `translation:stop` | renderer → main (invoke) | stops translation |
 | `translation:event` | main → renderer | `translation:started` / `translation:text` / `translation:error` / `translation:stopped` |
+| `tts:start` | renderer → main (invoke) | starts TTS; returns `{ok, provider?}` |
+| `tts:stop` | renderer → main (invoke) | stops TTS |
+| `tts:event` | main → renderer | `tts:started` / `tts:speaking` / `tts:spoken` / `tts:error` / `tts:stopped` |
 
 ### Application state
 
@@ -300,6 +311,60 @@ is therefore free under the monthly free allowance.
   slip through (bounded by 12 s timeout).
   (windows are skipped rather than hanging the session).
 
+### Text-to-speech pipeline (Milestone 5)
+
+```text
+Translation (final English text)
+   ↓
+TTS Manager (onTranslationText)
+   ├── dedup (skip if same as last spoken)
+   ├── queue (sequential playback)
+   └── TtsProvider.speak(text)
+      ├── azure: SpeechSynthesizer → system speakers
+      └── say:   execFile say -v Samantha → system speakers
+```
+
+**Provider selection** — `src/main/services/tts/provider.ts` reads `TTS_PROVIDER`
+from the environment:
+
+- `azure` (default) — Azure Speech TTS, same credentials as STT
+  (`AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION`). Uses `SpeechSynthesizer` from
+  `microsoft-cognitiveservices-speech-sdk` (already a dependency). Configurable
+  voice via `AZURE_TTS_VOICE` (default `en-US-JennyNeural`). Audio plays
+  through the system default output.
+- `say` — macOS built-in `say` command. Zero dependencies, fully offline.
+  Uses `Samantha` voice at 200 wpm. `stop()` kills via `killall say`.
+  Platform-isolated for future Windows/Linux porting.
+- `mock` — 200 ms simulated delay. No audio output. For automated testing.
+- anything else / missing Azure keys — `tts:start` returns `{ok:false, message}`
+  and the UI shows the error without crashing.
+
+**TTSManager** — `src/main/services/tts/manager.ts`:
+
+- Receives final English text from the TranslationManager via a callback
+  wired in `src/main/index.ts`.
+- **Deduplication**: time-window based — identical text arriving within
+  `TTS_DEDUPE_WINDOW_MS` (default 2000 ms) after the same text was spoken is
+  suppressed. Different text is always spoken. Identical text after the window
+  expires is spoken again. Set to 0 to disable dedup.
+- **Queue**: rapid successive translations are queued and spoken sequentially
+  (not dropped or concatenated).
+- Emits `TtsEvent`s to the renderer: `tts:started`, `tts:speaking` (with text),
+  `tts:spoken`, `tts:error`, `tts:stopped`.
+- Audio plays through Mac speakers/headphones (system default output).
+
+**Security model (TTS)** — same as STT/Translation: Azure keys stay in the
+main process, loaded by `dotenv` from `.env`, consumed inside the Azure provider.
+The renderer never receives keys.
+
+**Cost / free tier** — Azure Speech TTS F0: 5M characters/month free
+(neural voices), then ~$16/1M characters. A 1-hour meeting at ~150 WPM
+generates ~9,000 characters — well within the free tier.
+
+**Platform strategy** — the `say` provider is isolated behind `TtsProvider` so
+Windows (`PowerShell` `System.Speech.Synthesis`) and Linux (`espeak`/`piper`)
+equivalents can be added later without touching business logic.
+
 ### Build & tooling
 
 - `npm run build` → `esbuild.config.js` bundles:
@@ -319,13 +384,13 @@ Microphone
    ↓
 Speech-to-Text (main process / Azure Speech or local Whisper) ✓ M3 (Urdu text)
    ↓
-Urdu → English Translation (main process)              ✓ M4 (structure done)
+Urdu → English Translation (main process)              ✓ M4
    ↓
 Live Subtitles (renderer UI)                            ✓ M4 (SttPanel shows both)
    ↓
-Text-to-Speech                                         M5+
+Text-to-Speech (main process / Azure TTS or macOS say)  ✓ M5 (speaks through Mac output)
    ↓
-BlackHole Virtual Microphone (macOS virtual audio driver)  M5+
+BlackHole Virtual Microphone (macOS virtual audio driver)  M6+
    ↓
 Zoom / Google Meet / Microsoft Teams
 ```
@@ -344,8 +409,9 @@ Zoom / Google Meet / Microsoft Teams
 | 1 | Project architecture & Electron foundation | Complete |
 | 2 | Microphone capture & audio device detection | Complete |
 | 3 | Speech-to-text (Urdu, live partial + final transcript) | Complete |
-| 4 | Urdu → English translation + live subtitles | In Progress |
-| 5+ | Text-to-speech, BlackHole routing, meeting integration | Planned |
+| 4 | Urdu → English translation + live subtitles | Complete |
+| 5 | Text-to-speech | In Progress |
+| 6+ | BlackHole routing, meeting integration | Planned |
 
 ## Architectural decisions
 
@@ -403,3 +469,23 @@ Zoom / Google Meet / Microsoft Teams
 - **MyMemory as the free fallback translation option**: zero signup, zero API
   key, supports Urdu→English on its free anonymous tier (1000 words/day).
 - **Mock for automated testing**: deterministic translations, no network.
+- **TTSProvider abstraction** (added 2026-08-17 for M5): mirrors the
+  `SttProvider` and `TranslationProvider` patterns — `provider.ts` defines the
+  interface, `manager.ts` owns the session lifecycle and dedup/queue logic,
+  providers live under `providers/`. The TTS layer receives final English
+  translation text via a callback wired in `main/index.ts` (not coupled to any
+  translation provider) and emits events to the renderer over its own IPC channel.
+  `TTS_PROVIDER` env selects the provider. Only final translation results are
+  spoken (partials are ignored). Dedup is time-window based: identical text
+  arriving within `TTS_DEDUPE_WINDOW_MS` (default 2000 ms) is suppressed;
+  identical text after the window expires is spoken again. Set to 0 to disable.
+- **Azure TTS as the production TTS provider** (added 2026-08-17): uses the
+  same `microsoft-cognitiveservices-speech-sdk` already bundled for STT (no new
+  npm dependency). `SpeechSynthesizer` + `speakTextAsync`. Audio plays through
+  the system default output (Mac speakers/headphones). F0 tier: 5M chars/month
+  free. Configurable neural voice via `AZURE_TTS_VOICE`.
+- **macOS `say` as the local/offline TTS option**: zero dependencies, fully
+  offline, uses the built-in `Samantha` voice. Isolated behind `TtsProvider` so
+  Windows/Linux equivalents can be added later without touching business logic.
+- **No new npm dependencies for TTS**: Azure TTS reuses the existing Speech SDK;
+  macOS `say` is a system command.

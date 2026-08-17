@@ -3,12 +3,14 @@ import HomeScreen from "./pages/HomeScreen";
 import { useMicrophone } from "./services/useMicrophone";
 import { useStt } from "./services/useStt";
 import { useTranslation } from "./services/useTranslation";
+import { useTts } from "./services/useTts";
 import "./styles/App.css";
 
 export default function App() {
   const microphone = useMicrophone();
   const stt = useStt();
   const translation = useTranslation();
+  const tts = useTts();
 
   const handleSttStart = async () => {
     const capture = await microphone.start();
@@ -19,6 +21,9 @@ export default function App() {
   };
 
   const handleSttStop = async () => {
+    if (tts.status === "active") {
+      await tts.stop();
+    }
     if (translation.status === "active") {
       await translation.stop();
     }
@@ -56,6 +61,12 @@ export default function App() {
       translationProvider={translation.provider}
       onTranslationStart={translation.start}
       onTranslationStop={translation.stop}
+      ttsStatus={tts.status}
+      ttsError={tts.error}
+      ttsProvider={tts.provider}
+      ttsCurrentText={tts.currentText}
+      onTtsStart={tts.start}
+      onTtsStop={tts.stop}
     />
   );
 }

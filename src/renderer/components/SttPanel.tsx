@@ -1,5 +1,5 @@
 import React from "react";
-import type { SttStatus, TranslationStatus } from "@shared/index";
+import type { SttStatus, TranslationStatus, TtsStatus } from "@shared/index";
 
 interface SttPanelProps {
   status: SttStatus;
@@ -15,6 +15,12 @@ interface SttPanelProps {
   translationProvider: string | null;
   onTranslationStart: () => void;
   onTranslationStop: () => void;
+  ttsStatus: TtsStatus;
+  ttsError: string | null;
+  ttsProvider: string | null;
+  ttsCurrentText: string;
+  onTtsStart: () => void;
+  onTtsStop: () => void;
 }
 
 const STT_STATUS_LABELS: Record<SttStatus, string> = {
@@ -33,11 +39,19 @@ const TRANSLATION_STATUS_LABELS: Record<TranslationStatus, string> = {
   error: "Error",
 };
 
+const TTS_STATUS_LABELS: Record<TtsStatus, string> = {
+  idle: "Off",
+  starting: "Starting…",
+  active: "Active",
+  error: "Error",
+};
+
 const PROVIDER_LABELS: Record<string, string> = {
   azure: "Azure",
   whisper: "Local Whisper",
   mock: "Mock (dev)",
   mymemory: "MyMemory",
+  say: "macOS Say",
 };
 
 export default function SttPanel({
@@ -54,6 +68,12 @@ export default function SttPanel({
   translationProvider,
   onTranslationStart,
   onTranslationStop,
+  ttsStatus,
+  ttsError,
+  ttsProvider,
+  ttsCurrentText,
+  onTtsStart,
+  onTtsStop,
 }: SttPanelProps) {
   const listening =
     status === "starting" ||
@@ -63,6 +83,8 @@ export default function SttPanel({
   const startDisabled = status === "starting" || status === "stopping";
   const translationActive = translationStatus === "active" || translationStatus === "starting";
   const canToggleTranslation = status === "listening" || status === "processing";
+  const ttsActive = ttsStatus === "active" || ttsStatus === "starting";
+  const canToggleTts = translationActive;
 
   return (
     <div className="stt-panel">
@@ -171,6 +193,67 @@ export default function SttPanel({
 
         {translationError && (
           <p className="error-text">{translationError}</p>
+        )}
+      </div>
+
+      <div className="tts-section">
+        <div className="stt-header">
+          <span className="stt-title">Text-to-Speech</span>
+          <span className="stt-lang">English</span>
+        </div>
+
+        <div className="mic-status-row">
+          <span className="status-label">Status:</span>{" "}
+          <span className={`status-value status-tts-${ttsStatus}`}>
+            {TTS_STATUS_LABELS[ttsStatus]}
+          </span>
+        </div>
+
+        {ttsProvider && (
+          <div className="mic-status-row provider-row">
+            <span className="status-label">Provider:</span>{" "}
+            <span className="status-value">
+              {PROVIDER_LABELS[ttsProvider] ?? ttsProvider}
+            </span>
+          </div>
+        )}
+
+        {ttsCurrentText && (
+          <div className="field">
+            <label>Speaking</label>
+            <div className="transcript-box tts-speaking-box">
+              <div className="transcript-final">{ttsCurrentText}</div>
+            </div>
+          </div>
+        )}
+
+        <div className="mic-actions">
+          {ttsActive ? (
+            <button
+              className="secondary-btn"
+              onClick={onTtsStop}
+              disabled={ttsStatus === "starting"}
+            >
+              Stop TTS
+            </button>
+          ) : (
+            <button
+              className="primary-btn"
+              onClick={onTtsStart}
+              disabled={!canToggleTts}
+              title={
+                !canToggleTts
+                  ? "Start translation first"
+                  : undefined
+              }
+            >
+              Start TTS
+            </button>
+          )}
+        </div>
+
+        {ttsError && (
+          <p className="error-text">{ttsError}</p>
         )}
       </div>
 

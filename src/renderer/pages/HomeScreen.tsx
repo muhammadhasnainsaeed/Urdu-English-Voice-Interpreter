@@ -5,6 +5,7 @@ import type {
   PermissionStatus,
   SttStatus,
   TranslationStatus,
+  TtsStatus,
 } from "@shared/index";
 import MicrophonePanel from "../components/MicrophonePanel";
 import SttPanel from "../components/SttPanel";
@@ -32,6 +33,12 @@ interface HomeScreenProps {
   translationProvider: string | null;
   onTranslationStart: () => void;
   onTranslationStop: () => void;
+  ttsStatus: TtsStatus;
+  ttsError: string | null;
+  ttsProvider: string | null;
+  ttsCurrentText: string;
+  onTtsStart: () => void;
+  onTtsStop: () => void;
 }
 
 export default function HomeScreen(props: HomeScreenProps) {
@@ -65,6 +72,12 @@ export default function HomeScreen(props: HomeScreenProps) {
         translationProvider={props.translationProvider}
         onTranslationStart={props.onTranslationStart}
         onTranslationStop={props.onTranslationStop}
+        ttsStatus={props.ttsStatus}
+        ttsError={props.ttsError}
+        ttsProvider={props.ttsProvider}
+        ttsCurrentText={props.ttsCurrentText}
+        onTtsStart={props.onTtsStart}
+        onTtsStop={props.onTtsStop}
       />
 
       <div className="field">
@@ -85,9 +98,9 @@ export default function HomeScreen(props: HomeScreenProps) {
       </div>
 
       <p className="hint">
-        Milestone 4: real-time Urdu → English translation. Speak Urdu and
-        watch the live English translation appear. Text-to-speech and
-        BlackHole audio routing arrive in Milestone 5.
+        Milestone 5: real-time Urdu → English translation with text-to-speech.
+        Speak Urdu and watch the English translation appear and hear it spoken.
+        BlackHole audio routing arrives in Milestone 6.
       </p>
     </div>
   );

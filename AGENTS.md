@@ -80,17 +80,19 @@ Complete. See `docs/CURRENT_STATE.md`.
 
 Complete. See `docs/CURRENT_STATE.md`.
 
-### Milestone 4 — Urdu → English Translation (NEXT)
+### Milestone 4 — Urdu → English Translation
 
-Not started. Do not begin until Milestone 3 is verified and the user says
-to continue.
+Complete. See `docs/CURRENT_STATE.md`.
+
+### Milestone 5 — Text-to-Speech
+
+In progress. See `docs/CURRENT_STATE.md`.
 
 ## Do NOT implement yet
 
-- Translation API
-- Text-to-speech
 - BlackHole
-- Real-time audio streaming (to a virtual output)
+- Virtual microphone routing
+- Meeting-app integration
 - Authentication
 - Database
 - Backend server

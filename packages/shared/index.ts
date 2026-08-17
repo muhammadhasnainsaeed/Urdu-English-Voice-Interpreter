@@ -72,6 +72,21 @@ export interface TranslationStartResult {
   provider?: string;
 }
 
+export type TtsStatus = "idle" | "starting" | "active" | "error";
+
+export type TtsEvent =
+  | { type: "tts:started"; provider?: string }
+  | { type: "tts:speaking"; text: string }
+  | { type: "tts:spoken"; text: string }
+  | { type: "tts:error"; message: string }
+  | { type: "tts:stopped" };
+
+export interface TtsStartResult {
+  ok: boolean;
+  message?: string;
+  provider?: string;
+}
+
 export interface ElectronAPI {
   getAppStatus: () => Promise<ApplicationStatus>;
   getMicPermission: () => Promise<PermissionStatus>;
@@ -83,4 +98,7 @@ export interface ElectronAPI {
   startTranslation: () => Promise<TranslationStartResult>;
   stopTranslation: () => Promise<void>;
   onTranslationEvent: (handler: (event: TranslationEvent) => void) => () => void;
+  startTts: () => Promise<TtsStartResult>;
+  stopTts: () => Promise<void>;
+  onTtsEvent: (handler: (event: TtsEvent) => void) => () => void;
 }

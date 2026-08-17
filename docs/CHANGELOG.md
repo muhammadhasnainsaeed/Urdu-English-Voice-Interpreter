@@ -3,6 +3,89 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-17 — Milestone 5: TTS time-window duplicate suppression
+
+Replaced the permanent `lastSpoken` string-match dedup in TtsManager with a
+configurable time-window approach.
+
+- **TtsManager** (`src/main/services/tts/manager.ts`):
+  - `lastSpoken: string` → `lastSpokenText: string` + `lastSpokenTime: number`.
+  - New constructor parameter `dedupeWindowMs` (defaults to
+    `TTS_DEDUPE_WINDOW_MS` env var, then 2000 ms).
+  - `onTranslationText()`: suppresses identical text only when it arrives
+    within the dedup window of the last identical text. Different text is
+    always spoken. Identical text after the window expires is spoken again.
+  - `queueLength` getter added for test visibility.
+  - `start()` accepts optional `providerOverride` for deterministic testing.
+  - `stop()` resets dedup state.
+- **.env.example** — added `TTS_DEDUPE_WINDOW_MS` (default 2000 ms, 0 = no
+  dedup).
+- **Tests** (`tests/tts-dedup.test.ts`) — 11 deterministic tests using a
+  fake clock and instant mock provider:
+  - A: same text repeated immediately → spoken once
+  - B: same text after >2s → spoken again
+  - C: different texts → all spoken
+  - D: A → B → A → all three spoken
+  - E: queue remains active after emptying
+  - F: new translation after idle → spoken
+  - Extras: exact boundary, dedup disabled (0ms), whitespace ignored,
+    inactive manager ignored, stop resets state
+
+Validation:
+- `npm run type-check` — 0 errors
+- `npm run build` — succeeds
+- All 11 tests pass via `npx tsx tests/tts-dedup.test.ts`
+
+## 2026-08-17 — Milestone 5: Text-to-Speech (provider-based system)
+
+Implemented TTS as a provider-based system with three providers (Azure cloud,
+macOS say local, Mock testing) following the same abstraction pattern as STT
+and Translation.
+
+- **TTS provider abstraction** — `src/main/services/tts/`:
+  - `provider.ts` defines `TtsProvider` interface (`speak(text)`, `stop()`,
+    `name`) and factory `createTtsProvider()` reading `TTS_PROVIDER` env var.
+  - `providers/azure.ts` — Azure Speech TTS via the same
+    `microsoft-cognitiveservices-speech-sdk` used by the STT provider.
+    `SpeechSynthesizer` + `speakTextAsync`. Auth via `AZURE_SPEECH_KEY` +
+    `AZURE_SPEECH_REGION`. Configurable voice via `AZURE_TTS_VOICE` (default
+    `en-US-JennyNeural`). Audio plays through the system default output.
+  - `providers/say.ts` — macOS built-in `say` command. Zero dependencies,
+    fully offline. Uses `Samantha` voice at 200 wpm. `stop()` kills the
+    process via `killall say`. Platform-isolated for future Windows/Linux.
+  - `providers/mock.ts` — simulates TTS with a 200 ms delay. For automated
+    testing; no audio output.
+- **TtsManager** — `src/main/services/tts/manager.ts`:
+  - Session lifecycle (start/stop), queue-based sequential speech.
+  - `onTranslationText(text)` — consumes final English translation segments.
+  - Deduplication: same text repeated consecutively is not spoken twice.
+  - Queue: multiple rapid translations are spoken in order (not dropped).
+  - Emits `TtsEvent`s (`tts:started`, `tts:speaking`, `tts:spoken`,
+    `tts:error`, `tts:stopped`) to the renderer via IPC.
+- **TTS IPC** — `src/main/ipc/tts.ts`: `tts:start`, `tts:stop`, `tts:event`.
+- **Translation → TTS wiring** — `src/main/ipc/translation.ts` now accepts
+  optional `onTranslationText` callback; `src/main/index.ts` wires it to
+  `ttsManager.onTranslationText()` so final English translations flow to TTS
+  automatically.
+- **Preload bridge** — `startTts()`, `stopTts()`, `onTtsEvent(handler)` added
+  to `ElectronAPI`.
+- **Shared types** — added `TtsStatus`, `TtsEvent`, `TtsStartResult`.
+- **Renderer hook** — `src/renderer/services/useTts.ts`: manages TTS state
+  (`status`, `error`, `provider`, `currentText`).
+- **UI** — `SttPanel.tsx` now shows a TTS section below Translation:
+  - Status (Off / Starting / Active / Error), Provider row.
+  - Speaking text preview (shows current text being spoken).
+  - Start TTS / Stop TTS buttons (disabled until translation is active).
+- **App.tsx** — owns `useTts` hook; stopping STT also stops TTS.
+- **CSS** — added `.tts-section`, `.tts-speaking-box`, `.status-tts-*` styles.
+- **.env.example** — `TTS_PROVIDER` (azure/say/mock), `AZURE_TTS_VOICE`.
+
+Validation:
+- `npm run type-check` — 0 errors
+- `npm run build` — succeeds, all bundles present
+- Azure SDK reused from existing STT dependency (no new npm packages)
+- macOS `say` command zero-dependency, fully offline
+
 ## 2026-08-17 — Milestone 4: Azure Translator provider + final-only translation
 
 Added the Azure Translator cloud provider and removed partial translation

@@ -5,6 +5,7 @@ import type { ApplicationStatus } from '@shared/index';
 import { registerAudioIpc } from './ipc/audio';
 import { registerSttIpc } from './ipc/stt';
 import { registerTranslationIpc, translationManager } from './ipc/translation';
+import { registerTtsIpc, ttsManager } from './ipc/tts';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -40,7 +41,11 @@ app.whenReady().then(() => {
     () => mainWindow,
     (text, isFinal) => translationManager.onSttText(text, isFinal)
   );
-  registerTranslationIpc(() => mainWindow);
+  registerTranslationIpc(
+    () => mainWindow,
+    (english) => ttsManager.onTranslationText(english)
+  );
+  registerTtsIpc(() => mainWindow);
   createWindow();
 
   app.on('activate', () => {

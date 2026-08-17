@@ -2,11 +2,13 @@ import React, { useEffect } from "react";
 import HomeScreen from "./pages/HomeScreen";
 import { useMicrophone } from "./services/useMicrophone";
 import { useStt } from "./services/useStt";
+import { useTranslation } from "./services/useTranslation";
 import "./styles/App.css";
 
 export default function App() {
   const microphone = useMicrophone();
   const stt = useStt();
+  const translation = useTranslation();
 
   const handleSttStart = async () => {
     const capture = await microphone.start();
@@ -17,6 +19,9 @@ export default function App() {
   };
 
   const handleSttStop = async () => {
+    if (translation.status === "active") {
+      await translation.stop();
+    }
     await stt.stop();
     microphone.stop();
   };
@@ -45,6 +50,12 @@ export default function App() {
       sttProvider={stt.provider}
       onSttStart={handleSttStart}
       onSttStop={handleSttStop}
+      translationStatus={translation.status}
+      finalEnglish={translation.finalEnglish}
+      translationError={translation.error}
+      translationProvider={translation.provider}
+      onTranslationStart={translation.start}
+      onTranslationStop={translation.stop}
     />
   );
 }

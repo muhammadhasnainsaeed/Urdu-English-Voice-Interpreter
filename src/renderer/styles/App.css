@@ -353,3 +353,34 @@ body {
 .status-processing {
   color: #fbbf24;
 }
+
+/* ----- Milestone 4: translation section ----- */
+
+.translation-section {
+  border-top: 1px solid #2a2e37;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.translation-box {
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+}
+
+.status-translation-active {
+  color: #4ade80;
+}
+
+.status-translation-starting {
+  color: #fbbf24;
+}
+
+.status-translation-idle {
+  color: #9aa0ac;
+}
+
+.status-translation-error {
+  color: #ff6b6b;
+}

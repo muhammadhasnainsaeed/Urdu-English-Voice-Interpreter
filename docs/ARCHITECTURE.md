@@ -3,7 +3,7 @@
 Current and planned architecture for the Real-Time Urdu → English Voice
 Interpreter (macOS).
 
-## Current architecture (Milestone 3)
+## Current architecture (Milestone 4 in progress)
 
 Node.js-only MVP. Electron + React + TypeScript. **Python is not part of the
 MVP.**
@@ -17,18 +17,24 @@ Electron
    │     │     ├── provider.ts          (SttProvider interface)
    │     │     ├── manager.ts           (session lifecycle + provider selection)
    │     │     └── providers/{azure,mock,whisper}.ts
+   │     ├── services/translation/  (urdu→english translation abstraction)
+   │     │     ├── provider.ts          (TranslationProvider interface)
+   │     │     ├── manager.ts           (session lifecycle + provider selection)
+   │     │     └── providers/{azure,mock,mymemory}.ts
    │     ├── ipc/audio.ts          (mic:get-permission, mic:request-permission)
-   │     └── ipc/stt.ts            (stt:start, stt:audio-data, stt:stop, stt:event)
+   │     ├── ipc/stt.ts            (stt:start, stt:audio-data, stt:stop, stt:event)
+   │     └── ipc/translation.ts    (translation:start, translation:stop, translation:event)
    │
    ├── Preload             src/preload/index.ts
    │     └── contextBridge.exposeInMainWorld('electron', ...)
    │
    └── React Renderer      src/renderer/
-         ├── App.tsx (owns useMicrophone + useStt hooks)
+         ├── App.tsx (owns useMicrophone + useStt + useTranslation hooks)
          ├── services/useMicrophone.ts (devices, capture, level)
          ├── services/useStt.ts (resample 48k→16k, Int16 PCM → IPC, events)
+         ├── services/useTranslation.ts (translation events → english text)
          ├── components/ (MicrophonePanel, AudioLevelMeter, SttPanel)
-         ├── pages/ (HomeScreen; LiveTranslationScreen = M4 stub)
+         ├── pages/ (HomeScreen; LiveTranslationScreen = subtitle stub)
          └── styles/ (App.css)
 
 Shared types: packages/shared/index.ts
@@ -62,6 +68,9 @@ interface ElectronAPI {
   sendSttAudio: (chunk: ArrayBuffer) => void;
   stopStt: () => Promise<void>;
   onSttEvent: (handler: (event: SttEvent) => void) => () => void;
+  startTranslation: () => Promise<TranslationStartResult>;
+  stopTranslation: () => Promise<void>;
+  onTranslationEvent: (handler: (event: TranslationEvent) => void) => () => void;
 }
 ```
 
@@ -76,9 +85,9 @@ Channels:
 | `stt:audio-data` | renderer → main (send) | streams 16 kHz mono 16-bit PCM chunks to the provider |
 | `stt:stop` | renderer → main (invoke) | stops the recognition session |
 | `stt:event` | main → renderer | `started` / `partial` / `final` / `error` / `stopped` |
-
-Future channels will be added for start/stop translation and state updates
-(see Planned pipeline below).
+| `translation:start` | renderer → main (invoke) | starts translation; returns `{ok, provider?}` |
+| `translation:stop` | renderer → main (invoke) | stops translation |
+| `translation:event` | main → renderer | `translation:started` / `translation:text` / `translation:error` / `translation:stopped` |
 
 ### Application state
 
@@ -310,11 +319,11 @@ Microphone
    ↓
 Speech-to-Text (main process / Azure Speech or local Whisper) ✓ M3 (Urdu text)
    ↓
-Urdu → English Translation (AI provider)           M4
+Urdu → English Translation (main process)              ✓ M4 (structure done)
    ↓
-Live Subtitles (renderer UI)                       M4
+Live Subtitles (renderer UI)                            ✓ M4 (SttPanel shows both)
    ↓
-Text-to-Speech                                     M5+
+Text-to-Speech                                         M5+
    ↓
 BlackHole Virtual Microphone (macOS virtual audio driver)  M5+
    ↓
@@ -324,8 +333,7 @@ Zoom / Google Meet / Microsoft Teams
 - Client/incoming audio (from other meeting participants) must NOT be
   translated.
 - Main-process services live under `src/main/services/` and IPC handlers under
-  `src/main/ipc/` (`audio.ts`, `stt.ts`). A future translation service will
-  follow the same pattern (`services/translation/`, `ipc/translation.ts`).
+  `src/main/ipc/` (`audio.ts`, `stt.ts`, `translation.ts`).
 - Future packages: `packages/audio/`, `packages/ai/` for provider-specific
   logic (not created yet; avoid premature abstraction).
 
@@ -336,7 +344,7 @@ Zoom / Google Meet / Microsoft Teams
 | 1 | Project architecture & Electron foundation | Complete |
 | 2 | Microphone capture & audio device detection | Complete |
 | 3 | Speech-to-text (Urdu, live partial + final transcript) | Complete |
-| 4 | Urdu → English translation + live subtitles | Next |
+| 4 | Urdu → English translation + live subtitles | In Progress |
 | 5+ | Text-to-speech, BlackHole routing, meeting integration | Planned |
 
 ## Architectural decisions
@@ -376,3 +384,22 @@ Zoom / Google Meet / Microsoft Teams
 - **`dotenv` for main-process config**: `.env` holds `AZURE_SPEECH_KEY`,
   `AZURE_SPEECH_REGION`, `STT_PROVIDER`, and the optional whisper overrides;
   keys never enter the renderer.
+- **TranslationProvider abstraction** (added 2026-08-17 for M4): mirrors the
+  `SttProvider` pattern — `provider.ts` defines the interface, `manager.ts`
+  owns the session lifecycle, providers live under `providers/`. The translation
+  layer receives STT final text via a callback wired in `main/index.ts` (not
+  coupled to any STT provider) and emits events to the renderer over its own
+  IPC channel. `TRANSLATION_PROVIDER` env selects the provider.
+  Only final STT results are translated (partials are ignored) — this saves API
+  calls and avoids duplicate translations.
+- **Azure Translator as the primary translation provider** (added 2026-08-17):
+  Urdu→English via Azure Translator REST API (`/translate?api-version=3.0`).
+  Auth: `AZURE_TRANSLATOR_KEY` + `AZURE_TRANSLATOR_REGION` via
+  `Ocp-Apim-Subscription-Key` / `Ocp-Apim-Subscription-Region` headers. No SDK
+  dependency — uses raw `fetch()`. F0 tier: 2M chars/month free, no credit card.
+  Chosen over LibreTranslate (Python), Bergamot (no Urdu models), OPUS-MT
+  (uncertain Urdu model quality), and MyMemory (kept as fallback). The provider
+  abstraction lets any of these replace Azure without touching the renderer.
+- **MyMemory as the free fallback translation option**: zero signup, zero API
+  key, supports Urdu→English on its free anonymous tier (1000 words/day).
+- **Mock for automated testing**: deterministic translations, no network.

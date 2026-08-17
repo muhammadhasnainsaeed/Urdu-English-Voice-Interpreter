@@ -58,6 +58,20 @@ export interface SttStartResult {
   provider?: string;
 }
 
+export type TranslationEvent =
+  | { type: "translation:started"; provider?: string }
+  | { type: "translation:text"; urdu: string; english: string }
+  | { type: "translation:error"; message: string }
+  | { type: "translation:stopped" };
+
+export type TranslationStatus = "idle" | "starting" | "active" | "error";
+
+export interface TranslationStartResult {
+  ok: boolean;
+  message?: string;
+  provider?: string;
+}
+
 export interface ElectronAPI {
   getAppStatus: () => Promise<ApplicationStatus>;
   getMicPermission: () => Promise<PermissionStatus>;
@@ -66,4 +80,7 @@ export interface ElectronAPI {
   sendSttAudio: (chunk: ArrayBuffer) => void;
   stopStt: () => Promise<void>;
   onSttEvent: (handler: (event: SttEvent) => void) => () => void;
+  startTranslation: () => Promise<TranslationStartResult>;
+  stopTranslation: () => Promise<void>;
+  onTranslationEvent: (handler: (event: TranslationEvent) => void) => () => void;
 }

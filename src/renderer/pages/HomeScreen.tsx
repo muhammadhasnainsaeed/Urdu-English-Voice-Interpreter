@@ -4,6 +4,7 @@ import type {
   AudioDevice,
   PermissionStatus,
   SttStatus,
+  TranslationStatus,
 } from "@shared/index";
 import MicrophonePanel from "../components/MicrophonePanel";
 import SttPanel from "../components/SttPanel";
@@ -25,6 +26,12 @@ interface HomeScreenProps {
   sttProvider: string | null;
   onSttStart: () => void;
   onSttStop: () => void;
+  translationStatus: TranslationStatus;
+  finalEnglish: string;
+  translationError: string | null;
+  translationProvider: string | null;
+  onTranslationStart: () => void;
+  onTranslationStop: () => void;
 }
 
 export default function HomeScreen(props: HomeScreenProps) {
@@ -52,12 +59,18 @@ export default function HomeScreen(props: HomeScreenProps) {
         provider={props.sttProvider}
         onStart={props.onSttStart}
         onStop={props.onSttStop}
+        translationStatus={props.translationStatus}
+        finalEnglish={props.finalEnglish}
+        translationError={props.translationError}
+        translationProvider={props.translationProvider}
+        onTranslationStart={props.onTranslationStart}
+        onTranslationStop={props.onTranslationStop}
       />
 
       <div className="field">
         <label>Output</label>
         <select className="device-select" disabled>
-          <option>BlackHole (Milestone 3+)</option>
+          <option>BlackHole (Milestone 5+)</option>
         </select>
       </div>
 
@@ -72,9 +85,9 @@ export default function HomeScreen(props: HomeScreenProps) {
       </div>
 
       <p className="hint">
-        Milestone 3: real-time Urdu speech-to-text. Speak into the microphone
-        and watch the live transcript. Urdu → English translation arrives in
-        Milestone 4.
+        Milestone 4: real-time Urdu → English translation. Speak Urdu and
+        watch the live English translation appear. Text-to-speech and
+        BlackHole audio routing arrive in Milestone 5.
       </p>
     </div>
   );

@@ -14,6 +14,61 @@ Status: **COMPLETE** (verified on 2026-08-16)
 
 Status: **COMPLETE** (verified on 2026-08-16)
 
+## Milestone 4 — Urdu → English Translation + Live Subtitles
+
+Status: **IN PROGRESS** (started 2026-08-17)
+
+### What is done (Milestone 4)
+
+- **Translation provider abstraction** — `src/main/services/translation/`:
+  - `provider.ts` defines the `TranslationProvider` interface
+    (`translate(text): Promise<string>`, `name`) and the factory function
+    `createTranslationProvider()` that reads `TRANSLATION_PROVIDER` env var.
+  - `providers/azure.ts` — Azure Translator REST API (`/translate?api-version=3.0&from=ur&to=en`),
+    auth via `AZURE_TRANSLATOR_KEY` + `AZURE_TRANSLATOR_REGION` headers.
+    F0 tier: 2M chars/month free, no credit card.
+  - `providers/mock.ts` — deterministic Urdu→English translations for common
+    phrases; returns `[English] <text>` as a fallback. No API key needed.
+  - `providers/mymemory.ts` — free tier, no signup, no API key (1000 words/day).
+- **TranslationManager** — `src/main/services/translation/manager.ts`:
+  - Manages translation session lifecycle (start/stop), holds the active provider.
+  - Only translates **final** STT results (partials are ignored — saves API calls,
+    avoids duplicate/blocked translations).
+  - Emits `TranslationEvent`s (`translation:started`, `translation:text`,
+    `translation:error`, `translation:stopped`) to the renderer via IPC.
+- **Translation IPC** — `src/main/ipc/translation.ts`:
+  - `translation:start` (invoke) — starts translation, returns provider name.
+  - `translation:stop` (invoke) — stops translation.
+  - `translation:event` (main → renderer) — broadcasts translation events.
+- **STT → Translation wiring** — `src/main/ipc/stt.ts` now accepts an optional
+  `onSttText` callback; `src/main/index.ts` wires it to
+  `translationManager.onSttText()` so STT finals flow to translation automatically.
+- **Preload bridge** — `startTranslation()`, `stopTranslation()`,
+  `onTranslationEvent(handler) → unsubscribe` added to `ElectronAPI`.
+- **Shared types** — added `TranslationEvent`, `TranslationStatus`,
+  `TranslationStartResult`; extended `ElectronAPI` with translation methods.
+- **Renderer translation hook** — `src/renderer/services/useTranslation.ts`:
+  listens for translation events, maintains `status`, `finalEnglish`, `error`,
+  `provider`.
+- **UI** — `SttPanel.tsx` now shows:
+  - Urdu transcript (existing) + English translation below it.
+  - Translation status row (Off / Starting / Active / Error).
+  - Translation provider row.
+  - Start Translation / Stop Translation buttons (disabled until STT is listening).
+- **App.tsx + HomeScreen.tsx** — wired `useTranslation` hook; translation props
+  flow through to `SttPanel`. Stopping STT also stops translation.
+- **CSS** — added styles for `.translation-section`, `.translation-box`,
+  `.status-translation-*` states.
+- **.env.example** — `TRANSLATION_PROVIDER` with `azure` (default), `mymemory`,
+  `mock`; `AZURE_TRANSLATOR_KEY`, `AZURE_TRANSLATOR_REGION` documented.
+
+### What remains (Milestone 4)
+
+- Verify mock translation end-to-end in the Electron app (manual step).
+- Test with MyMemory provider against real Urdu audio.
+- Test with Azure Translator provider (requires Azure Translator resource).
+- Finalize all M4 docs.
+
 ## What is done (Milestone 3)
 
 - **STT provider abstraction** — `src/main/services/stt/`:
@@ -259,18 +314,15 @@ real recognition:
 
 ## What is NOT implemented (intentionally)
 
-Urdu → English translation, AI APIs for translation, text-to-speech, BlackHole,
-virtual microphone output, meeting-app integration, database, authentication,
-backend server, Python. These belong to Milestone 4+.
+Text-to-speech, BlackHole, virtual microphone output, meeting-app integration,
+database, authentication, backend server, Python. These belong to Milestone 5+.
 
 ## Next task
 
-Milestone 4 — Urdu → English translation: translate each finalized Urdu
-utterance (from the STT `final` events) to English via an AI provider behind a
-`services/translation/` abstraction, and show live subtitles (the existing
-`LiveTranslationScreen` / `SubtitleDisplay` / `StatusBar` stubs are the
-starting point). Do not begin until the user verifies Milestone 3 manually and
-says to continue.
+Milestone 4 is in progress. Verify the mock translation end-to-end in the
+Electron app, then optionally test with MyMemory or Azure Translator against real
+Urdu audio. After that, finalize docs and decide if the `LiveTranslationScreen`
+needs wiring.
 
 ## Files at a glance
 
@@ -279,14 +331,16 @@ src/main/index.ts
 src/main/services/audio.ts
 src/main/services/stt/{provider,manager}.ts
 src/main/services/stt/providers/{azure,mock,whisper}.ts
-src/main/ipc/{audio,stt}.ts
+src/main/services/translation/{provider,manager}.ts
+src/main/services/translation/providers/{azure,mock,mymemory}.ts
+src/main/ipc/{audio,stt,translation}.ts
 src/preload/index.ts
 src/renderer/{App.tsx,index.tsx,index.html}
 src/renderer/pages/HomeScreen.tsx
 src/renderer/components/{MicrophonePanel,AudioLevelMeter,SttPanel}.tsx
-src/renderer/components/{SubtitleDisplay,StatusBar}.tsx        (M4 stubs)
-src/renderer/pages/LiveTranslationScreen.tsx                   (M4 stub)
-src/renderer/services/{useMicrophone,useStt}.ts
+src/renderer/components/{SubtitleDisplay,StatusBar}.tsx
+src/renderer/pages/LiveTranslationScreen.tsx
+src/renderer/services/{useMicrophone,useStt,useTranslation}.ts
 src/renderer/styles/App.css
 src/renderer/types/electron.d.ts
 packages/shared/index.ts

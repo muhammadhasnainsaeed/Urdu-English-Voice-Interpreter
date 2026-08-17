@@ -4,6 +4,7 @@ import * as path from 'path';
 import type { ApplicationStatus } from '@shared/index';
 import { registerAudioIpc } from './ipc/audio';
 import { registerSttIpc } from './ipc/stt';
+import { registerTranslationIpc, translationManager } from './ipc/translation';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -35,7 +36,11 @@ function createWindow() {
 
 app.whenReady().then(() => {
   registerAudioIpc();
-  registerSttIpc(() => mainWindow);
+  registerSttIpc(
+    () => mainWindow,
+    (text, isFinal) => translationManager.onSttText(text, isFinal)
+  );
+  registerTranslationIpc(() => mainWindow);
   createWindow();
 
   app.on('activate', () => {

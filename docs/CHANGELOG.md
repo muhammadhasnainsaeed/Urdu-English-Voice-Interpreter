@@ -3,6 +3,80 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-17 — Milestone 4: Azure Translator provider + final-only translation
+
+Added the Azure Translator cloud provider and removed partial translation
+(only final STT results are now translated).
+
+- **Azure Translator provider** — `src/main/services/translation/providers/azure.ts`:
+  Urdu→English via Azure Translator REST API (POST `/translate?api-version=3.0`).
+  Auth: `AZURE_TRANSLATOR_KEY` + `AZURE_TRANSLATOR_REGION` via
+  `Ocp-Apim-Subscription-Key` / `Ocp-Apim-Subscription-Region` headers.
+  No SDK dependency — uses raw `fetch()`. F0 tier: 2M chars/month free, no
+  credit card required.
+- **Provider factory updated** — `src/main/services/translation/provider.ts`
+  now handles `azure` case (lazy dynamic import), error message updated to
+  list all three providers.
+- **Removed partial translation** — `TranslationManager` no longer debounces
+  or translates partial STT results. Only `isFinal` events trigger translation.
+  This saves API calls and matches the design directive (translate final Urdu
+  text only). Removed debounce timer, `lastPartial`, and `PARTIAL_DEBOUNCE_MS`.
+- **Removed `translation:partial` event** — dropped from `TranslationEvent`
+  union type in `packages/shared/index.ts`. Removed `partialEnglish` state from
+  `useTranslation` hook, `App.tsx`, `HomeScreen.tsx`, and `SttPanel.tsx`.
+- **.env.example** — added `AZURE_TRANSLATOR_KEY`, `AZURE_TRANSLATOR_REGION`,
+  optional `AZURE_TRANSLATOR_ENDPOINT`; updated `TRANSLATION_PROVIDER` docs
+  with `azure` as default option.
+
+Validation:
+- `npm run type-check` — 0 errors
+- `npm run build` — succeeds, all bundles present
+- Azure REST API approach avoids SDK bundling complexity
+
+## 2026-08-17 — Milestone 4: Urdu → English translation + live subtitles (initial implementation)
+
+Implemented the full translation layer: provider abstraction, manager with
+debouncing, IPC, preload bridge, renderer hook, and UI wiring.
+
+- **Translation provider abstraction** — `src/main/services/translation/provider.ts`:
+  `TranslationProvider` interface (`translate(text): Promise<string>`, `name`)
+  with factory `createTranslationProvider()` reading `TRANSLATION_PROVIDER` env.
+- **MockTranslationProvider** — `src/main/services/translation/providers/mock.ts`:
+  deterministic Urdu→English for common phrases, `[English] <text>` fallback.
+  No API key needed; used for development and automated testing.
+- **MyMemory provider** — `src/main/services/translation/providers/mymemory.ts`:
+  free tier (no signup, no API key, 1000 words/day anonymous), REST call to
+  `api.mymemory.translated.net`. Real Urdu→English translation.
+- **TranslationManager** — `src/main/services/translation/manager.ts`:
+  session lifecycle, debounces partials (800 ms), translates finals immediately,
+  emits `TranslationEvent`s to the renderer.
+- **Translation IPC** — `src/main/ipc/translation.ts`: `translation:start`,
+  `translation:stop`, `translation:event` channels.
+- **STT → Translation wiring** — `src/main/ipc/stt.ts` now accepts optional
+  `onSttText` callback; `src/main/index.ts` wires it to
+  `translationManager.onSttText()`.
+- **Preload bridge** — added `startTranslation()`, `stopTranslation()`,
+  `onTranslationEvent(handler) → unsubscribe` to `ElectronAPI`.
+- **Shared types** — added `TranslationEvent`, `TranslationStatus`,
+  `TranslationStartResult`.
+- **Renderer hook** — `src/renderer/services/useTranslation.ts`: manages
+  translation state (`status`, `partialEnglish`, `finalEnglish`, `error`).
+- **UI** — `SttPanel.tsx` now shows English translation below Urdu transcript,
+  with translation status/provider rows and Start/Stop Translation buttons.
+  Stopping STT also stops translation.
+- **CSS** — added `.translation-section`, `.translation-box`,
+  `.status-translation-*` styles.
+- **.env.example** — documented `TRANSLATION_PROVIDER` (mock / mymemory).
+
+Validation:
+- `npm run type-check` — 0 errors
+- `npm run build` — succeeds, all bundles present
+- All 12 files created/modified: `provider.ts`, `providers/mock.ts`,
+  `providers/mymemory.ts`, `manager.ts`, `translation.ts`, `stt.ts` (edit),
+  `index.ts` (shared, edit), `preload/index.ts` (edit), `useTranslation.ts`,
+  `SttPanel.tsx` (edit), `HomeScreen.tsx` (edit), `App.tsx` (edit),
+  `App.css` (edit), `.env.example` (edit)
+
 ## 2026-08-17 — Milestone 3 quality fix: explicit Urdu, energy gate, normalization
 
 Fixed the core M3 STT quality issue (whisper not reliably transcribing Urdu).

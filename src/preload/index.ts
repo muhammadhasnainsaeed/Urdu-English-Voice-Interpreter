@@ -5,6 +5,8 @@ import type {
   PermissionStatus,
   SttEvent,
   SttStartResult,
+  TranslationEvent,
+  TranslationStartResult,
 } from "@shared/index";
 
 const api: ElectronAPI = {
@@ -25,6 +27,18 @@ const api: ElectronAPI = {
     ipcRenderer.on("stt:event", listener);
     return () => {
       ipcRenderer.removeListener("stt:event", listener);
+    };
+  },
+  startTranslation: () =>
+    ipcRenderer.invoke("translation:start") as Promise<TranslationStartResult>,
+  stopTranslation: () =>
+    ipcRenderer.invoke("translation:stop") as Promise<void>,
+  onTranslationEvent: (handler: (event: TranslationEvent) => void) => {
+    const listener = (_event: unknown, payload: TranslationEvent) =>
+      handler(payload);
+    ipcRenderer.on("translation:event", listener);
+    return () => {
+      ipcRenderer.removeListener("translation:event", listener);
     };
   },
 };

@@ -16,11 +16,18 @@ function toArrayBuffer(data: unknown): ArrayBuffer | null {
   return null;
 }
 
-export function registerSttIpc(getWindow: () => BrowserWindow | null) {
+export function registerSttIpc(
+  getWindow: () => BrowserWindow | null,
+  onSttText?: (text: string, isFinal: boolean) => void
+) {
   const emit = (event: SttEvent) => {
     const win = getWindow();
     if (win && !win.isDestroyed()) {
       win.webContents.send("stt:event", event);
+    }
+    if (onSttText) {
+      if (event.type === "partial") onSttText(event.text, false);
+      else if (event.type === "final") onSttText(event.text, true);
     }
   };
 

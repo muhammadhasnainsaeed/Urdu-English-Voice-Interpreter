@@ -4,6 +4,7 @@ import { useMicrophone } from "./services/useMicrophone";
 import { useStt } from "./services/useStt";
 import { useTranslation } from "./services/useTranslation";
 import { useTts } from "./services/useTts";
+import { useAudioOutput } from "./services/useAudioOutput";
 import "./styles/App.css";
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
   const stt = useStt();
   const translation = useTranslation();
   const tts = useTts();
+  const audioOutput = useAudioOutput();
 
   const handleSttStart = async () => {
     const capture = await microphone.start();
@@ -29,6 +31,13 @@ export default function App() {
     }
     await stt.stop();
     microphone.stop();
+  };
+
+  const handleTtsStart = async () => {
+    if (audioOutput.status !== "active") {
+      await audioOutput.start();
+    }
+    await tts.start();
   };
 
   useEffect(() => {
@@ -65,8 +74,12 @@ export default function App() {
       ttsError={tts.error}
       ttsProvider={tts.provider}
       ttsCurrentText={tts.currentText}
-      onTtsStart={tts.start}
+      onTtsStart={handleTtsStart}
       onTtsStop={tts.stop}
+      audioOutputStatus={audioOutput.status}
+      audioOutputDevices={audioOutput.devices}
+      audioOutputSelectedId={audioOutput.selectedDeviceId}
+      onSelectAudioOutput={audioOutput.selectDevice}
     />
   );
 }

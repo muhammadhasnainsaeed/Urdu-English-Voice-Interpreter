@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   ApplicationStatus,
+  AudioFormat,
+  AudioOutputDevice,
+  AudioOutputEvent,
+  AudioOutputStartResult,
   ElectronAPI,
   PermissionStatus,
   SttEvent,
@@ -55,6 +59,34 @@ const api: ElectronAPI = {
       ipcRenderer.removeListener("tts:event", listener);
     };
   },
+
+  /* Audio output (Milestone 6) */
+  getAudioOutputDevices: () =>
+    ipcRenderer.invoke("audio-output:list-devices") as Promise<AudioOutputDevice[]>,
+  selectAudioOutput: (deviceId: string) =>
+    ipcRenderer.invoke("audio-output:select", deviceId) as Promise<void>,
+  startAudioOutput: () =>
+    ipcRenderer.invoke("audio-output:start") as Promise<AudioOutputStartResult>,
+  stopAudioOutput: () =>
+    ipcRenderer.invoke("audio-output:stop") as Promise<void>,
+  onAudioOutputEvent: (handler: (event: AudioOutputEvent) => void) => {
+    const listener = (_event: unknown, payload: AudioOutputEvent) =>
+      handler(payload);
+    ipcRenderer.on("audio-output:event", listener);
+    return () => {
+      ipcRenderer.removeListener("audio-output:event", listener);
+    };
+  },
+  onAudioData: (handler: (chunk: { data: ArrayBuffer; format: AudioFormat }) => void) => {
+    const listener = (_event: unknown, payload: { data: ArrayBuffer; format: AudioFormat }) =>
+      handler(payload);
+    ipcRenderer.on("audio-output:audio", listener);
+    return () => {
+      ipcRenderer.removeListener("audio-output:audio", listener);
+    };
+  },
+  detectBlackHole: () =>
+    ipcRenderer.invoke("audio-output:detect-blackhole") as Promise<boolean>,
 };
 
 contextBridge.exposeInMainWorld("electron", api);

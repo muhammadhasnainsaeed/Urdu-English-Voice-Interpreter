@@ -415,3 +415,31 @@ body {
 .status-tts-error {
   color: #ff6b6b;
 }
+
+/* ----- Milestone 6: audio output section ----- */
+
+.audio-output-section {
+  border-top: 1px solid #2a2e37;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.status-pill {
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.status-pill.status-active {
+  color: #4ade80;
+}
+
+.status-pill.status-error {
+  color: #ff6b6b;
+}
+
+.status-pill.status-idle {
+  color: #9aa0ac;
+}

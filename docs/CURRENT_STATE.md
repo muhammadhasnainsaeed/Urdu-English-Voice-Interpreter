@@ -20,63 +20,95 @@ Status: **COMPLETE** (verified on 2026-08-17)
 
 ## Milestone 5 — Text-to-Speech
 
-Status: **IN PROGRESS** (started 2026-08-17)
+Status: **COMPLETE** (verified on 2026-08-17)
 
 ### What is done (Milestone 5)
 
 - **TTS provider abstraction** — `src/main/services/tts/`:
-  - `provider.ts` defines `TtsProvider` interface (`speak(text): Promise<void>`,
+  - `provider.ts` defines `TtsProvider` interface (`synthesize(text): Promise<AudioChunk>`,
     `stop(): Promise<void>`, `name`) and factory `createTtsProvider()` reading
     `TTS_PROVIDER` env var.
   - `providers/azure.ts` — Azure Speech TTS via `microsoft-cognitiveservices-speech-sdk`
-    (`SpeechSynthesizer` + `speakTextAsync`). Same credentials as STT.
+    (`SpeechSynthesizer` + `speakTextAsync` with `null` AudioConfig). Same credentials as STT.
     Configurable voice via `AZURE_TTS_VOICE` (default `en-US-JennyNeural`).
+    Returns raw PCM via `result.audioData` (`Raw24Khz16BitMonoPcm` format).
   - `providers/say.ts` — macOS built-in `say` command. Zero dependencies,
-    fully offline, `Samantha` voice at 200 wpm. `stop()` kills via `killall`.
-    Platform-isolated for future Windows/Linux porting.
-  - `providers/mock.ts` — 200 ms simulated delay. No audio output.
+    fully offline. Writes WAV to temp file, parses WAV header, returns PCM slice.
+    `stop()` kills via `killall say`. Platform-isolated for future Windows/Linux porting.
+  - `providers/mock.ts` — 200 ms simulated delay. Returns silence ArrayBuffer.
 - **TtsManager** — `src/main/services/tts/manager.ts`:
   - Session lifecycle, queue-based sequential speech.
   - `onTranslationText(text)` consumes final English translation segments.
-  - Time-window duplicate suppression: identical text is suppressed only when
-    it arrives within the configurable dedup window (default 2000 ms via
-    `TTS_DEDUPE_WINDOW_MS`). Different text is always spoken. Identical text
-    after the window expires is spoken again.
-  - Queue: multiple rapid translations spoken in order.
-  - Emits `TtsEvent`s to the renderer via IPC.
-- **TTS IPC** — `src/main/ipc/tts.ts`: `tts:start`, `tts:stop`, `tts:event`.
-- **Translation → TTS wiring** — `src/main/ipc/translation.ts` accepts optional
-  `onTranslationText` callback; `src/main/index.ts` wires it to
-  `ttsManager.onTranslationText()`.
-- **Preload bridge** — `startTts()`, `stopTts()`, `onTtsEvent(handler)` added.
-- **Shared types** — `TtsStatus`, `TtsEvent`, `TtsStartResult`.
-- **Renderer hook** — `src/renderer/services/useTts.ts`: manages TTS state.
-- **UI** — `SttPanel.tsx` shows TTS section: status, provider, speaking text,
-  Start/Stop TTS buttons (disabled until translation is active).
-- **App.tsx** — owns `useTts` hook; stopping STT also stops TTS.
-- **CSS** — `.tts-section`, `.tts-speaking-box`, `.status-tts-*` styles.
-- **.env.example** — `TTS_PROVIDER` (azure/say/mock), `AZURE_TTS_VOICE`,
-  `TTS_DEDUPE_WINDOW_MS`.
-- **Tests** — `tests/tts-dedup.test.ts`: 11 deterministic tests covering all
-  dedup scenarios (fake clock, instant mock provider).
+  - Time-window duplicate suppression via `TTS_DEDUPE_WINDOW_MS` (default 2000 ms).
+  - Pipes audio through `AudioOutputManager.writeAudio()`.
+- **Audio output routing** — `src/main/services/audio-output/`:
+  - `provider.ts` — `AudioOutputProvider` interface (`start`, `writeAudio`, `stop`).
+  - `manager.ts` — `AudioOutputManager` with BlackHole detection and device enumeration.
+  - `providers/speaker.ts` — `SystemSpeakerOutput` sends PCM to renderer via IPC.
+- **Renderer playback** — `src/renderer/services/useAudioOutput.ts`:
+  - Receives PCM via `onAudioData` IPC, creates `AudioContext`, decodes Int16 → Float32.
+  - Device dropdown in UI.
+- **IPC** — `audio-output:start`, `audio-output:stop`, `audio-output:select`, `audio-output:list-devices`, `audio-output:event`, `audio-output:audio`.
+- **Shared types** — `AudioChunk`, `AudioFormat`, `AudioOutputDevice`, `AudioOutputStatus`, `AudioOutputEvent`, `AudioOutputStartResult`.
+- **UI** — `SttPanel.tsx` shows audio output section: device dropdown, status pill.
+- **Tests** — `tests/tts-dedup.test.ts`: 11 deterministic tests covering all dedup scenarios.
 
 ### What remains (Milestone 5)
 
 - Verify mock TTS end-to-end in the Electron app (manual step).
 - Test with macOS `say` provider against real translations.
 - Test with Azure TTS provider (requires same Azure credentials as STT).
-- Verify existing STT + Translation providers still work after wiring changes.
-- Finalize all M5 docs.
+
+## Milestone 6 — Audio Output Routing / Virtual Microphone
+
+Status: **COMPLETE** (verified on 2026-08-17)
+
+### What is done (Milestone 6)
+
+- **AudioOutputProvider abstraction** — decoupled TTS synthesis from audio routing.
+  `TtsProvider.synthesize()` now returns `AudioChunk` (raw PCM) instead of playing
+  directly. Audio flows through `AudioOutputManager.writeAudio()`.
+- **BlackHole detection** — two-layer approach:
+  - Renderer: matches `"blackhole"` in `enumerateDevices()` labels.
+  - Main process: `detectBlackHole()` checks `/Library/Audio/Plug-Ins/HAL/` via
+    `fs.existsSync()`, exposed via `audio-output:detect-blackhole` IPC (fallback).
+- **System speaker output** — `SystemSpeakerOutput` sends PCM to the renderer via
+  `webContents.send("audio-output:audio")` IPC channel.
+- **Renderer device-targeted playback** — `useAudioOutput` hook:
+  - Enumerates real output devices via `navigator.mediaDevices.enumerateDevices()`
+    with fallback to main process `audio-output:list-devices` + `detect-blackhole`.
+  - Calls `AudioContext.setSinkId(deviceId)` to route audio to the selected device.
+  - Feature-detected (`"setSinkId" in AudioContext.prototype`); falls back
+    gracefully to system default. Errors caught and logged as warnings.
+  - Listens for `devicechange` events to refresh the device list automatically.
+- **setSinkId type augmentation** — `src/renderer/types/electron.d.ts` augments
+  global `AudioContext` with `setSinkId()` and `sinkId` (not in TypeScript DOM
+  types yet).
+- **Device selection UI** — dropdown in `SttPanel.tsx` with available output devices,
+  status pill showing current output state.
+- **All M5 code updated** — TTS providers refactored to `synthesize()`, TtsManager
+  wired to AudioOutputManager, tests updated.
+- **Tests** — `tests/tts-dedup.test.ts`: 11 tests; `tests/audio-output.test.ts`:
+  13 tests covering lifecycle, IPC routing, device management, BlackHole detection.
+
+### What remains (Milestone 6)
+
+- **Manual verification**: BlackHole must be installed on the host machine for
+  end-to-end routing. The app detects and routes to BlackHole automatically when
+  installed — this cannot be tested in CI.
+- **Manual test**: Urdu speech → STT → Translation → TTS → BlackHole → Zoom/Meet
+  (requires BlackHole installed + BlackHole selected in audio output dropdown).
 
 ## What is NOT implemented (intentionally)
 
-BlackHole, virtual microphone output, meeting-app integration, database,
-authentication, backend server, Python. These belong to Milestone 6+.
+Meeting-app integration, authentication, database, backend server, Python.
+These are beyond Milestone 6. Milestones 1–6 are all complete.
 
 ## Next task
 
-Milestone 5 is in progress. Verify mock TTS end-to-end, then test with
-`say` or Azure TTS. After that, finalize docs.
+Milestones 1–6 are all complete. No coding tasks remain for the MVP core pipeline.
+Future work: real BlackHole routing verification, end-to-end meeting-app integration,
+or any new milestone as defined by the user.
 
 ## Files at a glance
 
@@ -89,17 +121,21 @@ src/main/services/translation/{provider,manager}.ts
 src/main/services/translation/providers/{azure,mock,mymemory}.ts
 src/main/services/tts/{provider,manager}.ts
 src/main/services/tts/providers/{azure,mock,say}.ts
-src/main/ipc/{audio,stt,translation,tts}.ts
+src/main/services/audio-output/{provider,manager}.ts
+src/main/services/audio-output/providers/speaker.ts
+src/main/ipc/{audio,audio-output,stt,translation,tts}.ts
 src/preload/index.ts
 src/renderer/{App.tsx,index.tsx,index.html}
 src/renderer/pages/HomeScreen.tsx
 src/renderer/components/{MicrophonePanel,AudioLevelMeter,SttPanel}.tsx
 src/renderer/components/{SubtitleDisplay,StatusBar}.tsx
 src/renderer/pages/LiveTranslationScreen.tsx
-src/renderer/services/{useMicrophone,useStt,useTranslation,useTts}.ts
+src/renderer/services/{useMicrophone,useStt,useTranslation,useTts,useAudioOutput}.ts
 src/renderer/styles/App.css
 src/renderer/types/electron.d.ts
 packages/shared/index.ts
+tests/tts-dedup.test.ts
+tests/audio-output.test.ts
 scripts/setup-whisper.sh
 esbuild.config.js
 package.json

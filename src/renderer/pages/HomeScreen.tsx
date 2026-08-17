@@ -6,6 +6,8 @@ import type {
   SttStatus,
   TranslationStatus,
   TtsStatus,
+  AudioOutputDevice,
+  AudioOutputStatus,
 } from "@shared/index";
 import MicrophonePanel from "../components/MicrophonePanel";
 import SttPanel from "../components/SttPanel";
@@ -39,6 +41,10 @@ interface HomeScreenProps {
   ttsCurrentText: string;
   onTtsStart: () => void;
   onTtsStop: () => void;
+  audioOutputStatus: AudioOutputStatus;
+  audioOutputDevices: AudioOutputDevice[];
+  audioOutputSelectedId: string;
+  onSelectAudioOutput: (deviceId: string) => void;
 }
 
 export default function HomeScreen(props: HomeScreenProps) {
@@ -78,14 +84,11 @@ export default function HomeScreen(props: HomeScreenProps) {
         ttsCurrentText={props.ttsCurrentText}
         onTtsStart={props.onTtsStart}
         onTtsStop={props.onTtsStop}
+        audioOutputStatus={props.audioOutputStatus}
+        audioOutputDevices={props.audioOutputDevices}
+        audioOutputSelectedId={props.audioOutputSelectedId}
+        onSelectAudioOutput={props.onSelectAudioOutput}
       />
-
-      <div className="field">
-        <label>Output</label>
-        <select className="device-select" disabled>
-          <option>BlackHole (Milestone 5+)</option>
-        </select>
-      </div>
 
       <div className="field">
         <label>Input Language</label>
@@ -98,9 +101,9 @@ export default function HomeScreen(props: HomeScreenProps) {
       </div>
 
       <p className="hint">
-        Milestone 5: real-time Urdu → English translation with text-to-speech.
-        Speak Urdu and watch the English translation appear and hear it spoken.
-        BlackHole audio routing arrives in Milestone 6.
+        Milestone 6: audio output routing. TTS audio is routed through the
+        selected output device. BlackHole virtual audio is detected when
+        installed.
       </p>
     </div>
   );

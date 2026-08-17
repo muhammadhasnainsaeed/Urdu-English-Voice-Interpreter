@@ -1,6 +1,8 @@
+import type { AudioChunk } from "@shared/index";
+
 export interface TtsProvider {
   readonly name: string;
-  speak(text: string): Promise<void>;
+  synthesize(text: string): Promise<AudioChunk>;
   stop(): Promise<void>;
 }
 

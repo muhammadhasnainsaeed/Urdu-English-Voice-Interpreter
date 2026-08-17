@@ -3,6 +3,107 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-17 — Milestone 6: Audio output routing (initial implementation)
+
+Refactored TTS to decouple synthesis from audio routing, added
+AudioOutputProvider abstraction, and wired renderer-based playback.
+
+## 2026-08-17 — Milestone 6: Device-targeted playback + BlackHole detection (COMPLETE)
+
+Implemented `setSinkId()` for device-targeted output, real renderer-side device
+enumeration, BlackHole detection (renderer label + main process HAL fallback),
+and audio-output test suite. Milestone 6 is now complete.
+
+- **setSinkId() device targeting** — `src/renderer/services/useAudioOutput.ts`:
+  calls `AudioContext.setSinkId(deviceId)` (Chrome 110+) to route audio to the
+  selected output device. Feature-detected with
+  `"setSinkId" in AudioContext.prototype`; falls back gracefully to system default.
+  Errors are caught and logged as warnings (audio still plays).
+- **Real renderer device enumeration** — `useAudioOutput` calls
+  `navigator.mediaDevices.enumerateDevices()` on mount (with retry after
+  `getUserMedia`) to discover real `audiooutput` device IDs and labels. Falls
+  back to main process `audio-output:list-devices` + `detect-blackhole` IPC when
+  enumeration returns nothing (before mic permission granted).
+- **BlackHole detection — two layers**:
+  1. Renderer: matches `"blackhole"` in `enumerateDevices()` device labels.
+  2. Main process: `detectBlackHole()` exported from `AudioOutputManager`
+     (checks `/Library/Audio/Plug-Ins/HAL/BlackHole*.driver` via `fs.existsSync()`).
+     Exposed via `audio-output:detect-blackhole` IPC as fallback.
+- **IPC added** — `audio-output:detect-blackhole` in `src/main/ipc/audio-output.ts`,
+  `detectBlackHole` exposed in preload bridge and shared `ElectronAPI`.
+- **setSinkId type augmentation** — `src/renderer/types/electron.d.ts` augments
+  global `AudioContext` interface with `setSinkId(sinkId: string): Promise<void>`
+  and `readonly sinkId: string` (not in TypeScript DOM types yet).
+- **devicechange listener** — `useAudioOutput` subscribes to
+  `navigator.mediaDevices.addEventListener("devicechange", ...)` to refresh the
+  device list automatically when devices are plugged/unplugged.
+- **devicechange in SttPanel** — device dropdown shows all discovered output
+  devices. When BlackHole is detected, it appears alongside "System Default."
+  Current device selection is shown with a pill indicator.
+- **AudioOutputManager lifecycle** — `start()` sends `audio-output:start` IPC to
+  renderer, `writeAudio()` sends `audio-output:audio` IPC, `stop()` sends
+  `audio-output:stop` IPC. Selection and BlackHole detection persist across
+  start/stop cycles.
+- **Audio output tests** — `tests/audio-output.test.ts`: 13 deterministic tests
+  covering lifecycle (start/stop), IPC routing (start/stop/audio), device
+  management (selectDevice, getAvailableDevices), BlackHole detection (boolean
+  return, platform-aware), and edge cases (write when inactive, write after
+  stop, double-start). Uses mock provider and fake BrowserWindow.
+- **Tests pass** — `npm run type-check` 0 errors, `npm run build` succeeds,
+  11 + 13 = 24 tests all pass.
+
+### Files modified
+
+- `src/renderer/services/useAudioOutput.ts` — real device enumeration, setSinkId,
+  BlackHole label detection, devicechange listener, fallback to main process IPC
+- `src/renderer/types/electron.d.ts` — AudioContext setSinkId type augmentation
+- `src/main/ipc/audio-output.ts` — added `audio-output:detect-blackhole` handler
+- `src/main/services/audio-output/manager.ts` — exported `detectBlackHole()`
+- `src/preload/index.ts` — added `detectBlackHole` to bridge
+- `packages/shared/index.ts` — added `detectBlackHole` to ElectronAPI
+- `src/renderer/components/SttPanel.tsx` — audio output device dropdown + status pill
+- `src/renderer/styles/App.css` — `.audio-output-section`, `.status-pill` styles
+
+### Files created
+
+- `tests/audio-output.test.ts` — 13 tests for AudioOutputManager
+
+- **TtsProvider refactored**: `speak(text): Promise<void>` →
+  `synthesize(text): Promise<AudioChunk>` — providers now return raw PCM data
+  instead of playing directly. Azure provider uses `null` AudioConfig +
+  `Raw24Khz16BitMonoPcm` to get raw `result.audioData`. macOS `say` provider
+  writes WAV to temp file, parses header, returns PCM slice. Mock provider
+  returns silence ArrayBuffer.
+- **AudioOutputProvider abstraction** — `src/main/services/audio-output/`:
+  - `provider.ts` — `AudioOutputProvider` interface (`start`, `writeAudio`, `stop`).
+  - `manager.ts` — `AudioOutputManager` with BlackHole detection (HAL driver
+    path check), device enumeration, `selectDevice()`.
+  - `providers/speaker.ts` — `SystemSpeakerOutput` sends PCM to renderer via
+    `webContents.send("audio-output:audio")`.
+- **TtsManager updated** — accepts `AudioOutputManager`, calls
+  `provider.synthesize()` then `audioOutput.writeAudio()`.
+- **TTS IPC updated** — `tts:start` now receives `audioOutputManager`.
+- **Audio output IPC** — `src/main/ipc/audio-output.ts`: `audio-output:start`,
+  `audio-output:stop`, `audio-output:select`, `audio-output:list-devices`.
+- **Renderer playback** — `src/renderer/services/useAudioOutput.ts`: receives PCM
+  via `onAudioData` IPC, creates `AudioContext`, decodes Int16 → Float32, plays
+  via `AudioBufferSourceNode`.
+- **App.tsx** — wired `useAudioOutput` hook; `handleTtsStart` also starts audio
+  output; audio output props passed to `HomeScreen` and `SttPanel`.
+- **SttPanel.tsx** — added audio output section: device dropdown, status pill.
+- **Preload bridge** — added `getAudioOutputDevices`, `selectAudioOutput`,
+  `startAudioOutput`, `stopAudioOutput`, `onAudioOutputEvent`, `onAudioData`.
+- **Shared types** — added `AudioChunk`, `AudioFormat`, `AudioOutputDevice`,
+  `AudioOutputStatus`, `AudioOutputEvent`, `AudioOutputStartResult`.
+- **CSS** — added `.audio-output-section`, `.status-pill` styles.
+- **Tests updated** — `tests/tts-dedup.test.ts` updated to use `synthesize()`
+  API and new `start(emit, audioOutput, provider)` signature. All 11 tests pass.
+
+Validation:
+- `npm run type-check` — 0 errors
+- `npm run build` — succeeds, `dist/renderer/index.html` exists
+- All 11 dedup tests pass
+
 ## 2026-08-17 — Milestone 5: TTS time-window duplicate suppression
 
 Replaced the permanent `lastSpoken` string-match dedup in TtsManager with a

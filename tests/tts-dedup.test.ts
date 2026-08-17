@@ -3,17 +3,17 @@
  *
  * Run:  npx tsx tests/tts-dedup.test.ts
  *
- * Uses a synchronous mock provider (speak resolves immediately) and a
- * controllable clock so every assertion is deterministic — no real timers,
- * no network, no audio.
+ * Uses a synchronous mock provider (synthesize resolves immediately), a
+ * controllable clock, and a mock AudioOutputManager so every assertion is
+ * deterministic — no real timers, no network, no audio.
  */
 
 import { TtsManager } from "../src/main/services/tts/manager";
-import type { TtsEvent, TtsStartResult } from "../packages/shared/index";
+import type { TtsEvent, TtsStartResult, AudioChunk } from "../packages/shared/index";
 import type { TtsProvider } from "../src/main/services/tts/provider";
 
 /* ------------------------------------------------------------------ */
-/*  Mock TTS provider — speak() resolves immediately                   */
+/*  Mock TTS provider — synthesize() resolves immediately               */
 /* ------------------------------------------------------------------ */
 
 function createInstantMockProvider(): TtsProvider & { spoken: string[] } {
@@ -21,10 +21,29 @@ function createInstantMockProvider(): TtsProvider & { spoken: string[] } {
   return {
     name: "mock-test",
     spoken,
-    async speak(text: string) {
+    async synthesize(text: string): Promise<AudioChunk> {
       spoken.push(text);
+      return {
+        data: new ArrayBuffer(0),
+        format: { sampleRate: 24000, bitsPerSample: 16, channels: 1 },
+      };
     },
     async stop() {},
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mock AudioOutputManager                                            */
+/* ------------------------------------------------------------------ */
+
+function createMockAudioOutput() {
+  const written: AudioChunk[] = [];
+  return {
+    written,
+    get isActive() { return true; },
+    async writeAudio(chunk: AudioChunk): Promise<void> {
+      written.push(chunk);
+    },
   };
 }
 
@@ -48,17 +67,12 @@ function uninstallFakeClock() {
   Date.now = originalDateNow;
 }
 
-function collectEvents(mgr: TtsManager): TtsEvent[] {
-  const events: TtsEvent[] = [];
-  // start() accepts an emit callback; we just push to the array.
-  return events;
-}
-
 async function startManager(
   mgr: TtsManager,
-  events: TtsEvent[]
+  events: TtsEvent[],
+  provider: TtsProvider
 ): Promise<TtsStartResult> {
-  return mgr.start((e) => events.push(e));
+  return mgr.start((e) => events.push(e), createMockAudioOutput(), provider);
 }
 
 function drainMicrotasks(): Promise<void> {
@@ -67,8 +81,6 @@ function drainMicrotasks(): Promise<void> {
 
 /** Process queue until idle (all pending speaks resolved). */
 async function drainQueue(): Promise<void> {
-  // Mock provider resolves instantly, so a single microtask drain
-  // is enough for one item.  Queue may chain, so loop.
   for (let i = 0; i < 20; i++) {
     await drainMicrotasks();
   }
@@ -129,7 +141,7 @@ const tests: TestCase[] = [
       const mgr = new TtsManager(2000);
       const events: TtsEvent[] = [];
       const provider = createInstantMockProvider();
-      await mgr.start((e) => events.push(e), provider);
+      await startManager(mgr, events, provider);
 
       mgr.onTranslationText("Hello");
       await drainQueue();
@@ -146,12 +158,12 @@ const tests: TestCase[] = [
       }
       if (provider.spoken.length !== 1) {
         throw new Error(
-          `Expected provider.speak called once, got ${provider.spoken.length}`
+          `Expected provider.synthesize called once, got ${provider.spoken.length}`
         );
       }
       if (provider.spoken[0] !== "Hello") {
         throw new Error(
-          `Expected provider to speak "Hello", got "${provider.spoken[0]}"`
+          `Expected provider to synthesize "Hello", got "${provider.spoken[0]}"`
         );
       }
       uninstallFakeClock();
@@ -166,7 +178,7 @@ const tests: TestCase[] = [
       const mgr = new TtsManager(2000);
       const events: TtsEvent[] = [];
       const provider = createInstantMockProvider();
-      await mgr.start((e) => events.push(e), provider);
+      await startManager(mgr, events, provider);
 
       mgr.onTranslationText("Hello");
       await drainQueue();
@@ -184,7 +196,7 @@ const tests: TestCase[] = [
       }
       if (provider.spoken.length !== 2) {
         throw new Error(
-          `Expected provider.speak called twice, got ${provider.spoken.length}`
+          `Expected provider.synthesize called twice, got ${provider.spoken.length}`
         );
       }
       uninstallFakeClock();
@@ -199,7 +211,7 @@ const tests: TestCase[] = [
       const mgr = new TtsManager(2000);
       const events: TtsEvent[] = [];
       const provider = createInstantMockProvider();
-      await mgr.start((e) => events.push(e), provider);
+      await startManager(mgr, events, provider);
 
       mgr.onTranslationText("How are you?");
       await drainQueue();
@@ -233,7 +245,7 @@ const tests: TestCase[] = [
       const mgr = new TtsManager(2000);
       const events: TtsEvent[] = [];
       const provider = createInstantMockProvider();
-      await mgr.start((e) => events.push(e), provider);
+      await startManager(mgr, events, provider);
 
       mgr.onTranslationText("A");
       await drainQueue();
@@ -262,7 +274,7 @@ const tests: TestCase[] = [
       const mgr = new TtsManager(2000);
       const events: TtsEvent[] = [];
       const provider = createInstantMockProvider();
-      await mgr.start((e) => events.push(e), provider);
+      await startManager(mgr, events, provider);
 
       mgr.onTranslationText("First");
       await drainQueue();
@@ -289,7 +301,7 @@ const tests: TestCase[] = [
       const mgr = new TtsManager(2000);
       const events: TtsEvent[] = [];
       const provider = createInstantMockProvider();
-      await mgr.start((e) => events.push(e), provider);
+      await startManager(mgr, events, provider);
 
       mgr.onTranslationText("First");
       await drainQueue();
@@ -320,7 +332,7 @@ const tests: TestCase[] = [
       const mgr = new TtsManager(2000);
       const events: TtsEvent[] = [];
       const provider = createInstantMockProvider();
-      await mgr.start((e) => events.push(e), provider);
+      await startManager(mgr, events, provider);
 
       mgr.onTranslationText("Test");
       await drainQueue();
@@ -347,7 +359,7 @@ const tests: TestCase[] = [
       const mgr = new TtsManager(0);
       const events: TtsEvent[] = [];
       const provider = createInstantMockProvider();
-      await mgr.start((e) => events.push(e), provider);
+      await startManager(mgr, events, provider);
 
       mgr.onTranslationText("A");
       await drainQueue();
@@ -373,7 +385,7 @@ const tests: TestCase[] = [
       const mgr = new TtsManager(2000);
       const events: TtsEvent[] = [];
       const provider = createInstantMockProvider();
-      await mgr.start((e) => events.push(e), provider);
+      await startManager(mgr, events, provider);
 
       mgr.onTranslationText("");
       mgr.onTranslationText("   ");
@@ -419,7 +431,7 @@ const tests: TestCase[] = [
       const mgr = new TtsManager(2000);
       const events: TtsEvent[] = [];
       const provider = createInstantMockProvider();
-      await mgr.start((e) => events.push(e), provider);
+      await startManager(mgr, events, provider);
 
       mgr.onTranslationText("Hello");
       await drainQueue();
@@ -428,7 +440,7 @@ const tests: TestCase[] = [
 
       // Restart with a fresh provider.
       const provider2 = createInstantMockProvider();
-      await mgr.start((e) => events.push(e), provider2);
+      await startManager(mgr, events, provider2);
 
       mgr.onTranslationText("Hello");
       await drainQueue();

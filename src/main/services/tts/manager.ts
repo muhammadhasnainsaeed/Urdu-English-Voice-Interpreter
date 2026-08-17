@@ -1,6 +1,7 @@
 import type { TtsEvent, TtsStartResult } from "@shared/index";
 import type { TtsProvider } from "./provider";
 import { createTtsProvider } from "./provider";
+import type { AudioOutputManager } from "../audio-output/manager";
 
 const DEFAULT_DEDUPE_WINDOW_MS = 2000;
 
@@ -11,6 +12,7 @@ function errMessage(err: unknown): string {
 
 export class TtsManager {
   private provider: TtsProvider | null = null;
+  private audioOutput: AudioOutputManager | null = null;
   private emit: ((event: TtsEvent) => void) | null = null;
   private active: boolean = false;
   private speaking: boolean = false;
@@ -49,6 +51,7 @@ export class TtsManager {
 
   async start(
     emit: (event: TtsEvent) => void,
+    audioOutput: AudioOutputManager,
     providerOverride?: TtsProvider
   ): Promise<TtsStartResult> {
     if (this.active) {
@@ -65,6 +68,7 @@ export class TtsManager {
     }
 
     this.provider = provider;
+    this.audioOutput = audioOutput;
     this.emit = emit;
     this.active = true;
 
@@ -94,6 +98,7 @@ export class TtsManager {
   stop(): void {
     const provider = this.provider;
     this.provider = null;
+    this.audioOutput = null;
     this.emit = null;
     this.active = false;
     this.speaking = false;
@@ -106,7 +111,13 @@ export class TtsManager {
   }
 
   private async processQueue(): Promise<void> {
-    if (this.speaking || this.queue.length === 0 || !this.provider || !this.emit) {
+    if (
+      this.speaking ||
+      this.queue.length === 0 ||
+      !this.provider ||
+      !this.emit ||
+      !this.audioOutput
+    ) {
       return;
     }
 
@@ -115,7 +126,8 @@ export class TtsManager {
     this.emit({ type: "tts:speaking", text });
 
     try {
-      await this.provider.speak(text);
+      const audioChunk = await this.provider.synthesize(text);
+      await this.audioOutput.writeAudio(audioChunk);
       if (this.emit) {
         this.emit({ type: "tts:spoken", text });
       }

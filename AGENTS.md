@@ -48,7 +48,7 @@ Client/incoming audio must NOT be translated.
 - TypeScript
 - Node.js
 - macOS
-- BlackHole (future)
+- BlackHole (user-installed, detected at runtime)
 - AI APIs (future)
 
 Python is NOT part of the target MVP architecture.
@@ -86,12 +86,15 @@ Complete. See `docs/CURRENT_STATE.md`.
 
 ### Milestone 5 — Text-to-Speech
 
-In progress. See `docs/CURRENT_STATE.md`.
+Complete. See `docs/CURRENT_STATE.md`.
+
+### Milestone 6 — Audio Output Routing / Virtual Microphone
+
+Complete. See `docs/CURRENT_STATE.md`.
 
 ## Do NOT implement yet
 
-- BlackHole
-- Virtual microphone routing
+- Virtual microphone routing (actual meeting-app integration beyond device targeting)
 - Meeting-app integration
 - Authentication
 - Database

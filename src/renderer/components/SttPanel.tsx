@@ -1,5 +1,11 @@
 import React from "react";
-import type { SttStatus, TranslationStatus, TtsStatus } from "@shared/index";
+import type {
+  AudioOutputDevice,
+  AudioOutputStatus,
+  SttStatus,
+  TranslationStatus,
+  TtsStatus,
+} from "@shared/index";
 
 interface SttPanelProps {
   status: SttStatus;
@@ -21,6 +27,10 @@ interface SttPanelProps {
   ttsCurrentText: string;
   onTtsStart: () => void;
   onTtsStop: () => void;
+  audioOutputStatus: AudioOutputStatus;
+  audioOutputDevices: AudioOutputDevice[];
+  audioOutputSelectedId: string;
+  onSelectAudioOutput: (deviceId: string) => void;
 }
 
 const STT_STATUS_LABELS: Record<SttStatus, string> = {
@@ -74,6 +84,10 @@ export default function SttPanel({
   ttsCurrentText,
   onTtsStart,
   onTtsStop,
+  audioOutputStatus,
+  audioOutputDevices,
+  audioOutputSelectedId,
+  onSelectAudioOutput,
 }: SttPanelProps) {
   const listening =
     status === "starting" ||
@@ -255,6 +269,30 @@ export default function SttPanel({
         {ttsError && (
           <p className="error-text">{ttsError}</p>
         )}
+      </div>
+
+      <div className="audio-output-section">
+        <div className="stt-header">
+          <span className="stt-title">Audio Output</span>
+          <span className={`status-pill status-${audioOutputStatus}`}>
+            {audioOutputStatus === "active" ? "Active" : audioOutputStatus === "error" ? "Error" : "Off"}
+          </span>
+        </div>
+
+        <div className="field">
+          <label>Output Device</label>
+          <select
+            className="device-select"
+            value={audioOutputSelectedId}
+            onChange={(e) => onSelectAudioOutput(e.target.value)}
+          >
+            {audioOutputDevices.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="mic-actions">

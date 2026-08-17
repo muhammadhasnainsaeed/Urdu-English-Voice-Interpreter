@@ -3,7 +3,7 @@
 Current and planned architecture for the Real-Time Urdu → English Voice
 Interpreter (macOS).
 
-## Current architecture (Milestone 5 in progress)
+## Current architecture (Milestones 1–6 complete)
 
 Node.js-only MVP. Electron + React + TypeScript. **Python is not part of the
 MVP.**
@@ -22,25 +22,32 @@ Electron
    │     │     ├── manager.ts           (session lifecycle + provider selection)
    │     │     └── providers/{azure,mock,mymemory}.ts
    │     ├── services/tts/           (text-to-speech provider abstraction)
-   │     │     ├── provider.ts          (TtsProvider interface)
+   │     │     ├── provider.ts          (TtsProvider interface — synthesize())
    │     │     ├── manager.ts           (session lifecycle, dedup, queue)
    │     │     └── providers/{azure,mock,say}.ts
+   │     ├── services/audio-output/   (audio output routing abstraction)
+   │     │     ├── provider.ts          (AudioOutputProvider interface)
+   │     │     ├── manager.ts           (device detection, BlackHole)
+   │     │     └── providers/speaker.ts (IPC → renderer WebAudio playback)
    │     ├── ipc/audio.ts          (mic:get-permission, mic:request-permission)
    │     ├── ipc/stt.ts            (stt:start, stt:audio-data, stt:stop, stt:event)
    │     ├── ipc/translation.ts    (translation:start, translation:stop, translation:event)
-   │     └── ipc/tts.ts            (tts:start, tts:stop, tts:event)
+   │     ├── ipc/tts.ts            (tts:start, tts:stop, tts:event)
+   │     └── ipc/audio-output.ts   (audio-output:start, :stop, :select, :list-devices)
    │
    ├── Preload             src/preload/index.ts
    │     └── contextBridge.exposeInMainWorld('electron', ...)
    │
    └── React Renderer      src/renderer/
-          ├── App.tsx (owns useMicrophone + useStt + useTranslation + useTts hooks)
-         ├── services/useMicrophone.ts (devices, capture, level)
-         ├── services/useStt.ts (resample 48k→16k, Int16 PCM → IPC, events)
-         ├── services/useTranslation.ts (translation events → english text)
-         ├── components/ (MicrophonePanel, AudioLevelMeter, SttPanel)
-         ├── pages/ (HomeScreen; LiveTranslationScreen = subtitle stub)
-         └── styles/ (App.css)
+          ├── App.tsx (owns useMicrophone + useStt + useTranslation + useTts + useAudioOutput hooks)
+          ├── services/useMicrophone.ts (devices, capture, level)
+          ├── services/useStt.ts (resample 48k→16k, Int16 PCM → IPC, events)
+          ├── services/useTranslation.ts (translation events → english text)
+          ├── services/useTts.ts (TTS state)
+          ├── services/useAudioOutput.ts (WebAudio playback, device selection)
+          ├── components/ (MicrophonePanel, AudioLevelMeter, SttPanel)
+          ├── pages/ (HomeScreen; LiveTranslationScreen = subtitle stub)
+          └── styles/ (App.css)
 
 Shared types: packages/shared/index.ts
 Build: esbuild -> dist/  (main, preload, renderer bundle + index.html)
@@ -79,6 +86,12 @@ interface ElectronAPI {
   startTts: () => Promise<TtsStartResult>;
   stopTts: () => Promise<void>;
   onTtsEvent: (handler: (event: TtsEvent) => void) => () => void;
+  getAudioOutputDevices: () => Promise<AudioOutputDevice[]>;
+  selectAudioOutput: (deviceId: string) => Promise<void>;
+  startAudioOutput: () => Promise<AudioOutputStartResult>;
+  stopAudioOutput: () => Promise<void>;
+  onAudioOutputEvent: (handler: (event: AudioOutputEvent) => void) => () => void;
+  onAudioData: (handler: (chunk: { data: ArrayBuffer; format: AudioFormat }) => void) => () => void;
 }
 ```
 
@@ -99,6 +112,12 @@ Channels:
 | `tts:start` | renderer → main (invoke) | starts TTS; returns `{ok, provider?}` |
 | `tts:stop` | renderer → main (invoke) | stops TTS |
 | `tts:event` | main → renderer | `tts:started` / `tts:speaking` / `tts:spoken` / `tts:error` / `tts:stopped` |
+| `audio-output:start` | renderer → main (invoke) | starts audio output; returns `{ok, provider?}` |
+| `audio-output:stop` | renderer → main (invoke) | stops audio output |
+| `audio-output:select` | renderer → main (invoke) | selects output device by ID |
+| `audio-output:list-devices` | renderer → main (invoke) | returns `AudioOutputDevice[]` |
+| `audio-output:event` | main → renderer | `audio-output:started` / `audio-output:devices` / `audio-output:error` / `audio-output:stopped` |
+| `audio-output:audio` | main → renderer (send) | raw PCM audio chunks `{data, format}` for playback |
 
 ### Application state
 
@@ -311,17 +330,23 @@ is therefore free under the monthly free allowance.
   slip through (bounded by 12 s timeout).
   (windows are skipped rather than hanging the session).
 
-### Text-to-speech pipeline (Milestone 5)
+### Text-to-speech pipeline (Milestone 5, refactored in M6)
 
 ```text
 Translation (final English text)
    ↓
 TTS Manager (onTranslationText)
-   ├── dedup (skip if same as last spoken)
+   ├── dedup (time-window: suppress within TTS_DEDUPE_WINDOW_MS)
    ├── queue (sequential playback)
-   └── TtsProvider.speak(text)
-      ├── azure: SpeechSynthesizer → system speakers
-      └── say:   execFile say -v Samantha → system speakers
+   └── TtsProvider.synthesize(text) → AudioChunk (raw PCM)
+      ├── azure: SpeechSynthesizer (null AudioConfig) → result.audioData
+      └── say:   execFile say -o /tmp/tts-{id}.wav → parse WAV → PCM slice
+   ↓
+AudioOutputManager.writeAudio(chunk)
+   └── AudioOutputProvider.writeAudio(chunk)
+      └── speaker: webContents.send("audio-output:audio", {data, format})
+         ↓
+Renderer useAudioOutput → AudioContext → play PCM
 ```
 
 **Provider selection** — `src/main/services/tts/provider.ts` reads `TTS_PROVIDER`
@@ -330,8 +355,9 @@ from the environment:
 - `azure` (default) — Azure Speech TTS, same credentials as STT
   (`AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION`). Uses `SpeechSynthesizer` from
   `microsoft-cognitiveservices-speech-sdk` (already a dependency). Configurable
-  voice via `AZURE_TTS_VOICE` (default `en-US-JennyNeural`). Audio plays
-  through the system default output.
+  voice via `AZURE_TTS_VOICE` (default `en-US-JennyNeural`). Uses `null`
+  AudioConfig to get raw PCM from `result.audioData` (no system speaker
+  output); audio is routed through `AudioOutputManager`.
 - `say` — macOS built-in `say` command. Zero dependencies, fully offline.
   Uses `Samantha` voice at 200 wpm. `stop()` kills via `killall say`.
   Platform-isolated for future Windows/Linux porting.
@@ -351,7 +377,77 @@ from the environment:
   (not dropped or concatenated).
 - Emits `TtsEvent`s to the renderer: `tts:started`, `tts:speaking` (with text),
   `tts:spoken`, `tts:error`, `tts:stopped`.
-- Audio plays through Mac speakers/headphones (system default output).
+- Audio is routed through `AudioOutputManager` for device-targeted output.
+
+### Audio output routing (Milestone 6 — COMPLETE)
+
+```text
+AudioOutputManager
+   ├── detectBlackHole() → checks /Library/Audio/Plug-Ins/HAL/ paths
+   ├── getAvailableDevices() → [{id:"default",...}, {id:"blackhole",...}]
+   └── AudioOutputProvider (currently: SystemSpeakerOutput)
+      └── writeAudio(chunk) → webContents.send("audio-output:audio", {data, format})
+         ↓
+Renderer (useAudioOutput hook)
+   ├── enumerateDevices() → real audiooutput device IDs + labels
+   ├── detectBlackHole by label (renderer) + IPC fallback (main)
+   ├── AudioContext.setSinkId(deviceId) → routes to selected device
+   └── AudioContext (24 kHz, Int16 PCM → Float32) → device-targeted output
+```
+
+**AudioOutputProvider interface** — `src/main/services/audio-output/provider.ts`:
+
+```ts
+interface AudioOutputProvider {
+  readonly name: string;
+  start(): Promise<void>;
+  writeAudio(chunk: AudioChunk): Promise<void>;
+  stop(): Promise<void>;
+}
+```
+
+**AudioChunk** — `{ data: ArrayBuffer, format: AudioFormat }` where
+`AudioFormat = { sampleRate: number, bitsPerSample: number, channels: number }`.
+
+**BlackHole detection** — two-layer approach:
+1. Renderer: `navigator.mediaDevices.enumerateDevices()` discovers real
+   `audiooutput` devices. BlackHole is detected by matching `"blackhole"` in
+   the device label (case-insensitive).
+2. Main process (fallback): `detectBlackHole()` checks for BlackHole HAL driver
+   bundles in `/Library/Audio/Plug-Ins/HAL/` via `fs.existsSync()`. Exposed
+   via `audio-output:detect-blackhole` IPC for use when renderer enumeration
+   returns no output devices (before mic permission is granted).
+
+**Device selection** — `audio-output:select` IPC stores `selectedDeviceId` on
+the main process. The renderer's `selectDevice()` calls `setSinkId()` on the
+active `AudioContext` with the real device ID from `enumerateDevices()`. The
+UI dropdown shows all discovered output devices. When BlackHole is detected, it
+appears as an additional option alongside "System Default."
+
+**Renderer playback** — `useAudioOutput` hook:
+- On mount, enumerates real output devices via `navigator.mediaDevices.enumerateDevices()`
+  (with fallback to main process `audio-output:list-devices` + `detect-blackhole`).
+- Receives raw PCM via `onAudioData` IPC, creates `AudioContext`, decodes Int16
+  PCM to Float32, and plays via `AudioBufferSourceNode`.
+- **Device targeting**: calls `AudioContext.setSinkId(deviceId)` (Chrome 110+,
+  Electron 42+) to route audio to the selected output device. Feature-detected
+  with `"setSinkId" in AudioContext.prototype`. Falls back gracefully to system
+  default when unsupported.
+- Recreates `AudioContext` when sample rate changes. Applies `setSinkId` to
+  both new and existing contexts when the device changes.
+- Listens for `devicechange` events to refresh the device list automatically.
+
+**setSinkId() support** — requires Chrome 110+ (Electron 42 uses Chromium 130+).
+Type declaration in `src/renderer/types/electron.d.ts` augments the DOM types.
+If `setSinkId` is not supported, audio falls back to the system default output
+silently. Errors from `setSinkId` (e.g. invalid device ID) are caught and
+logged as warnings — audio still plays to the system default.
+
+**Cross-platform readiness** — the `AudioOutputProvider` abstraction isolates
+platform-specific output. BlackHole is macOS-only; Windows/Linux equivalents
+(e.g. VB-Cable, PulseAudio monitor) can be added as new providers without
+changing the TTS pipeline. The renderer-side `setSinkId` approach is
+cross-platform by design.
 
 **Security model (TTS)** — same as STT/Translation: Azure keys stay in the
 main process, loaded by `dotenv` from `.env`, consumed inside the Azure provider.
@@ -377,20 +473,22 @@ equivalents can be added later without touching business logic.
 - Module alias `@shared/*` → `packages/shared/*` (tsconfig `paths`, honored by
   esbuild).
 
-## Planned pipeline (future milestones — NOT IMPLEMENTED)
+## Pipeline (Milestones 1–6 complete)
 
 ```text
 Microphone
    ↓
-Speech-to-Text (main process / Azure Speech or local Whisper) ✓ M3 (Urdu text)
+Speech-to-Text (main process / Azure Speech or local Whisper)  ✓ M3
    ↓
-Urdu → English Translation (main process)              ✓ M4
+Urdu → English Translation (main process)                      ✓ M4
    ↓
-Live Subtitles (renderer UI)                            ✓ M4 (SttPanel shows both)
+Live Subtitles (renderer UI)                                    ✓ M4
    ↓
-Text-to-Speech (main process / Azure TTS or macOS say)  ✓ M5 (speaks through Mac output)
+Text-to-Speech (main process / Azure TTS or macOS say)         ✓ M5
    ↓
-BlackHole Virtual Microphone (macOS virtual audio driver)  M6+
+Audio Output Routing (renderer setSinkId + AudioOutputManager)  ✓ M6
+   ↓
+BlackHole Virtual Microphone (when installed by user)           ✓ M6 (detection + routing)
    ↓
 Zoom / Google Meet / Microsoft Teams
 ```
@@ -398,7 +496,7 @@ Zoom / Google Meet / Microsoft Teams
 - Client/incoming audio (from other meeting participants) must NOT be
   translated.
 - Main-process services live under `src/main/services/` and IPC handlers under
-  `src/main/ipc/` (`audio.ts`, `stt.ts`, `translation.ts`).
+  `src/main/ipc/` (`audio.ts`, `audio-output.ts`, `stt.ts`, `translation.ts`, `tts.ts`).
 - Future packages: `packages/audio/`, `packages/ai/` for provider-specific
   logic (not created yet; avoid premature abstraction).
 
@@ -410,8 +508,8 @@ Zoom / Google Meet / Microsoft Teams
 | 2 | Microphone capture & audio device detection | Complete |
 | 3 | Speech-to-text (Urdu, live partial + final transcript) | Complete |
 | 4 | Urdu → English translation + live subtitles | Complete |
-| 5 | Text-to-speech | In Progress |
-| 6+ | BlackHole routing, meeting integration | Planned |
+| 5 | Text-to-speech | Complete |
+| 6 | Audio output routing / virtual microphone | Complete |
 
 ## Architectural decisions
 
@@ -489,3 +587,25 @@ Zoom / Google Meet / Microsoft Teams
   Windows/Linux equivalents can be added later without touching business logic.
 - **No new npm dependencies for TTS**: Azure TTS reuses the existing Speech SDK;
   macOS `say` is a system command.
+- **TtsProvider returns raw PCM (not audio playback)** (refactored 2026-08-17 for
+  M6): `synthesize(text): Promise<AudioChunk>` instead of `speak(text): Promise<void>`.
+  This decouples TTS synthesis from audio output routing, enabling device-targeted
+  playback (BlackHole virtual microphone) without changing the TTS providers.
+- **AudioOutputProvider abstraction** (added 2026-08-17 for M6): separates audio
+  output routing from TTS synthesis. `SystemSpeakerOutput` sends PCM to the
+  renderer via IPC; the renderer plays via WebAudio `AudioContext`. BlackHole is
+  detected by checking HAL driver paths but isolated behind the abstraction so
+  platform-specific providers (VB-Cable, PulseAudio) can be added later.
+- **Renderer-based audio playback** (M6): main process sends raw PCM to the
+  renderer via IPC; the renderer decodes and plays via WebAudio `AudioContext`.
+  This keeps audio output in the browser sandbox (no native addons for output).
+  Uses `AudioContext.setSinkId()` for device-targeted output (BlackHole).
+- **BlackHole detection by HAL driver path check** (M6): BlackHole is detected
+  by checking `/Library/Audio/Plug-Ins/HAL/BlackHole*.driver` existence. Device
+  enumeration in the renderer also detects BlackHole by device label. Both
+  approaches work; the renderer enumeration is primary, the main process check
+  is a fallback for before mic permission is granted.
+- **AudioContext.setSinkId() type augmentation** (M6): TypeScript's DOM types
+  do not include `setSinkId` (experimental API). A type declaration in
+  `src/renderer/types/electron.d.ts` augments the global `AudioContext`
+  interface. Feature detection at runtime ensures graceful fallback.

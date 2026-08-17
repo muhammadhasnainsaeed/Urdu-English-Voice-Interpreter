@@ -87,6 +87,41 @@ export interface TtsStartResult {
   provider?: string;
 }
 
+/* ---- Audio output (Milestone 6) ---- */
+
+export interface AudioFormat {
+  sampleRate: number;
+  bitsPerSample: number;
+  channels: number;
+}
+
+export interface AudioChunk {
+  data: ArrayBuffer;
+  format: AudioFormat;
+}
+
+export interface AudioOutputDevice {
+  id: string;
+  label: string;
+  isDefault: boolean;
+}
+
+export type AudioOutputStatus = "idle" | "active" | "error";
+
+export type AudioOutputEvent =
+  | { type: "audio-output:started"; provider?: string }
+  | { type: "audio-output:devices"; devices: AudioOutputDevice[] }
+  | { type: "audio-output:error"; message: string }
+  | { type: "audio-output:stopped" };
+
+export interface AudioOutputStartResult {
+  ok: boolean;
+  message?: string;
+  provider?: string;
+}
+
+/* ---- Electron API bridge ---- */
+
 export interface ElectronAPI {
   getAppStatus: () => Promise<ApplicationStatus>;
   getMicPermission: () => Promise<PermissionStatus>;
@@ -101,4 +136,11 @@ export interface ElectronAPI {
   startTts: () => Promise<TtsStartResult>;
   stopTts: () => Promise<void>;
   onTtsEvent: (handler: (event: TtsEvent) => void) => () => void;
+  getAudioOutputDevices: () => Promise<AudioOutputDevice[]>;
+  selectAudioOutput: (deviceId: string) => Promise<void>;
+  startAudioOutput: () => Promise<AudioOutputStartResult>;
+  stopAudioOutput: () => Promise<void>;
+  onAudioOutputEvent: (handler: (event: AudioOutputEvent) => void) => () => void;
+  onAudioData: (handler: (chunk: { data: ArrayBuffer; format: AudioFormat }) => void) => () => void;
+  detectBlackHole: () => Promise<boolean>;
 }

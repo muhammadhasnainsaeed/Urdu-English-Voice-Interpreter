@@ -1,3 +1,4 @@
+import type { AudioChunk } from "@shared/index";
 import type { TtsProvider } from "../provider";
 
 export function createAzureTtsProvider(): TtsProvider {
@@ -14,19 +15,24 @@ export function createAzureTtsProvider(): TtsProvider {
   return {
     name: "azure",
 
-    async speak(text: string): Promise<void> {
+    async synthesize(text: string): Promise<AudioChunk> {
       const sdk = await import("microsoft-cognitiveservices-speech-sdk");
       const speechConfig = sdk.SpeechConfig.fromSubscription(key, region);
       speechConfig.speechSynthesisVoiceName = voiceName;
+      speechConfig.speechSynthesisOutputFormat =
+        sdk.SpeechSynthesisOutputFormat.Raw24Khz16BitMonoPcm;
 
-      const synthesizer = new sdk.SpeechSynthesizer(speechConfig);
+      const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
 
-      return new Promise<void>((resolve, reject) => {
+      return new Promise<AudioChunk>((resolve, reject) => {
         synthesizer.speakTextAsync(
           text,
-          () => {
+          (result) => {
             synthesizer.close();
-            resolve();
+            resolve({
+              data: result.audioData,
+              format: { sampleRate: 24000, bitsPerSample: 16, channels: 1 },
+            });
           },
           (err: string) => {
             synthesizer.close();
@@ -38,7 +44,7 @@ export function createAzureTtsProvider(): TtsProvider {
 
     async stop(): Promise<void> {
       // Azure SDK synthesizer does not expose a global stop.
-      // Each speak() call is self-contained; rapid successive calls
+      // Each synthesize() call is self-contained; rapid successive calls
       // are serialized by the TTSManager queue.
     },
   };

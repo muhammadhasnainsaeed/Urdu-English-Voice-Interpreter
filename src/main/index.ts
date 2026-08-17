@@ -6,6 +6,7 @@ import { registerAudioIpc } from './ipc/audio';
 import { registerSttIpc } from './ipc/stt';
 import { registerTranslationIpc, translationManager } from './ipc/translation';
 import { registerTtsIpc, ttsManager } from './ipc/tts';
+import { registerAudioOutputIpc, audioOutputManager } from './ipc/audio-output';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -37,6 +38,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   registerAudioIpc();
+  registerAudioOutputIpc(() => mainWindow);
   registerSttIpc(
     () => mainWindow,
     (text, isFinal) => translationManager.onSttText(text, isFinal)
@@ -45,7 +47,7 @@ app.whenReady().then(() => {
     () => mainWindow,
     (english) => ttsManager.onTranslationText(english)
   );
-  registerTtsIpc(() => mainWindow);
+  registerTtsIpc(() => mainWindow, audioOutputManager);
   createWindow();
 
   app.on('activate', () => {

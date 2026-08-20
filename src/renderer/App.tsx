@@ -5,6 +5,7 @@ import { useStt } from "./services/useStt";
 import { useTranslation } from "./services/useTranslation";
 import { useTts } from "./services/useTts";
 import { useAudioOutput } from "./services/useAudioOutput";
+import { useSession } from "./services/useSession";
 import "./styles/App.css";
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
   const translation = useTranslation();
   const tts = useTts();
   const audioOutput = useAudioOutput();
+  const session = useSession();
 
   const handleSttStart = async () => {
     const capture = await microphone.start();
@@ -23,14 +25,23 @@ export default function App() {
   };
 
   const handleSttStop = async () => {
-    if (tts.status === "active") {
-      await tts.stop();
+    try {
+      if (tts.status === "active") {
+        await tts.stop();
+      }
+    } finally {
+      try {
+        if (translation.status === "active") {
+          await translation.stop();
+        }
+      } finally {
+        try {
+          await stt.stop();
+        } finally {
+          microphone.stop();
+        }
+      }
     }
-    if (translation.status === "active") {
-      await translation.stop();
-    }
-    await stt.stop();
-    microphone.stop();
   };
 
   const handleTtsStart = async () => {
@@ -40,11 +51,46 @@ export default function App() {
     await tts.start();
   };
 
+  /** Unified meeting start: session + mic + STT */
+  const handleMeetingStart = async () => {
+    // Start session (audio output + TTS + translation)
+    const result = await session.start();
+    if (!result.ok) return;
+
+    // Start mic + STT
+    const capture = await microphone.start();
+    if (!capture.ok) return;
+    if (capture.stream && capture.audioContext) {
+      await stt.start(capture.stream, capture.audioContext);
+    }
+  };
+
+  /** Unified meeting stop: everything in reverse */
+  const handleMeetingStop = async () => {
+    try {
+      await session.stop();
+    } finally {
+      try {
+        await stt.stop();
+      } finally {
+        microphone.stop();
+      }
+    }
+  };
+
   useEffect(() => {
     if (microphone.status !== "listening" && stt.isActive) {
       stt.stop();
     }
   }, [microphone.status, stt.isActive, stt.stop]);
+
+  // Session auto-stops mic + STT when session stops
+  useEffect(() => {
+    if (session.status === "idle" || session.status === "error") {
+      if (stt.isActive) stt.stop();
+      if (microphone.status === "listening") microphone.stop();
+    }
+  }, [session.status, stt.isActive, stt.stop, microphone.status, microphone.stop]);
 
   return (
     <HomeScreen
@@ -80,6 +126,11 @@ export default function App() {
       audioOutputDevices={audioOutput.devices}
       audioOutputSelectedId={audioOutput.selectedDeviceId}
       onSelectAudioOutput={audioOutput.selectDevice}
+      sessionStatus={session.status}
+      sessionStages={session.stages}
+      sessionError={session.error}
+      onMeetingStart={handleMeetingStart}
+      onMeetingStop={handleMeetingStop}
     />
   );
 }

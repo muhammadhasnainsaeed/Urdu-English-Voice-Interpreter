@@ -7,6 +7,8 @@ import type {
   AudioOutputStartResult,
   ElectronAPI,
   PermissionStatus,
+  SessionEvent,
+  SessionStartResult,
   SttEvent,
   SttStartResult,
   TranslationEvent,
@@ -87,6 +89,20 @@ const api: ElectronAPI = {
   },
   detectBlackHole: () =>
     ipcRenderer.invoke("audio-output:detect-blackhole") as Promise<boolean>,
+
+  /* Session (Milestone 7) */
+  startSession: () =>
+    ipcRenderer.invoke("session:start") as Promise<SessionStartResult>,
+  stopSession: () =>
+    ipcRenderer.invoke("session:stop") as Promise<void>,
+  onSessionEvent: (handler: (event: SessionEvent) => void) => {
+    const listener = (_event: unknown, payload: SessionEvent) =>
+      handler(payload);
+    ipcRenderer.on("session:event", listener);
+    return () => {
+      ipcRenderer.removeListener("session:event", listener);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld("electron", api);

@@ -61,10 +61,16 @@ export interface SttStartResult {
 export type TranslationEvent =
   | { type: "translation:started"; provider?: string }
   | { type: "translation:text"; urdu: string; english: string }
+  | { type: "translation:rate-limited"; message: string }
   | { type: "translation:error"; message: string }
   | { type: "translation:stopped" };
 
-export type TranslationStatus = "idle" | "starting" | "active" | "error";
+export type TranslationStatus =
+  | "idle"
+  | "starting"
+  | "active"
+  | "rate-limited"
+  | "error";
 
 export interface TranslationStartResult {
   ok: boolean;
@@ -120,6 +126,32 @@ export interface AudioOutputStartResult {
   provider?: string;
 }
 
+/* ---- Session (Milestone 7) ---- */
+
+export type SessionStatus = "idle" | "starting" | "active" | "stopping" | "error";
+
+export interface PipelineStageStatus {
+  stt: SttStatus;
+  translation: TranslationStatus;
+  tts: TtsStatus;
+  audioOutput: AudioOutputStatus;
+}
+
+export type SessionEvent =
+  | { type: "session:started" }
+  | { type: "session:stopped" }
+  | { type: "session:error"; message: string }
+  | { type: "session:stage"; stage: string; status: string }
+  | { type: "session:status"; stages: PipelineStageStatus };
+
+export interface SessionStartResult {
+  ok: boolean;
+  message?: string;
+  sttProvider?: string;
+  translationProvider?: string;
+  ttsProvider?: string;
+}
+
 /* ---- Electron API bridge ---- */
 
 export interface ElectronAPI {
@@ -143,4 +175,7 @@ export interface ElectronAPI {
   onAudioOutputEvent: (handler: (event: AudioOutputEvent) => void) => () => void;
   onAudioData: (handler: (chunk: { data: ArrayBuffer; format: AudioFormat }) => void) => () => void;
   detectBlackHole: () => Promise<boolean>;
+  startSession: () => Promise<SessionStartResult>;
+  stopSession: () => Promise<void>;
+  onSessionEvent: (handler: (event: SessionEvent) => void) => () => void;
 }

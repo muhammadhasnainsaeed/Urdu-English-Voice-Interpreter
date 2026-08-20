@@ -3,10 +3,11 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import type { ApplicationStatus } from '@shared/index';
 import { registerAudioIpc } from './ipc/audio';
+import { registerAudioOutputIpc, audioOutputManager } from './ipc/audio-output';
 import { registerSttIpc } from './ipc/stt';
 import { registerTranslationIpc, translationManager } from './ipc/translation';
 import { registerTtsIpc, ttsManager } from './ipc/tts';
-import { registerAudioOutputIpc, audioOutputManager } from './ipc/audio-output';
+import { registerSessionIpc, sessionManager } from './ipc/session';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -48,11 +49,17 @@ app.whenReady().then(() => {
     (english) => ttsManager.onTranslationText(english)
   );
   registerTtsIpc(() => mainWindow, audioOutputManager);
+  registerSessionIpc(() => mainWindow);
   createWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+// Graceful shutdown — stop all services before quitting
+app.on('before-quit', () => {
+  sessionManager.emergencyStop();
 });
 
 app.on('window-all-closed', () => {

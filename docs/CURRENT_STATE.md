@@ -101,15 +101,77 @@ Status: **COMPLETE** (verified on 2026-08-17)
 - **Manual test**: Urdu speech → STT → Translation → TTS → BlackHole → Zoom/Meet
   (requires BlackHole installed + BlackHole selected in audio output dropdown).
 
+## Milestone 7 — Production Meeting Pipeline & End-to-End Hardening
+
+Status: **COMPLETE** (verified on 2026-08-17; regression fixed + runtime-verified on 2026-08-21)
+
+### What is done (Milestone 7)
+
+- **Session orchestrator** — `src/main/services/session.ts`:
+  - `SessionManager` coordinates start/stop of all pipeline stages.
+  - `start()`: audio output → TTS → translation (in order). Rolls back on failure.
+  - `stop()`: STT → translation → TTS → audio output (reverse order).
+  - `emergencyStop()`: immediate cleanup on app quit.
+  - Emits `SessionEvent` with pipeline stage status.
+- **Session IPC** — `src/main/ipc/session.ts`: `session:start`, `session:stop`, `session:event`.
+- **Session bridge** — preload exposes `startSession`, `stopSession`, `onSessionEvent`.
+- **useSession hook** — `src/renderer/services/useSession.ts`: tracks session status + per-stage pipeline status.
+- **Meeting mode UI** — `HomeScreen.tsx` shows a unified "Start Meeting" / "Stop Meeting" button
+  with a 4-stage pipeline status indicator (STT, Translation, TTS, Audio).
+- **Graceful shutdown** — `app.on('before-quit')` calls `sessionManager.emergencyStop()`.
+- **Translation race fix** — `TranslationManager.translateText()` captures emit/provider references
+  locally before awaiting. `stop()` no longer causes null-emission crashes.
+- **Translation queue serialization** — `TranslationManager` now processes translations sequentially
+  (one at a time) via `processQueue()`, preventing out-of-order results from concurrent API calls.
+- **Translation backpressure** — bounded pending queue (max 10). Oldest dropped when full.
+- **TTS backpressure** — bounded queue (max 5). Oldest dropped when full.
+- **useTts unmount cleanup** — stops TTS in main process if component unmounts while active.
+- **handleSttStop error handling** — `App.tsx` uses nested try/finally to ensure all stages
+  are stopped even if an earlier stop throws.
+- **Audio device failure recovery** — `useAudioOutput` falls back to "default" device when
+  the selected device disappears from `devicechange` events.
+- **Upstream STT-final dedupe (2026-08-21)** — `TranslationManager.onSttText()` suppresses
+  identical consecutive finals within `STT_FINAL_DEDUPE_WINDOW_MS` (default 2000, 0=off,
+  sliding window) BEFORE any provider request. Prevents mock-STT re-finalization from
+  hammering MyMemory into HTTP 429. Whitespace/NFC-normalized comparison; original text
+  still sent to provider. Explicit config parsing with `[CONFIG]` warnings for invalid
+  values (also applied to `TTS_DEDUPE_WINDOW_MS`). 8 regression tests added.
+- **Provider resilience (2026-08-21)** — MyMemory HTTP 429 enters a provider-owned cooldown
+  (`Retry-After` honored; fallback `MYMEMORY_429_COOLDOWN_MS`, default 60000). No requests
+  during cooldown, no retries, suppressed transcripts dropped (never replayed). Generic
+  `RateLimitError` contract keeps TranslationManager provider-agnostic. In-flight duplicate
+  protection at provider level. New `translation:rate-limited` status/event surfaces a
+  concise UI state ("Translation temporarily rate-limited") and recovers to active on the
+  next successful translation. Error classification: 429 vs network vs other HTTP statuses.
+  MyMemory remains suitable for development/free-tier testing only; production traffic
+  should use azure or similar. 11 resilience tests in `tests/translation-resilience.test.ts`.
+- **Pipeline status types** — `SessionStatus`, `PipelineStageStatus`, `SessionEvent` in shared types.
+- **Tests** — `tests/session.test.ts`: 10 tests covering session lifecycle, translation race
+  condition, translation serialization, TTS queue bounds, error recovery.
+
+### What remains (Milestone 7)
+
+- **Manual verification required**:
+  - Start Meeting → verify all 4 stages activate in order — ✅ verified 2026-08-21
+    via CDP (session Active, Translation/TTS/Audio stages ●, English output filling)
+  - Stop Meeting → verify clean shutdown with no orphaned processes
+  - Start → Stop → Start → Stop (3 cycles) → no duplicated listeners or speech
+  - BlackHole routing through meeting mode (requires BlackHole installed + Meet participant)
+  - Azure credentials test (requires configured .env)
+- **Regression fixed 2026-08-21**: SessionManager was passing status-only emit
+  closures to translation/TTS/audio-output managers, severing the renderer event
+  flow and the translation→TTS chain. Fixed with `createTranslationEmit()` etc.
+  See CHANGELOG for full root cause and runtime trace.
+
 ## What is NOT implemented (intentionally)
 
 Meeting-app integration, authentication, database, backend server, Python.
-These are beyond Milestone 6. Milestones 1–6 are all complete.
+These are beyond Milestone 7. Milestones 1–7 are all complete.
 
 ## Next task
 
-Milestones 1–6 are all complete. No coding tasks remain for the MVP core pipeline.
-Future work: real BlackHole routing verification, end-to-end meeting-app integration,
+Milestones 1–7 are all complete. The production meeting pipeline is functional.
+Future work: latency measurement in UI, retry policy for cloud providers,
 or any new milestone as defined by the user.
 
 ## Files at a glance
@@ -117,6 +179,7 @@ or any new milestone as defined by the user.
 ```text
 src/main/index.ts
 src/main/services/audio.ts
+src/main/services/session.ts
 src/main/services/stt/{provider,manager}.ts
 src/main/services/stt/providers/{azure,mock,whisper}.ts
 src/main/services/translation/{provider,manager}.ts
@@ -125,19 +188,20 @@ src/main/services/tts/{provider,manager}.ts
 src/main/services/tts/providers/{azure,mock,say}.ts
 src/main/services/audio-output/{provider,manager}.ts
 src/main/services/audio-output/providers/speaker.ts
-src/main/ipc/{audio,audio-output,stt,translation,tts}.ts
+src/main/ipc/{audio,audio-output,session,stt,translation,tts}.ts
 src/preload/index.ts
 src/renderer/{App.tsx,index.tsx,index.html}
 src/renderer/pages/HomeScreen.tsx
 src/renderer/components/{MicrophonePanel,AudioLevelMeter,SttPanel}.tsx
 src/renderer/components/{SubtitleDisplay,StatusBar}.tsx
 src/renderer/pages/LiveTranslationScreen.tsx
-src/renderer/services/{useMicrophone,useStt,useTranslation,useTts,useAudioOutput}.ts
+src/renderer/services/{useMicrophone,useSession,useStt,useTranslation,useTts,useAudioOutput}.ts
 src/renderer/styles/App.css
 src/renderer/types/electron.d.ts
 packages/shared/index.ts
 tests/tts-dedup.test.ts
 tests/audio-output.test.ts
+tests/session.test.ts
 scripts/setup-whisper.sh
 esbuild.config.js
 package.json

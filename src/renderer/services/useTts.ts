@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { TtsEvent, TtsStatus } from "@shared/index";
 
 export function useTts() {
@@ -6,6 +6,11 @@ export function useTts() {
   const [error, setError] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
   const [currentText, setCurrentText] = useState("");
+  const statusRef = useRef<TtsStatus>("idle");
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   useEffect(() => {
     return window.electron.onTtsEvent((event: TtsEvent) => {
@@ -31,6 +36,15 @@ export function useTts() {
           break;
       }
     });
+  }, []);
+
+  // Cleanup: stop TTS in main process if component unmounts while active
+  useEffect(() => {
+    return () => {
+      if (statusRef.current === "active") {
+        window.electron.stopTts().catch(() => undefined);
+      }
+    };
   }, []);
 
   const start = useCallback(async () => {

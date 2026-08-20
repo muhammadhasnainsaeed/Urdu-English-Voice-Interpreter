@@ -92,6 +92,10 @@ Complete. See `docs/CURRENT_STATE.md`.
 
 Complete. See `docs/CURRENT_STATE.md`.
 
+### Milestone 7 — Production Meeting Pipeline & End-to-End Hardening
+
+Complete. See `docs/CURRENT_STATE.md`.
+
 ## Do NOT implement yet
 
 - Virtual microphone routing (actual meeting-app integration beyond device targeting)

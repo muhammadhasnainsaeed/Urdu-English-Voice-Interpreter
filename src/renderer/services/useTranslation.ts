@@ -19,6 +19,14 @@ export function useTranslation() {
           setFinalEnglish((prev) =>
             prev ? `${prev}\n${event.english}` : event.english
           );
+          // Successful translation after rate-limit recovery returns the
+          // provider state to active.
+          setStatus((prev) => (prev === "rate-limited" ? "active" : prev));
+          break;
+        case "translation:rate-limited":
+          // Concise user-facing state; raw provider errors stay in logs.
+          setError(event.message);
+          setStatus("rate-limited");
           break;
         case "translation:error":
           setError(event.message);

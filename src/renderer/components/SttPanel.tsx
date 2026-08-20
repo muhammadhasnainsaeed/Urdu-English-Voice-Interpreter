@@ -46,6 +46,7 @@ const TRANSLATION_STATUS_LABELS: Record<TranslationStatus, string> = {
   idle: "Off",
   starting: "Starting…",
   active: "Active",
+  "rate-limited": "Rate-limited",
   error: "Error",
 };
 

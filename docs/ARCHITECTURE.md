@@ -3,7 +3,7 @@
 Current and planned architecture for the Real-Time Urdu → English Voice
 Interpreter (macOS).
 
-## Current architecture (Milestones 1–6 complete)
+## Current architecture (Milestones 1–7 complete)
 
 Node.js-only MVP. Electron + React + TypeScript. **Python is not part of the
 MVP.**
@@ -510,6 +510,7 @@ Zoom / Google Meet / Microsoft Teams
 | 4 | Urdu → English translation + live subtitles | Complete |
 | 5 | Text-to-speech | Complete |
 | 6 | Audio output routing / virtual microphone | Complete |
+| 7 | Production meeting pipeline & end-to-end hardening | Complete |
 
 ## Architectural decisions
 

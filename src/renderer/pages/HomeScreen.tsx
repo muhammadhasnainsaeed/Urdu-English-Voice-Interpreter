@@ -2,15 +2,25 @@ import React from "react";
 import type {
   ApplicationStatus,
   AudioDevice,
+  AudioOutputDevice,
+  AudioOutputStatus,
+  PipelineStageStatus,
   PermissionStatus,
+  SessionStatus,
   SttStatus,
   TranslationStatus,
   TtsStatus,
-  AudioOutputDevice,
-  AudioOutputStatus,
 } from "@shared/index";
 import MicrophonePanel from "../components/MicrophonePanel";
 import SttPanel from "../components/SttPanel";
+
+const SESSION_STATUS_LABELS: Record<SessionStatus, string> = {
+  idle: "Ready",
+  starting: "Starting…",
+  active: "Active",
+  stopping: "Stopping…",
+  error: "Error",
+};
 
 interface HomeScreenProps {
   permission: PermissionStatus;
@@ -45,12 +55,81 @@ interface HomeScreenProps {
   audioOutputDevices: AudioOutputDevice[];
   audioOutputSelectedId: string;
   onSelectAudioOutput: (deviceId: string) => void;
+  sessionStatus: SessionStatus;
+  sessionStages: PipelineStageStatus;
+  sessionError: string | null;
+  onMeetingStart: () => void;
+  onMeetingStop: () => void;
+}
+
+function stageIcon(s: string): string {
+  if (s === "active" || s === "listening") return "\u25cf";
+  if (s === "starting" || s === "stopping") return "\u25cb";
+  if (s === "error") return "\u2716";
+  return "\u25cb";
 }
 
 export default function HomeScreen(props: HomeScreenProps) {
+  const meetingActive = props.sessionStatus === "active";
+  const meetingStarting = props.sessionStatus === "starting";
+  const meetingStopping = props.sessionStatus === "stopping";
+  const meetingBusy = meetingStarting || meetingStopping;
+
   return (
     <div className="screen home-screen">
       <h1>Urdu → English Interpreter</h1>
+
+      <div className="meeting-section">
+        <div className="meeting-header">
+          <span className="meeting-title">Meeting Mode</span>
+          <span className={`status-pill status-${props.sessionStatus}`}>
+            {SESSION_STATUS_LABELS[props.sessionStatus]}
+          </span>
+        </div>
+
+        <div className="meeting-stages">
+          <div className="pipeline-stage">
+            <span className="stage-icon">{stageIcon(props.sessionStages.stt)}</span>
+            <span className="stage-label">STT</span>
+          </div>
+          <div className="pipeline-stage">
+            <span className="stage-icon">{stageIcon(props.sessionStages.translation)}</span>
+            <span className="stage-label">Translation</span>
+          </div>
+          <div className="pipeline-stage">
+            <span className="stage-icon">{stageIcon(props.sessionStages.tts)}</span>
+            <span className="stage-label">TTS</span>
+          </div>
+          <div className="pipeline-stage">
+            <span className="stage-icon">{stageIcon(props.sessionStages.audioOutput)}</span>
+            <span className="stage-label">Audio</span>
+          </div>
+        </div>
+
+        <div className="mic-actions">
+          {meetingActive ? (
+            <button
+              className="stop-meeting-btn"
+              onClick={props.onMeetingStop}
+              disabled={meetingBusy}
+            >
+              Stop Meeting
+            </button>
+          ) : (
+            <button
+              className="start-meeting-btn"
+              onClick={props.onMeetingStart}
+              disabled={meetingBusy}
+            >
+              Start Meeting
+            </button>
+          )}
+        </div>
+
+        {props.sessionError && (
+          <p className="error-text">{props.sessionError}</p>
+        )}
+      </div>
 
       <MicrophonePanel
         permission={props.permission}
@@ -99,12 +178,6 @@ export default function HomeScreen(props: HomeScreenProps) {
         <label>Output Language</label>
         <div className="pill">English</div>
       </div>
-
-      <p className="hint">
-        Milestone 6: audio output routing. TTS audio is routed through the
-        selected output device. BlackHole virtual audio is detected when
-        installed.
-      </p>
     </div>
   );
 }

@@ -68,13 +68,17 @@ export function useAudioOutput() {
   }, [enumerateOutputDevices]);
 
   useEffect(() => {
-    if (!supportsSetSinkId()) {
-      setSetSinkIdSupported(false);
-      return;
-    }
-
     const onChange = () => {
-      enumerateOutputDevices().then(setDevices);
+      enumerateOutputDevices().then((devs) => {
+        setDevices(devs);
+        // Device failure recovery: if selected device is gone, fall back to default
+        setSelectedDeviceId((current) => {
+          if (current === "default") return current;
+          if (devs.some((d) => d.id === current)) return current;
+          // Selected device disconnected — fall back to system default
+          return "default";
+        });
+      });
     };
     navigator.mediaDevices.addEventListener("devicechange", onChange);
     return () => {

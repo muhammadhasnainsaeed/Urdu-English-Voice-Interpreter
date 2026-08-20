@@ -3,6 +3,210 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-21 — Translation provider resilience: 429 cooldown, Retry-After, in-flight dedupe, rate-limited state
+
+### Architecture decision
+
+Reliability behavior lives at the **provider boundary**, not in
+TranslationManager. A generic `RateLimitError` (exported from
+`translation/provider.ts`) is the contract: any provider may throw it;
+the manager surfaces a `translation:rate-limited` event without knowing
+provider specifics. Switching `TRANSLATION_PROVIDER=mymemory` → `azure`
+requires no manager changes. No retries, no retry loops, no background
+workers, no SessionManager/STT/TTS changes.
+
+### Changes
+
+- **`src/main/services/translation/provider.ts`** — added generic
+  `RateLimitError` (carries informational `retryAfterMs`).
+- **`src/main/services/translation/config.ts`** (new) — shared
+  `parseWindowMs()` (explicit validation, `[CONFIG]` warning on invalid);
+  imported by manager + MyMemory provider (no import cycles). Manager
+  re-exports it for compatibility.
+- **`src/main/services/translation/providers/mymemory.ts`** — on HTTP 429:
+  enters provider-owned cooldown (`Retry-After` delta-seconds or HTTP-date
+  when valid; else `MYMEMORY_429_COOLDOWN_MS`, default 60000). During
+  cooldown `translate()` fails fast with `RateLimitError` and makes NO HTTP
+  request. Suppressed items are dropped — cooldown expiry never replays
+  stale transcripts; the next legitimate STT final translates normally.
+  Error classification without retries: 429 → RateLimitError; network
+  failure → "network error"; other statuses → descriptive plain errors.
+  In-flight dedupe: identical normalized concurrent texts share one
+  request/promise.
+- **`src/main/services/translation/manager.ts`** — catches
+  `RateLimitError` separately: emits concise user-facing
+  `translation:rate-limited` ("Translation temporarily rate-limited");
+  raw errors stay in debug logs.
+- **`packages/shared/index.ts`** — `TranslationStatus` gains
+  `"rate-limited"`; event union gains `translation:rate-limited`.
+- **Renderer** — `useTranslation` shows the rate-limited state and returns
+  to active on the next successful translation; SttPanel label
+  "Rate-limited"; amber CSS style.
+
+### Request control (verified, pre-existing + new)
+
+Sequential queue + MAX_PENDING=10 backpressure + STT-final sliding-window
+dedupe already prevent bursts; provider-level in-flight dedupe closes the
+slow-network gap. No artificial delays added.
+
+### Tests
+
+New `tests/translation-resilience.test.ts` (11 tests, stubbed fetch): 429
+enters cooldown with zero HTTP during it; Retry-After delta-seconds honored
+over fallback; past HTTP-date → immediate recovery; fallback cooldown
+expires by time; in-flight duplicates share one request; 400/401/403/5xx/
+network failures are NOT treated as rate-limit and never trigger cooldown;
+manager surfaces rate-limited then recovers on next legitimate final; TTS
+chain receives nothing while rate-limited. Total suite: **54 tests, all
+passing** (13 audio-output + 19 session + 11 tts-dedup + 11 resilience).
+
+### Runtime verification (real MyMemory, PIPELINE_DEBUG=1)
+
+70s meeting: 44 STT finals → **1 HTTP request** (success) → 43 upstream-
+deduped → 1 TTS invocation → 1 audio output. Zero errors/warnings. The 429
+path itself is covered deterministically by mocked-429 tests (IP was not
+limited at test time).
+
+## 2026-08-21 — Upstream STT-final dedupe + explicit dedupe-window config parsing
+
+### Root cause addressed
+
+Mock STT re-finalizes the same sentence every ~1.54s while the mic feeds
+audio. Each final previously triggered a new translation request (~40/min),
+causing MyMemory HTTP 429 within minutes (per-IP limit persists across app
+restarts). TTS dedupe only suppressed playback after translation had already
+run, so requests were wasted upstream.
+
+### Changes
+
+- **`src/main/services/translation/manager.ts`**:
+  - Upstream dedupe in `onSttText()` BEFORE any provider request. Identical
+    consecutive finals within `STT_FINAL_DEDUPE_WINDOW_MS` (default 2000,
+    0 = disabled) are suppressed. Sliding window: each duplicate refreshes
+    the timer, so a continuously repeated transcript yields one request;
+    a genuinely repeated phrase after the window expires is translated.
+  - `normalizeForDedupe()`: NFC Unicode normalization + whitespace collapse +
+    trim for comparison only; original text is sent to the provider.
+  - Optional `dedupeWindowMs` constructor param (mirrors TtsManager).
+  - Exported `parseWindowMs()`: absent → default; non-negative integer → use;
+    anything else → `[CONFIG]` warning + fallback. No silent reinterpretation.
+  - Dedupe state reset in `start()` and `stop()`.
+- **`src/main/services/tts/manager.ts`**: replaced silent `parseInt` NaN
+  fallback with the same explicit `parseWindowMs` behavior for
+  `TTS_DEDUPE_WINDOW_MS` (`disable` now warns and falls back to 2000ms).
+- **`.env.example`**: documented `STT_FINAL_DEDUPE_WINDOW_MS` and clarified
+  both windows' semantics (0 disables; invalid values warn + fall back).
+- **`.env`**: replaced invalid `TTS_DEDUPE_WINDOW_MS=disable` with valid values.
+
+### Tests
+
+8 new regression tests in `tests/session.test.ts` (19 total in suite, 43
+overall): first final translated; identical-in-window ignored; identical
+after window translated again; different text immediate; whitespace variants
+deduped; window=0 disables; invalid env warns + falls back; provider not
+called for suppressed duplicates.
+
+### Runtime verification (PIPELINE_DEBUG=1, mock/mymemory-free config)
+
+12s meeting: 7 STT finals → **1 translation request**, **6 DEDUPED**,
+1 synthesize, 1 writeAudio (23904 bytes). Renderer English box contains
+exactly one line. Previously: 7 requests / 7 translations / 4 TTS plays.
+
+## 2026-08-21 — M7 Regression Fix: Session emit wiring broke translation→TTS chain
+
+### Root cause
+
+`SessionManager.start()` passed `() => this.emitStatus()` as the emit closure
+to `translationManager.start()`, `ttsManager.start()`, and
+`audioOutputManager.start()`. Unlike the IPC-level emit closures (which forward
+events to the renderer AND chain `translation:text` → `ttsManager.onTranslationText`),
+the session's status-only emitter silently dropped every pipeline event.
+Result: translations completed but TTS never received any text — no synthesis,
+no audio, no errors. The renderer also never received `translation:started`,
+so Translation showed "Off" in the UI.
+
+### Fix
+
+`src/main/services/session.ts` — added `createTranslationEmit()`,
+`createTtsEmit()`, and `createAudioOutputEmit()` factory methods that replicate
+the exact IPC wiring: forward events to the renderer window via
+`sendToRenderer()` and chain translation results into TTS. Replaced the three
+broken `() => this.emitStatus()` calls in `start()`.
+
+### Runtime verification (PIPELINE_DEBUG=1)
+
+Full pipeline traced live in Electron with mock STT + MyMemory + say:
+
+```
+[SESSION] start requested → audio output started → TTS started (say)
+          → translation started (mymemory) → session active
+[TRANSLATION] onSttText final: آپ کی آواز سنائی دے رہی ہے
+[TRANSLATION] emit → translation:text Your voice is heard
+[TRANSLATION] chaining to TTS: Your voice is heard
+[TTS] synthesize: Your voice is heard
+[AUDIO] writeAudio, bytes: 40982   ← repeating every ~1.5s
+```
+
+Renderer DOM verified via CDP: session pill "Active", pipeline stages
+Translation/TTS/Audio = ●, translation status "Active", English output box
+filling with "Your voice is heard".
+
+### Tests
+
+- Added **"Regression: session start wires translation→TTS chain"** to
+  `tests/session.test.ts` — starts a real session with mock providers, feeds
+  Urdu text through `translationManager.onSttText()`, asserts TTS received the
+  English translation. Verified this test FAILS against the broken code and
+  PASSES after the fix. Total: 11 tests in suite, 35 across all suites.
+- Diagnostic logging added behind `PIPELINE_DEBUG=1` env flag in
+  `session.ts`, `translation/manager.ts`, `tts/manager.ts`.
+
+## 2026-08-17 — Milestone 7: Production Meeting Pipeline & End-to-End Hardening
+
+Implemented unified meeting mode, session orchestration, pipeline state
+visibility, error recovery, backpressure, and bug fixes.
+
+### New files
+
+- **`src/main/services/session.ts`** — `SessionManager` orchestrates start/stop
+  of all pipeline stages (audio output → TTS → translation → STT). Emits
+  `SessionEvent` with per-stage status. `emergencyStop()` for app quit.
+- **`src/main/ipc/session.ts`** — Session IPC handlers: `session:start`,
+  `session:stop`, `session:event`. Wires `SessionManager` to renderer events.
+- **`src/renderer/services/useSession.ts`** — React hook tracking session status,
+  pipeline stage states, and errors.
+- **`tests/session.test.ts`** — 10 deterministic tests: session lifecycle,
+  translation race condition, translation serialization, TTS queue bounds,
+  error recovery.
+
+### Modified files
+
+- **`src/main/index.ts`** — Registers session IPC. Adds `before-quit` handler
+  calling `sessionManager.emergencyStop()`.
+- **`src/main/services/translation/manager.ts`** — Fixed emit race condition:
+  `translateText()` now captures `emit` and `provider` references locally before
+  awaiting. Added sequential queue serialization (`processQueue()`). Added
+  backpressure: bounded pending queue (max 10), oldest dropped when full.
+- **`src/main/services/tts/manager.ts`** — Added bounded queue (max 5 items).
+  When queue is full, oldest items are dropped (backpressure).
+- **`src/preload/index.ts`** — Added `startSession`, `stopSession`,
+  `onSessionEvent` to bridge.
+- **`packages/shared/index.ts`** — Added `SessionStatus`, `PipelineStageStatus`,
+  `SessionEvent`, `SessionStartResult` types. Added session methods to
+  `ElectronAPI`.
+- **`src/renderer/App.tsx`** — Added `useSession` hook. Added `handleMeetingStart`
+  (session + mic + STT) and `handleMeetingStop` (session + mic cleanup). Fixed
+  `handleSttStop` with nested try/finally. Added session auto-stop effect.
+- **`src/renderer/pages/HomeScreen.tsx`** — Added meeting mode section with
+  "Start Meeting" / "Stop Meeting" button and 4-stage pipeline status indicator.
+- **`src/renderer/services/useTts.ts`** — Added unmount cleanup: stops TTS in
+  main process if component unmounts while active.
+- **`src/renderer/services/useAudioOutput.ts`** — Added audio device failure
+  recovery: falls back to "default" when selected device disappears from
+  `devicechange` events.
+- **`src/renderer/styles/App.css`** — Added meeting mode section styles, pipeline
+  stage indicators, start/stop meeting buttons.
+
 ## 2026-08-17 — Milestone 6: Audio output routing (initial implementation)
 
 Refactored TTS to decouple synthesis from audio routing, added

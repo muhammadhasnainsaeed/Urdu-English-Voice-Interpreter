@@ -4,10 +4,41 @@ import { createTtsProvider } from "./provider";
 import type { AudioOutputManager } from "../audio-output/manager";
 
 const DEFAULT_DEDUPE_WINDOW_MS = 2000;
+const MAX_TTS_QUEUE = 5;
 
 function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+/**
+ * Parse a non-negative integer millisecond window from an env var.
+ * Absent/empty → fallback. Non-numeric or negative → warn + fallback.
+ * 0 is valid and disables the window.
+ */
+function parseWindowMs(
+  raw: string | undefined,
+  envName: string,
+  fallback: number
+): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    console.warn(
+      `[CONFIG] ${envName}="${raw}" is not a non-negative integer — using ${fallback}ms`
+    );
+    return fallback;
+  }
+  return parseInt(trimmed, 10);
+}
+
+const DEBUG = process.env.PIPELINE_DEBUG === "1";
+const debugT0 = Date.now();
+function log(...args: unknown[]): void {
+  if (DEBUG) {
+    const t = ((Date.now() - debugT0) / 1000).toFixed(3).padStart(8);
+    console.log(`${t}s [TTS]`, ...args);
+  }
 }
 
 export class TtsManager {
@@ -26,14 +57,11 @@ export class TtsManager {
     if (dedupeWindowMs !== undefined) {
       this.dedupeWindowMs = dedupeWindowMs;
     } else {
-      const envVal = parseInt(
-        process.env.TTS_DEDUPE_WINDOW_MS || "",
-        10
+      this.dedupeWindowMs = parseWindowMs(
+        process.env.TTS_DEDUPE_WINDOW_MS,
+        "TTS_DEDUPE_WINDOW_MS",
+        DEFAULT_DEDUPE_WINDOW_MS
       );
-      this.dedupeWindowMs =
-        Number.isFinite(envVal) && envVal >= 0
-          ? envVal
-          : DEFAULT_DEDUPE_WINDOW_MS;
     }
   }
 
@@ -77,7 +105,10 @@ export class TtsManager {
   }
 
   onTranslationText(text: string): void {
-    if (!this.active) return;
+    if (!this.active) {
+      log("onTranslationText IGNORED — not active:", text);
+      return;
+    }
     const trimmed = text.trim();
     if (!trimmed) return;
 
@@ -86,11 +117,18 @@ export class TtsManager {
       trimmed === this.lastSpokenText &&
       now - this.lastSpokenTime < this.dedupeWindowMs
     ) {
+      log(`DEDUPED (within ${this.dedupeWindowMs}ms):`, trimmed);
       return;
     }
 
     this.lastSpokenText = trimmed;
     this.lastSpokenTime = now;
+
+    // Backpressure: if queue is full, drop oldest to keep latest
+    if (this.queue.length >= MAX_TTS_QUEUE) {
+      this.queue.shift();
+    }
+
     this.queue.push(trimmed);
     this.processQueue();
   }
@@ -126,7 +164,9 @@ export class TtsManager {
     this.emit({ type: "tts:speaking", text });
 
     try {
+      log("synthesize:", text);
       const audioChunk = await this.provider.synthesize(text);
+      log("writeAudio bytes:", audioChunk.data.byteLength);
       await this.audioOutput.writeAudio(audioChunk);
       if (this.emit) {
         this.emit({ type: "tts:spoken", text });

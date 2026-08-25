@@ -7,6 +7,7 @@ import type {
 } from "@shared/index";
 import type { AudioOutputProvider } from "./provider";
 import { createSystemSpeakerOutput } from "./providers/speaker";
+import { pipelineTelemetry } from "../telemetry/pipeline-telemetry";
 
 const BLACKHOLE_HAL_PATHS = [
   "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver",
@@ -85,6 +86,7 @@ export class AudioOutputManager {
     this.provider = null;
     this.emit = null;
     this.active = false;
+    pipelineTelemetry.resetPipeline();
     if (provider) {
       provider.stop().catch(() => {});
     }

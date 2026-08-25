@@ -1,13 +1,14 @@
 import 'dotenv/config';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
-import type { ApplicationStatus } from '@shared/index';
+import type { ApplicationStatus, PipelineEvent, PlaybackTelemetryEvent } from '@shared/index';
 import { registerAudioIpc } from './ipc/audio';
 import { registerAudioOutputIpc, audioOutputManager } from './ipc/audio-output';
 import { registerSttIpc } from './ipc/stt';
 import { registerTranslationIpc, translationManager } from './ipc/translation';
 import { registerTtsIpc, ttsManager } from './ipc/tts';
 import { registerSessionIpc, sessionManager } from './ipc/session';
+import { pipelineTelemetry } from './services/telemetry/pipeline-telemetry';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -50,6 +51,25 @@ app.whenReady().then(() => {
   );
   registerTtsIpc(() => mainWindow, audioOutputManager);
   registerSessionIpc(() => mainWindow);
+
+  // Pipeline telemetry (development-only): forward events to the renderer
+  // and accept playback lifecycle reports for output latency timing.
+  pipelineTelemetry.setListener((event: PipelineEvent) => {
+    const win = mainWindow;
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('pipeline:event', event);
+    }
+  });
+  ipcMain.on('telemetry:playback', (_event, payload: PlaybackTelemetryEvent) => {
+    if (
+      payload &&
+      (payload.event === 'start' || payload.event === 'complete') &&
+      typeof payload.bytes === 'number'
+    ) {
+      pipelineTelemetry.reportPlayback(payload);
+    }
+  });
+
   createWindow();
 
   app.on('activate', () => {

@@ -3,6 +3,64 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-25 — Pipeline latency telemetry + benchmark (Azure STT + Azure Translator + say)
+
+### Added
+
+- **Typed telemetry model** (`packages/shared/index.ts`): `UtteranceOutcome`,
+  `UtteranceLatencyBreakdown`, `UtteranceTraceReport`, `PipelineSummary`,
+  `PipelinePhaseAverages`, `PipelineEvent`, `PlaybackTelemetryEvent`; bridge
+  additions `pipelineDebugEnabled`, `onPipelineEvent`, `reportPlaybackEvent`.
+- **PipelineTelemetry singleton**
+  (`src/main/services/telemetry/pipeline-telemetry.ts`): observes the
+  existing pipeline without changing behavior. Timestamps: speechStart
+  (service-detected onset), first partial, STT final, translation start/
+  complete, TTS start/ready, playback start/complete. FIFO attribution per
+  serialized stage handles overlapping utterances. Rolling window of last 20
+  completed utterances; dedupe/backpressure/rate-limit/error traces recorded
+  with outcomes but excluded from E2E stats. No credentials or raw audio in
+  telemetry — transcript text and timings only.
+- **Instrumentation points**: optional `SttHandlers.onSpeechStart` wired to
+  Azure `speechStartDetected` (mock emits burst-start proxy); STT manager
+  marks partial/final; TranslationManager marks dedupe/backpressure/start/
+  success/rate-limit/error; TtsManager marks suppression/start/ready/error;
+  AudioOutputManager resets pipeline state on stop; renderer reports real
+  playback start/complete (`source.onended`) via new telemetry IPC.
+- **Dev-only UI**: `PipelinePanel` component (visible when PIPELINE_DEBUG=1)
+  showing per-phase latencies of the last utterance, End-to-End, current
+  stage, Last/Avg/Min/Max, window count; styles in App.css.
+- **Tests**: `tests/telemetry.test.ts` — 10 deterministic tests (breakdown
+  math, exclusion outcomes, 20-cap window, FIFO overlap attribution,
+  approximate onset, reset semantics). Suite total now **64 tests green**.
+- `.env.example`: PIPELINE_DEBUG documented.
+
+### Fixed (prerequisite for mandated runtime test)
+
+- Azure STT locale `ur-PK` → `ur-IN` (`stt/manager.ts`). Real-time STT does
+  not offer ur-PK (TTS/video-translation only) — resolves websocket error
+  1007 approved in the prior investigation.
+
+### Benchmark results (Azure centralindia, acoustic loopback via speakers→mic)
+
+4 completed utterances (PIPELINE_DEBUG=1):
+
+| Phase | Observed |
+|---|---|
+| speechStart → first partial | 103 ms (1 of 4 phrases emitted partials) |
+| speechStart → STT final | 1121 / 1559 / 2234 / 2343 ms |
+| translation (Azure Translator) | 331 / 109 / 199 / 352 ms |
+| TTS (say) | 1421 / 1313 / 1353 / 1355 ms |
+| audio output (playback duration) | 1713 / 1162 / 2323 / 2009 ms |
+| End-to-end | 4593 / 4145 / 6111 / 6060 ms |
+| E2E summary | Last 6.06s · Avg 5.65s · Min 4.15s · Max 6.11s |
+
+Investigation findings: translation triggers ONLY from STT finals
+(`translation/manager.ts` ignores non-finals); partials are unreliable
+(3 of 4 phrases finalized with no partial events); dominant latency terms
+are Azure endpointing (speechStart→final ≈ 1.1–2.3s) and macOS `say`
+synthesis (~1.3s); first translation request pays ~220ms extra connection
+setup.
+
 ## 2026-08-21 — Translation provider resilience: 429 cooldown, Retry-After, in-flight dedupe, rate-limited state
 
 ### Architecture decision

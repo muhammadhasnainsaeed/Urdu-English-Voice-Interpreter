@@ -152,6 +152,107 @@ export interface SessionStartResult {
   ttsProvider?: string;
 }
 
+/* ---- Pipeline telemetry (development instrumentation) ---- */
+
+/** How an instrumented utterance left the pipeline. */
+export type UtteranceOutcome =
+  | "completed"
+  | "stt-deduped"
+  | "backpressure-dropped"
+  | "translation-failed"
+  | "rate-limited"
+  | "tts-suppressed"
+  | "tts-failed"
+  | "incomplete";
+
+/** Per-phase latency breakdown for one utterance (all values are ms). */
+export interface UtteranceLatencyBreakdown {
+  /** speechStart → first STT partial */
+  sttFirstPartialMs: number | null;
+  /** speechStart → STT final */
+  sttFinalMs: number | null;
+  /** translationStart → translationComplete */
+  translationMs: number | null;
+  /** ttsStart → ttsReady (audio buffer available) */
+  ttsMs: number | null;
+  /** playbackStart → playbackComplete */
+  audioOutputMs: number | null;
+  /** speechStart → audioOutputComplete */
+  endToEndMs: number | null;
+  /** STT final → translation complete (includes translation queue wait) */
+  sttFinalToTranslationMs: number | null;
+  /** translation complete → TTS audio ready (includes TTS queue wait) */
+  translationToTtsReadyMs: number | null;
+  /** TTS audio ready → playback start (IPC + renderer handoff) */
+  ttsReadyToAudioOutMs: number | null;
+}
+
+/**
+ * Timestamps (epoch ms, main-process clock; playback timestamps come from
+ * the renderer clock on the same machine) for one instrumented utterance.
+ * Contains transcript TEXT ONLY — never credentials or raw audio.
+ */
+export interface UtteranceTraceReport {
+  id: number;
+  outcome: UtteranceOutcome;
+  /**
+   * True when speechStart could not be observed (provider without a
+   * speech-start signal) and first-partial time was used instead.
+   */
+  speechStartApprox: boolean;
+  urdu?: string;
+  english?: string;
+  t: {
+    speechStart: number;
+    firstPartial: number | null;
+    sttFinal: number;
+    translationStart: number | null;
+    translationComplete: number | null;
+    ttsStart: number | null;
+    ttsReady: number | null;
+    audioOutputStart: number | null;
+    audioOutputComplete: number | null;
+  };
+  ms: UtteranceLatencyBreakdown;
+}
+
+/** Average per-phase latencies over the rolling window (ms, nullable). */
+export interface PipelinePhaseAverages {
+  sttFirstPartialMs: number | null;
+  sttFinalMs: number | null;
+  translationMs: number | null;
+  ttsMs: number | null;
+  audioOutputMs: number | null;
+  sttFinalToTranslationMs: number | null;
+  translationToTtsReadyMs: number | null;
+  ttsReadyToAudioOutMs: number | null;
+}
+
+export interface PipelineSummary {
+  /** Number of completed utterances kept in the rolling window. */
+  windowSize: number;
+  /** Cap of the rolling window (20). */
+  windowCap: number;
+  /** Completed end-to-end utterances observed in total. */
+  completedCount: number;
+  e2e: {
+    lastMs: number | null;
+    avgMs: number | null;
+    minMs: number | null;
+    maxMs: number | null;
+  };
+  phaseAvg: PipelinePhaseAverages;
+}
+
+export type PipelineEvent =
+  | { type: "pipeline:utterance"; utterance: UtteranceTraceReport }
+  | { type: "pipeline:summary"; summary: PipelineSummary };
+
+/** Renderer → main playback lifecycle report for output latency timing. */
+export type PlaybackTelemetryEvent =
+  | { event: "start"; bytes: number }
+  | { event: "complete"; bytes: number };
+
 /* ---- Electron API bridge ---- */
 
 export interface ElectronAPI {
@@ -178,4 +279,8 @@ export interface ElectronAPI {
   startSession: () => Promise<SessionStartResult>;
   stopSession: () => Promise<void>;
   onSessionEvent: (handler: (event: SessionEvent) => void) => () => void;
+  /** True when PIPELINE_DEBUG=1 — gates the dev-only performance panel. */
+  pipelineDebugEnabled: boolean;
+  onPipelineEvent: (handler: (event: PipelineEvent) => void) => () => void;
+  reportPlaybackEvent: (event: PlaybackTelemetryEvent) => void;
 }

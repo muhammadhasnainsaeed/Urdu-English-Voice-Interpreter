@@ -2,6 +2,13 @@ export interface SttHandlers {
   onPartial: (text: string) => void;
   onFinal: (text: string) => void;
   onError: (message: string) => void;
+  /**
+   * Optional voice-onset signal used only by latency telemetry. Providers
+   * with service-side speech detection (Azure) emit it per detected
+   * phrase; providers without one simply omit it and telemetry falls back
+   * to first-partial time.
+   */
+  onSpeechStart?: () => void;
 }
 
 export interface SttProvider {

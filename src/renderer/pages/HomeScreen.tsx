@@ -13,6 +13,7 @@ import type {
 } from "@shared/index";
 import MicrophonePanel from "../components/MicrophonePanel";
 import SttPanel from "../components/SttPanel";
+import PipelinePanel from "../components/PipelinePanel";
 
 const SESSION_STATUS_LABELS: Record<SessionStatus, string> = {
   idle: "Ready",
@@ -74,6 +75,15 @@ export default function HomeScreen(props: HomeScreenProps) {
   const meetingStarting = props.sessionStatus === "starting";
   const meetingStopping = props.sessionStatus === "stopping";
   const meetingBusy = meetingStarting || meetingStopping;
+
+  // Live pipeline stage for the dev performance panel.
+  const currentStage = !meetingActive
+    ? "Idle"
+    : props.ttsCurrentText
+      ? "Speaking"
+      : props.sttPartialText
+        ? "Recognizing"
+        : "Listening";
 
   return (
     <div className="screen home-screen">
@@ -168,6 +178,8 @@ export default function HomeScreen(props: HomeScreenProps) {
         audioOutputSelectedId={props.audioOutputSelectedId}
         onSelectAudioOutput={props.onSelectAudioOutput}
       />
+
+      <PipelinePanel currentStage={currentStage} />
 
       <div className="field">
         <label>Input Language</label>

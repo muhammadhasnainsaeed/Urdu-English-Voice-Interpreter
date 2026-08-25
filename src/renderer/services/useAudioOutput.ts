@@ -180,7 +180,17 @@ export function useAudioOutput() {
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(ctx.destination);
-        source.onended = () => resolve();
+        source.onended = () => {
+          window.electron.reportPlaybackEvent({
+            event: "complete",
+            bytes: data.byteLength,
+          });
+          resolve();
+        };
+        window.electron.reportPlaybackEvent({
+          event: "start",
+          bytes: data.byteLength,
+        });
         source.start();
       });
     }

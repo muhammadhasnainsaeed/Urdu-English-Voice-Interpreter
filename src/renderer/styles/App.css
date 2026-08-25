@@ -544,3 +544,58 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ---- Pipeline performance panel (development-only) ---- */
+
+.pipeline-panel {
+  background: #1a1d24;
+  border: 1px solid #2e3340;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.pipeline-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.pipeline-table td {
+  padding: 3px 0;
+  color: #c7ccd6;
+}
+
+.pipeline-table td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #e8ebf0;
+}
+
+.pipeline-divider td {
+  border-top: 1px solid #2e3340;
+  padding: 0;
+  height: 6px;
+}
+
+.pipeline-e2e td {
+  font-weight: 700;
+  color: #4ade80;
+}
+
+.pipeline-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 12px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #9aa0ac;
+  font-variant-numeric: tabular-nums;
+}
+
+.pipeline-footnote {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #6b7280;
+}

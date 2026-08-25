@@ -1,6 +1,11 @@
 import * as sdk from "microsoft-cognitiveservices-speech-sdk";
 import type { SttHandlers, SttProvider } from "../provider";
 
+// TEMPORARY debug logging for investigating websocket error 1007
+// ("Invalid 'language' query parameter"). Remove once resolved.
+// NEVER logs the API key.
+const AZURE_STT_DEBUG = process.env.PIPELINE_DEBUG === "1";
+
 function isNonEmpty(text: string | undefined): text is string {
   return typeof text === "string" && text.trim().length > 0;
 }
@@ -19,6 +24,13 @@ export function createAzureSttProvider(
     async start(handlers: SttHandlers) {
       const speechConfig = sdk.SpeechConfig.fromSubscription(key, region);
       speechConfig.speechRecognitionLanguage = language;
+      if (AZURE_STT_DEBUG) {
+        // NEVER log the API key.
+        console.log(
+          `[AZURE-STT][DEBUG] region="${region}" language="${language}" ` +
+            `endpointId="${speechConfig.endpointId || "(none — standard model)"}"`
+        );
+      }
 
       pushStream = sdk.AudioInputStream.createPushStream();
       const audioConfig = sdk.AudioConfig.fromStreamInput(pushStream);
@@ -27,6 +39,11 @@ export function createAzureSttProvider(
       recognizer.recognizing = (_sender, event) => {
         const text = event.result.text;
         if (isNonEmpty(text)) handlers.onPartial(text.trim());
+      };
+
+      // Service-side voice onset — used only for latency telemetry.
+      recognizer.speechStartDetected = () => {
+        handlers.onSpeechStart?.();
       };
 
       recognizer.recognized = (_sender, event) => {

@@ -7,6 +7,8 @@ import type {
   AudioOutputStartResult,
   ElectronAPI,
   PermissionStatus,
+  PipelineEvent,
+  PlaybackTelemetryEvent,
   SessionEvent,
   SessionStartResult,
   SttEvent,
@@ -102,6 +104,20 @@ const api: ElectronAPI = {
     return () => {
       ipcRenderer.removeListener("session:event", listener);
     };
+  },
+
+  /* Pipeline telemetry (development-only) */
+  pipelineDebugEnabled: process.env.PIPELINE_DEBUG === "1",
+  onPipelineEvent: (handler: (event: PipelineEvent) => void) => {
+    const listener = (_event: unknown, payload: PipelineEvent) =>
+      handler(payload);
+    ipcRenderer.on("pipeline:event", listener);
+    return () => {
+      ipcRenderer.removeListener("pipeline:event", listener);
+    };
+  },
+  reportPlaybackEvent: (event: PlaybackTelemetryEvent): void => {
+    ipcRenderer.send("telemetry:playback", event);
   },
 };
 

@@ -146,6 +146,21 @@ Status: **COMPLETE** (verified on 2026-08-17; regression fixed + runtime-verifie
   MyMemory remains suitable for development/free-tier testing only; production traffic
   should use azure or similar. 11 resilience tests in `tests/translation-resilience.test.ts`.
 - **Pipeline status types** — `SessionStatus`, `PipelineStageStatus`, `SessionEvent` in shared types.
+- **Pipeline latency telemetry (2026-08-25, dev-only)** — `PipelineTelemetry`
+  singleton (`src/main/services/telemetry/pipeline-telemetry.ts`) observes the
+  existing pipeline: speechStart (Azure `speechStartDetected`), first partial,
+  STT final, translation start/complete, TTS start/ready, renderer playback
+  start/complete. Rolling window of last 20 completed utterances with
+  Last/Avg/Min/Max + per-phase averages; dedupe/backpressure/rate-limit/error
+  traces get outcomes but are excluded from E2E stats. Typed model in shared
+  types; new additive bridge methods (`pipelineDebugEnabled`,
+  `onPipelineEvent`, `reportPlaybackEvent`). Renderer shows the
+  "Pipeline Performance" panel only when `PIPELINE_DEBUG=1`. 10 unit tests in
+  `tests/telemetry.test.ts` (suite total 64 green). Azure STT locale fixed to
+  `ur-IN` (ur-PK unsupported for real-time STT — websocket error 1007).
+  Measured benchmark (Azure→Azure→say): E2E ≈ 4.1–6.1 s; dominant costs =
+  Azure endpointing (1.1–2.3 s) and say synthesis (~1.3 s); translation
+  109–352 ms.
 - **Tests** — `tests/session.test.ts`: 10 tests covering session lifecycle, translation race
   condition, translation serialization, TTS queue bounds, error recovery.
 

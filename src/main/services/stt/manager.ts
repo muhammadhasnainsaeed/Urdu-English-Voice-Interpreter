@@ -1,6 +1,7 @@
 import type { SttEvent, SttStartResult } from "@shared/index";
 import type { SttHandlers, SttProvider } from "./provider";
 import { createMockSttProvider } from "./providers/mock";
+import { pipelineTelemetry } from "../telemetry/pipeline-telemetry";
 
 function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -19,7 +20,9 @@ async function createConfiguredProvider(): Promise<SttProvider | null> {
     const region = process.env.AZURE_SPEECH_REGION;
     if (!key || !region) return null;
     const { createAzureSttProvider } = await import("./providers/azure");
-    return createAzureSttProvider(key, region, "ur-PK");
+    // ur-IN is the only Urdu locale Azure real-time STT supports
+    // (ur-PK exists for TTS/video translation only — websocket error 1007).
+    return createAzureSttProvider(key, region, "ur-IN");
   }
 
   if (providerName === "whisper") {
@@ -54,8 +57,15 @@ class SttSession {
 
     this.provider = provider;
     this.handlers = {
-      onPartial: (text) => emit({ type: "partial", text }),
-      onFinal: (text) => emit({ type: "final", text }),
+      onSpeechStart: () => pipelineTelemetry.onSpeechStart(),
+      onPartial: (text) => {
+        pipelineTelemetry.onFirstPartial();
+        emit({ type: "partial", text });
+      },
+      onFinal: (text) => {
+        pipelineTelemetry.onSttFinal(text);
+        emit({ type: "final", text });
+      },
       onError: (message) => {
         emit({ type: "error", message });
         this.provider = null;

@@ -37,6 +37,8 @@ export function createMockSttProvider(): SttProvider {
       if (!handlers || cycleRunning) return;
       cycleRunning = true;
       step = 0;
+      // Voice-onset proxy for latency telemetry (first chunk of a burst).
+      handlers.onSpeechStart?.();
 
       const emit = () => {
         if (!handlers) {

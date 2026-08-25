@@ -2,6 +2,7 @@ import type { TranslationEvent, TranslationStartResult } from "@shared/index";
 import type { TranslationProvider } from "./provider";
 import { RateLimitError, createTranslationProvider } from "./provider";
 import { parseWindowMs } from "./config";
+import { pipelineTelemetry } from "../telemetry/pipeline-telemetry";
 
 function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -121,6 +122,7 @@ export class TranslationManager {
           text
         );
         this.lastFinalTime = now;
+        pipelineTelemetry.markSttDeduped();
         return;
       }
       this.lastFinalKey = key;
@@ -131,6 +133,7 @@ export class TranslationManager {
     if (this.pendingCount >= TranslationManager.MAX_PENDING) {
       this.pendingTexts.shift();
       this.pendingCount--;
+      pipelineTelemetry.markBackpressureDropped();
     }
 
     this.pendingTexts.push(text);
@@ -147,6 +150,7 @@ export class TranslationManager {
     this.pendingCount = 0;
     this.lastFinalKey = "";
     this.lastFinalTime = 0;
+    pipelineTelemetry.resetPipeline();
   }
 
   private async processQueue(): Promise<void> {
@@ -164,8 +168,10 @@ export class TranslationManager {
       if (!emit || !provider) break;
 
       try {
+        pipelineTelemetry.beginTranslation();
         const english = await provider.translate(text);
         log("translate result:", english);
+        pipelineTelemetry.endTranslationSuccess(english);
         if (this.active && this.emit === emit) {
           emit({ type: "translation:text", urdu: text, english });
         }
@@ -175,6 +181,7 @@ export class TranslationManager {
           // the failed item is DROPPED (not queued/retried), so cooldown
           // expiry never replays stale transcripts.
           log("rate-limited:", errMessage(err));
+          pipelineTelemetry.endTranslationRateLimited();
           if (this.active && this.emit === emit) {
             emit({
               type: "translation:rate-limited",
@@ -183,6 +190,7 @@ export class TranslationManager {
           }
         } else {
           log("translate ERROR:", errMessage(err));
+          pipelineTelemetry.endTranslationError();
           if (this.active && this.emit === emit) {
             emit({ type: "translation:error", message: errMessage(err) });
           }

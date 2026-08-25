@@ -2,6 +2,7 @@ import type { TtsEvent, TtsStartResult } from "@shared/index";
 import type { TtsProvider } from "./provider";
 import { createTtsProvider } from "./provider";
 import type { AudioOutputManager } from "../audio-output/manager";
+import { pipelineTelemetry } from "../telemetry/pipeline-telemetry";
 
 const DEFAULT_DEDUPE_WINDOW_MS = 2000;
 const MAX_TTS_QUEUE = 5;
@@ -118,6 +119,7 @@ export class TtsManager {
       now - this.lastSpokenTime < this.dedupeWindowMs
     ) {
       log(`DEDUPED (within ${this.dedupeWindowMs}ms):`, trimmed);
+      pipelineTelemetry.markTtsSuppressed();
       return;
     }
 
@@ -143,6 +145,7 @@ export class TtsManager {
     this.queue = [];
     this.lastSpokenText = "";
     this.lastSpokenTime = 0;
+    pipelineTelemetry.resetPipeline();
     if (provider) {
       provider.stop().catch(() => {});
     }
@@ -165,13 +168,16 @@ export class TtsManager {
 
     try {
       log("synthesize:", text);
+      pipelineTelemetry.beginTts();
       const audioChunk = await this.provider.synthesize(text);
+      pipelineTelemetry.endTtsSuccess();
       log("writeAudio bytes:", audioChunk.data.byteLength);
       await this.audioOutput.writeAudio(audioChunk);
       if (this.emit) {
         this.emit({ type: "tts:spoken", text });
       }
     } catch (err) {
+      pipelineTelemetry.endTtsError();
       if (this.emit) {
         this.emit({ type: "tts:error", message: errMessage(err) });
       }

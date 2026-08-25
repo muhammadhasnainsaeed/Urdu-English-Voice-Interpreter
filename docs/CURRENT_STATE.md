@@ -146,6 +146,25 @@ Status: **COMPLETE** (verified on 2026-08-17; regression fixed + runtime-verifie
   MyMemory remains suitable for development/free-tier testing only; production traffic
   should use azure or similar. 11 resilience tests in `tests/translation-resilience.test.ts`.
 - **Pipeline status types** — `SessionStatus`, `PipelineStageStatus`, `SessionEvent` in shared types.
+- **Milestone 8 — Low-latency interpretation (2026-08-25, complete)**:
+  - *Incremental translation*: at most one interim request per utterance
+    from stabilized partials (≥4 words, ≥700 ms stable, unchanged text
+    skipped, silence never sent, `PARTIAL_TRANSLATION_ENABLED` gate);
+    final path authoritative, superseded interims dropped.
+  - *TTS preemption*: new utterances abort in-flight synthesis
+    (`AbortSignal` in `TtsProvider`; `say` spawn-based kill), clear the
+    queue, cancel renderer playback (`audio-output:cancel`), emit
+    `tts:interrupted`. Dedupe precedes preemption.
+  - *Azure segmentation*: `AZURE_STT_SEGMENTATION_SILENCE_MS`
+    (100–5000 clamped; benchmark 300) — finals ~0.86–1.13 s vs 1.1–2.3 s.
+  - *Telemetry*: `firstAudioMs` + `interimFirstAudioMs`, playbackId
+    correlation (0 = interim) so interim playback feeds First Audio
+    without consuming FIFO slots; outcome `tts-interrupted`.
+  - *Measured (Azure→Azure→say loopback)*: First Audio 2.46–4.03 s,
+    E2E avg 4.82 s vs baseline avg 5.65 s (~15% faster); preemption
+    verified in logs. Interim translation untriggered in benchmark due to
+    sparse Azure partials over acoustic loopback (honest limitation;
+    real-mic behavior expected denser).
 - **Pipeline latency telemetry (2026-08-25, dev-only)** — `PipelineTelemetry`
   singleton (`src/main/services/telemetry/pipeline-telemetry.ts`) observes the
   existing pipeline: speechStart (Azure `speechStartDetected`), first partial,

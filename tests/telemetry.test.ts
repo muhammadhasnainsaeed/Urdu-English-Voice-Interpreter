@@ -51,9 +51,9 @@ test("completed utterance produces full latency breakdown", () => {
   clock.advance(310);
   tel.endTtsSuccess();
   clock.advance(20);
-  tel.reportPlayback({ event: "start", bytes: 1000 });
+  tel.reportPlayback({ event: "start", bytes: 1000, playbackId: 1 });
   clock.advance(1500);
-  tel.reportPlayback({ event: "complete", bytes: 1000 });
+  tel.reportPlayback({ event: "complete", bytes: 1000, playbackId: 1 });
 
   const utteranceEvents = events.filter(
     (e): e is Extract<PipelineEvent, { type: "pipeline:utterance" }> =>
@@ -329,4 +329,126 @@ test("backpressure-dropped traces bypass downstream stages", () => {
       ["newer", "completed"],
     ]
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* M8: interim (partial-based) playback attribution                    */
+/* ------------------------------------------------------------------ */
+
+function completeFinalPath(
+  tel: PipelineTelemetry,
+  clock: ReturnType<typeof makeClock>
+) {
+  clock.advance(10);
+  tel.beginTranslation();
+  clock.advance(180);
+  tel.endTranslationSuccess("en");
+  clock.advance(15);
+  tel.beginTts();
+  clock.advance(310);
+  tel.endTtsSuccess();
+  clock.advance(20);
+  tel.reportPlayback({ event: "start", bytes: 1000, playbackId: 1 });
+  clock.advance(1500);
+  tel.reportPlayback({ event: "complete", bytes: 1000, playbackId: 1 });
+}
+
+test("interim playback before final feeds First Audio without consuming FIFO", () => {
+  const clock = makeClock();
+  const tel = new PipelineTelemetry(clock.now);
+  const events = collect(tel);
+
+  tel.onSpeechStart(); // t=1_000_000
+  clock.advance(120);
+  tel.onFirstPartial();
+  // Interim audio starts playing while the user is still speaking.
+  clock.advance(900); // t=+1020
+  tel.reportPlayback({ event: "start", bytes: 500, playbackId: 0 });
+  tel.reportPlayback({ event: "complete", bytes: 500, playbackId: 0 });
+  clock.advance(400);
+  tel.onSttFinal("سلام");
+  completeFinalPath(tel, clock);
+
+  const report = events
+    .filter((e): e is Extract<PipelineEvent, { type: "pipeline:utterance" }> => e.type === "pipeline:utterance")
+    .map((e) => e.utterance)[0];
+  assert.equal(report.outcome, "completed");
+  assert.equal(report.ms.interimFirstAudioMs, 1020, "interim timestamp recorded");
+  assert.equal(report.ms.firstAudioMs, 1020, "First Audio uses earliest playback");
+  // Final-path playback start still attributed normally.
+  assert.equal(report.ms.audioOutputMs, 1500);
+});
+
+test("interim playback in race window after final still adopted", () => {
+  const clock = makeClock();
+  const tel = new PipelineTelemetry(clock.now);
+  const events = collect(tel);
+
+  tel.onSpeechStart();
+  clock.advance(200);
+  tel.onSttFinal("سلام"); // intake closed here
+  // Interim chunk playback-start arrives after the final.
+  clock.advance(50);
+  tel.reportPlayback({ event: "start", bytes: 500, playbackId: 0 });
+  completeFinalPath(tel, clock);
+
+  const report = events
+    .filter((e): e is Extract<PipelineEvent, { type: "pipeline:utterance" }> => e.type === "pipeline:utterance")
+    .map((e) => e.utterance)[0];
+  assert.equal(report.ms.interimFirstAudioMs, 250);
+  assert.equal(report.ms.firstAudioMs, 250);
+});
+
+test("interim playback events never consume FIFO trace slots", () => {
+  const clock = makeClock();
+  const tel = new PipelineTelemetry(clock.now);
+  const events = collect(tel);
+
+  tel.onSttFinal("one");
+  // Interim noise between finals — must not shift the queue.
+  tel.reportPlayback({ event: "start", bytes: 10, playbackId: 0 });
+  tel.reportPlayback({ event: "complete", bytes: 10, playbackId: 0 });
+  tel.onSttFinal("two");
+
+  tel.beginTranslation(); // MUST pop "one"
+  tel.endTranslationSuccess("one-en");
+  tel.beginTts();
+  tel.endTtsSuccess();
+  tel.reportPlayback({ event: "start", bytes: 1, playbackId: 1 });
+  tel.reportPlayback({ event: "complete", bytes: 1, playbackId: 1 });
+
+  tel.beginTranslation(); // pops "two"
+  tel.endTranslationSuccess("two-en");
+  tel.beginTts();
+  tel.endTtsSuccess();
+  tel.reportPlayback({ event: "start", bytes: 2, playbackId: 2 });
+  tel.reportPlayback({ event: "complete", bytes: 2, playbackId: 2 });
+
+  const reports = events
+    .filter((e): e is Extract<PipelineEvent, { type: "pipeline:utterance" }> => e.type === "pipeline:utterance")
+    .map((e) => e.utterance);
+  assert.deepEqual(
+    reports.map((r) => [r.urdu, r.outcome]),
+    [
+      ["one", "completed"],
+      ["two", "completed"],
+    ]
+  );
+});
+
+test("no interim → First Audio equals final playback start (regression)", () => {
+  const clock = makeClock();
+  const tel = new PipelineTelemetry(clock.now);
+  const events = collect(tel);
+
+  tel.onSpeechStart();
+  clock.advance(300);
+  tel.onSttFinal("سلام");
+  completeFinalPath(tel, clock);
+
+  const report = events
+    .filter((e): e is Extract<PipelineEvent, { type: "pipeline:utterance" }> => e.type === "pipeline:utterance")
+    .map((e) => e.utterance)[0];
+  assert.equal(report.ms.interimFirstAudioMs, null);
+  assert.equal(report.ms.firstAudioMs, 835); // 300 +10 +180 +15 +310 +20
 });

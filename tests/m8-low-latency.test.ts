@@ -365,3 +365,33 @@ test("say synthesize rejects immediately when signal already aborted", async () 
     /pre-aborted/
   );
 });
+
+test("TTS assigns playbackId 0 to interim chunks and sequence ids to finals", async () => {
+  const saved = process.env;
+  process.env.TTS_DEDUPE_WINDOW_MS = "0";
+  try {
+    const rec = makeSlowTtsProvider();
+    const tts = new TtsManager(0);
+    const events: TtsEvent[] = [];
+    const written: Array<number | null | undefined> = [];
+    await tts.start((e) => events.push(e), null as never, rec.provider);
+    (
+      tts as unknown as { audioOutput: unknown }
+    ).audioOutput = {
+      writeAudio: async (chunk: AudioChunk) => {
+        written.push(chunk.playbackId);
+      },
+      cancelPlayback: () => {},
+    };
+
+    tts.onTranslationText("interim draft", true);
+    await sleep(320); // interim completes
+    tts.onTranslationText("final text");
+    await sleep(320); // final completes
+
+    assert.deepEqual(written, [0, 1]);
+    tts.stop();
+  } finally {
+    process.env = saved;
+  }
+});

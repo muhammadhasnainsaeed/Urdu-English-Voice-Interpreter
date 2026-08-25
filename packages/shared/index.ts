@@ -111,6 +111,12 @@ export interface AudioFormat {
 export interface AudioChunk {
   data: ArrayBuffer;
   format: AudioFormat;
+  /**
+   * Telemetry correlation id assigned by TtsManager. 0 marks an INTERIM
+   * (partial-based) chunk whose playback must not consume normal FIFO
+   * stage attribution; final-path chunks receive 1,2,3… Absent = legacy.
+   */
+  playbackId?: number;
 }
 
 export interface AudioOutputDevice {
@@ -195,6 +201,8 @@ export interface UtteranceLatencyBreakdown {
   ttsReadyToAudioOutMs: number | null;
   /** Speech start → FIRST audible playback (primary perceived-latency metric) */
   firstAudioMs: number | null;
+  /** Speech start → interim (partial-based) audio playback, when one occurred */
+  interimFirstAudioMs: number | null;
 }
 
 /**
@@ -237,6 +245,7 @@ export interface PipelinePhaseAverages {
   translationToTtsReadyMs: number | null;
   ttsReadyToAudioOutMs: number | null;
   firstAudioMs: number | null;
+  interimFirstAudioMs: number | null;
 }
 
 export interface PipelineSummary {
@@ -261,8 +270,8 @@ export type PipelineEvent =
 
 /** Renderer → main playback lifecycle report for output latency timing. */
 export type PlaybackTelemetryEvent =
-  | { event: "start"; bytes: number }
-  | { event: "complete"; bytes: number };
+  | { event: "start"; bytes: number; playbackId?: number | null }
+  | { event: "complete"; bytes: number; playbackId?: number | null };
 
 /* ---- Electron API bridge ---- */
 

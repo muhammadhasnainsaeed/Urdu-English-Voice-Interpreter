@@ -25,7 +25,7 @@ export function useAudioOutput() {
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const currentSinkRef = useRef<string>("");
-  const queueRef = useRef<ArrayBuffer[]>([]);
+  const queueRef = useRef<Array<{ data: ArrayBuffer; playbackId: number | null }>>([]);
   const playingRef = useRef(false);
   const sampleRateRef = useRef(24000);
   /** Set while a source is playing so cancellation can stop it mid-flight. */
@@ -166,7 +166,9 @@ export function useAudioOutput() {
     playingRef.current = true;
 
     while (queueRef.current.length > 0) {
-      const data = queueRef.current.shift()!;
+      const item = queueRef.current.shift()!;
+      const data = item.data;
+      const playbackId = item.playbackId;
       const sampleRate = sampleRateRef.current;
 
       const ctx = await ensureContext(sampleRate);
@@ -191,6 +193,7 @@ export function useAudioOutput() {
             window.electron.reportPlaybackEvent({
               event: "complete",
               bytes: data.byteLength,
+              playbackId: playbackId,
             });
           }
           resolve();
@@ -199,6 +202,7 @@ export function useAudioOutput() {
         window.electron.reportPlaybackEvent({
           event: "start",
           bytes: data.byteLength,
+          playbackId: playbackId,
         });
         source.start();
         // Cancellation: stop the source; onended still fires and resolves.
@@ -218,9 +222,9 @@ export function useAudioOutput() {
 
   useEffect(() => {
     const unsub = window.electron.onAudioData(
-      (chunk: { data: ArrayBuffer; format: AudioFormat }) => {
+      (chunk: { data: ArrayBuffer; format: AudioFormat; playbackId?: number | null }) => {
         sampleRateRef.current = chunk.format.sampleRate;
-        queueRef.current.push(chunk.data);
+        queueRef.current.push({ data: chunk.data, playbackId: chunk.playbackId ?? null });
         playFromQueue();
       }
     );

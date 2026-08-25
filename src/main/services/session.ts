@@ -108,7 +108,7 @@ export class SessionManager {
       this.sendToRenderer("translation:event", event);
       if (event.type === "translation:text") {
         log("TRANSLATION", "chaining to TTS:", (event as { english: string }).english);
-        ttsManager.onTranslationText(event.english);
+        ttsManager.onTranslationText(event.english, event.interim === true);
       }
     };
   }

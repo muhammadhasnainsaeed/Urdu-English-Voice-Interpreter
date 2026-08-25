@@ -5,7 +5,7 @@ export const translationManager = new TranslationManager();
 
 export function registerTranslationIpc(
   getWindow: () => BrowserWindow | null,
-  onTranslationText?: (english: string) => void
+  onTranslationText?: (english: string, interim: boolean) => void
 ): void {
   ipcMain.handle("translation:start", () => {
     const emit = (event: import("@shared/index").TranslationEvent) => {
@@ -14,7 +14,7 @@ export function registerTranslationIpc(
         win.webContents.send("translation:event", event);
       }
       if (onTranslationText && event.type === "translation:text") {
-        onTranslationText(event.english);
+        onTranslationText(event.english, event.interim === true);
       }
     };
     return translationManager.start(emit);

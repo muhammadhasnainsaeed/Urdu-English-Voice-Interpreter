@@ -21,6 +21,7 @@ export function createSystemSpeakerOutput(
         win.webContents.send("audio-output:audio", {
           data: chunk.data,
           format: chunk.format,
+          playbackId: chunk.playbackId ?? null,
         });
       }
     },

@@ -1,9 +1,6 @@
 import * as sdk from "microsoft-cognitiveservices-speech-sdk";
 import type { SttHandlers, SttProvider } from "../provider";
 
-// TEMPORARY debug logging for investigating websocket error 1007
-// ("Invalid 'language' query parameter"). Remove once resolved.
-// NEVER logs the API key.
 const AZURE_STT_DEBUG = process.env.PIPELINE_DEBUG === "1";
 
 /**
@@ -65,9 +62,9 @@ export function createAzureSttProvider(
       }
 
       if (AZURE_STT_DEBUG) {
-        // NEVER log the API key.
+        // Startup config visibility for benchmarks. NEVER logs the API key.
         console.log(
-          `[AZURE-STT][DEBUG] region="${region}" language="${language}" ` +
+          `[AZURE-STT] region="${region}" language="${language}" ` +
             `endpointId="${speechConfig.endpointId || "(none — standard model)"}" ` +
             `segmentationSilence=${segmentationSilenceMs ?? "(service default)"}ms`
         );

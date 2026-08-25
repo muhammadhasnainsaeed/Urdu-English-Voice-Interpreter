@@ -3,6 +3,63 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-25 — Milestone 8: low-latency interpretation (incremental translation, TTS preemption, segmentation)
+
+### Added
+
+- **Controlled incremental translation**
+  (`src/main/services/translation/manager.ts`): stable STT partials may
+  trigger at most ONE interim provider request per utterance. Guards:
+  `PARTIAL_TRANSLATION_MIN_WORDS` (default 4),
+  `PARTIAL_TRANSLATION_STABLE_MS` debounce (default 700), normalized-text
+  change check, pipeline-busy check, silence never sent,
+  `PARTIAL_TRANSLATION_ENABLED=false` disables. Final results remain fully
+  authoritative; an in-flight interim is dropped when its final arrives.
+  Interim failures are silent by design; rate-limit cooldowns still run.
+- **TTS preemption / simple cancellation** (`tts/manager.ts`,
+  `audio-output/*`, renderer): every accepted new utterance aborts
+  in-flight synthesis (`AbortSignal` threaded through the `TtsProvider`
+  interface; `say` child process killed), clears the pending queue,
+  cancels renderer playback via the new `audio-output:cancel` channel, and
+  emits `tts:interrupted`. Dedupe runs BEFORE preemption so duplicate text
+  never interrupts playback. `say` provider rewritten from execFile to
+  spawn for real cancellation; pre-aborted signals reject before spawn.
+- **Azure STT segmentation config** (`stt/providers/azure.ts`):
+  `AZURE_STT_SEGMENTATION_SILENCE_MS` (validated/clamped to the official
+  100–5000 ms range by pure helper `resolveSegmentationSilenceMs`; unset =
+  service default). Benchmark value: 300.
+- **Telemetry — First Audio**: explicit `firstAudioMs` (Speech Start →
+  first audible playback) plus `interimFirstAudioMs` in breakdowns and
+  phase averages; panel row "First Audio". New outcome `tts-interrupted`.
+- **Interim playback attribution fix**: TTS chunks now carry a
+  `playbackId` (0 = interim path); renderer echoes it in playback
+  telemetry. Interim events feed First Audio via
+  `markInterimAudioReady()` and never consume FIFO trace slots.
+
+### Measured benchmark (Azure STT ur-IN + Azure Translator + say, acoustic loopback)
+
+Config: `AZURE_STT_SEGMENTATION_SILENCE_MS=300`, partial translation on.
+
+| Metric | Baseline (pre-M8) | M8 |
+|---|---|---|
+| STT Final | 1.1–2.3 s | 0.86–1.13 s (long sentence: 2.31 s) |
+| Translation | 109–352 ms | 190–449 ms (+2.09 s cold first request) |
+| TTS (say) | 1.31–1.42 s | 1.34–1.56 s |
+| First Audio | 2.88–4.05 s | 2.46–4.03 s |
+| End-to-End | 4.15–6.11 s (avg 5.65 s) | 3.79–5.88 s (avg 4.82 s) |
+
+Preemption verified live in logs (`interrupt: aborting in-flight
+synthesis` → `synthesize aborted: interrupted by new utterance` → next
+utterance synthesizes immediately). Interim translation did NOT trigger in
+the loopback benchmark because Azure emitted no partials beyond the first
+phrase (1 of 5 finals had any partial); reported honestly, not faked.
+
+### Notes
+
+- One session test modernized ("error does not block next") to match M8
+  preemption semantics; mock audio output gained `cancelPlayback()`.
+- Suite total 82 tests green; type-check + build pass.
+
 ## 2026-08-25 — Pipeline latency telemetry + benchmark (Azure STT + Azure Translator + say)
 
 ### Added

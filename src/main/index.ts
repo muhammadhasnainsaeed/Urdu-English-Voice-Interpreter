@@ -47,7 +47,7 @@ app.whenReady().then(() => {
   );
   registerTranslationIpc(
     () => mainWindow,
-    (english) => ttsManager.onTranslationText(english)
+    (english, interim) => ttsManager.onTranslationText(english, interim)
   );
   registerTtsIpc(() => mainWindow, audioOutputManager);
   registerSessionIpc(() => mainWindow);

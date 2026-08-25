@@ -39,6 +39,8 @@ interface Trace {
   urdu?: string;
   english?: string;
   t: UtteranceTraceReport["t"];
+  /** Earliest interim (partial-based) playback start, when one occurred. */
+  interimFirstAudioAt?: number | null;
 }
 
 function emptyBreakdown(): UtteranceLatencyBreakdown {
@@ -53,6 +55,7 @@ function emptyBreakdown(): UtteranceLatencyBreakdown {
     translationToTtsReadyMs: null,
     ttsReadyToAudioOutMs: null,
     firstAudioMs: null,
+    interimFirstAudioMs: null,
   };
 }
 
@@ -73,6 +76,7 @@ export class PipelineTelemetry {
     translationToTtsReadyMs: 0,
     ttsReadyToAudioOutMs: 0,
     firstAudioMs: 0,
+    interimFirstAudioMs: 0,
   };
   private phaseCounts = {
     sttFirstPartialMs: 0,
@@ -84,6 +88,7 @@ export class PipelineTelemetry {
     translationToTtsReadyMs: 0,
     ttsReadyToAudioOutMs: 0,
     firstAudioMs: 0,
+    interimFirstAudioMs: 0,
   };
   private totalCompleted = 0;
   private lastE2E: number | null = null;
@@ -93,7 +98,13 @@ export class PipelineTelemetry {
     speechStartAt: number;
     speechStartApprox: boolean;
     firstPartialAt: number | null;
+    interimFirstAudioAt: number | null;
   } | null = null;
+  /**
+   * Interim playback observed after the intake was already closed by a final
+   * but before that final's own trace could adopt it (race window).
+   */
+  private pendingInterimFirstAudioAt: number | null = null;
 
   /** Traces accepted for downstream processing, per stage. */
   private awaitingTranslation: Trace[] = [];
@@ -141,6 +152,7 @@ export class PipelineTelemetry {
         speechStartAt: this.now(),
         speechStartApprox: false,
         firstPartialAt: null,
+        interimFirstAudioAt: null,
       };
       this.debug("speechStart");
     }
@@ -155,6 +167,7 @@ export class PipelineTelemetry {
         speechStartAt: ts,
         speechStartApprox: true,
         firstPartialAt: ts,
+        interimFirstAudioAt: null,
       };
       return;
     }
@@ -171,14 +184,22 @@ export class PipelineTelemetry {
       speechStartAt: ts,
       speechStartApprox: true,
       firstPartialAt: null,
+      interimFirstAudioAt: null,
     };
     this.intake = null;
+
+    // Adopt any interim playback observed in the race window between the
+    // final closing the intake and this trace being created.
+    const interimFirstAudioAt =
+      intake.interimFirstAudioAt ?? this.pendingInterimFirstAudioAt;
+    this.pendingInterimFirstAudioAt = null;
 
     const trace: Trace = {
       id: this.nextId++,
       outcome: "incomplete",
       speechStartApprox: intake.speechStartApprox,
       urdu,
+      interimFirstAudioAt,
       t: {
         speechStart: intake.speechStartAt,
         firstPartial: intake.firstPartialAt,
@@ -283,7 +304,33 @@ export class PipelineTelemetry {
 
   /* ---------------------- Audio output ---------------------- */
 
+  /**
+   * An INTERIM (partial-based) chunk started playing. Recorded against the
+   * current intake without consuming FIFO attribution; if the intake was
+   * already closed, held pending for the next final's trace.
+   */
+  markInterimAudioReady(): void {
+    const ts = this.now();
+    if (this.intake) {
+      if (this.intake.interimFirstAudioAt === null) {
+        this.intake.interimFirstAudioAt = ts;
+        this.debug("interimFirstAudio");
+      }
+    } else if (this.pendingInterimFirstAudioAt === null) {
+      this.pendingInterimFirstAudioAt = ts;
+      this.debug("interimFirstAudio (pending)");
+    }
+  }
+
   reportPlayback(event: PlaybackTelemetryEvent): void {
+    // Interim chunks carry playbackId 0 — they must never consume a FIFO
+    // trace slot; their start timestamp feeds the true First-Audio metric.
+    if (event.playbackId === 0) {
+      if (event.event === "start") {
+        this.markInterimAudioReady();
+      }
+      return;
+    }
     if (event.event === "start") {
       const trace = this.awaitingAudioOut.shift() ?? this.inFlightAudioOut;
       if (!trace) return;
@@ -323,6 +370,7 @@ export class PipelineTelemetry {
     this.inFlightTts = null;
     this.inFlightAudioOut = null;
     this.intake = null;
+    this.pendingInterimFirstAudioAt = null;
   }
 
   getSummary(): PipelineSummary {
@@ -378,6 +426,10 @@ export class PipelineTelemetry {
           this.phaseSums.firstAudioMs,
           this.phaseCounts.firstAudioMs
         ),
+        interimFirstAudioMs: avg(
+          this.phaseSums.interimFirstAudioMs,
+          this.phaseCounts.interimFirstAudioMs
+        ),
       },
     };
   }
@@ -412,8 +464,24 @@ export class PipelineTelemetry {
     if (t.ttsReady !== null && t.audioOutputStart !== null) {
       ms.ttsReadyToAudioOutMs = t.audioOutputStart - t.ttsReady;
     }
+    // True First Audio: earliest audible playback from either path. A
+    // pending interim timestamp (race: interim playback reported after the
+    // final closed the intake) is adopted lazily here, exactly once.
+    const interimAt = trace.interimFirstAudioAt ?? this.pendingInterimFirstAudioAt;
+    if (trace.interimFirstAudioAt === null && this.pendingInterimFirstAudioAt !== null) {
+      this.pendingInterimFirstAudioAt = null;
+    }
+    const firstAudioCandidates: number[] = [];
     if (t.audioOutputStart !== null) {
-      ms.firstAudioMs = t.audioOutputStart - t.speechStart;
+      firstAudioCandidates.push(t.audioOutputStart);
+    }
+    if (interimAt) {
+      firstAudioCandidates.push(interimAt);
+      ms.interimFirstAudioMs = interimAt - t.speechStart;
+    }
+    if (firstAudioCandidates.length > 0) {
+      const earliest = Math.min(...firstAudioCandidates);
+      ms.firstAudioMs = earliest - t.speechStart;
     }
     return ms;
   }
@@ -440,6 +508,7 @@ export class PipelineTelemetry {
     add("translationToTtsReadyMs", ms.translationToTtsReadyMs);
     add("ttsReadyToAudioOutMs", ms.ttsReadyToAudioOutMs);
     add("firstAudioMs", ms.firstAudioMs);
+    add("interimFirstAudioMs", ms.interimFirstAudioMs);
     if (ms.audioOutputMs !== null) {
       this.phaseSums.audioOutputMs =
         (this.phaseSums.audioOutputMs ?? 0) + ms.audioOutputMs;
@@ -473,6 +542,9 @@ export class PipelineTelemetry {
       `#${trace.id} ${outcome}` +
         ` e2e=${ms.endToEndMs ?? "-"}ms` +
         ` firstAudio=${ms.firstAudioMs ?? "-"}ms` +
+        (ms.interimFirstAudioMs !== null
+          ? ` (interim@${ms.interimFirstAudioMs}ms)`
+          : "") +
         ` firstPartial=${ms.sttFirstPartialMs ?? "-"}ms` +
         ` sttFinal=${ms.sttFinalMs ?? "-"}ms` +
         ` translation=${ms.translationMs ?? "-"}ms` +

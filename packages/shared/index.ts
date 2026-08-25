@@ -60,7 +60,13 @@ export interface SttStartResult {
 
 export type TranslationEvent =
   | { type: "translation:started"; provider?: string }
-  | { type: "translation:text"; urdu: string; english: string }
+  | {
+      type: "translation:text";
+      urdu: string;
+      english: string;
+      /** True when produced from a stabilized STT partial, not a final. */
+      interim?: boolean;
+    }
   | { type: "translation:rate-limited"; message: string }
   | { type: "translation:error"; message: string }
   | { type: "translation:stopped" };
@@ -84,6 +90,7 @@ export type TtsEvent =
   | { type: "tts:started"; provider?: string }
   | { type: "tts:speaking"; text: string }
   | { type: "tts:spoken"; text: string }
+  | { type: "tts:interrupted"; text: string }
   | { type: "tts:error"; message: string }
   | { type: "tts:stopped" };
 
@@ -163,6 +170,7 @@ export type UtteranceOutcome =
   | "rate-limited"
   | "tts-suppressed"
   | "tts-failed"
+  | "tts-interrupted"
   | "incomplete";
 
 /** Per-phase latency breakdown for one utterance (all values are ms). */
@@ -185,6 +193,8 @@ export interface UtteranceLatencyBreakdown {
   translationToTtsReadyMs: number | null;
   /** TTS audio ready → playback start (IPC + renderer handoff) */
   ttsReadyToAudioOutMs: number | null;
+  /** Speech start → FIRST audible playback (primary perceived-latency metric) */
+  firstAudioMs: number | null;
 }
 
 /**
@@ -226,6 +236,7 @@ export interface PipelinePhaseAverages {
   sttFinalToTranslationMs: number | null;
   translationToTtsReadyMs: number | null;
   ttsReadyToAudioOutMs: number | null;
+  firstAudioMs: number | null;
 }
 
 export interface PipelineSummary {
@@ -275,6 +286,7 @@ export interface ElectronAPI {
   stopAudioOutput: () => Promise<void>;
   onAudioOutputEvent: (handler: (event: AudioOutputEvent) => void) => () => void;
   onAudioData: (handler: (chunk: { data: ArrayBuffer; format: AudioFormat }) => void) => () => void;
+  onAudioCancel: (handler: () => void) => () => void;
   detectBlackHole: () => Promise<boolean>;
   startSession: () => Promise<SessionStartResult>;
   stopSession: () => Promise<void>;

@@ -25,6 +25,13 @@ export function createSystemSpeakerOutput(
       }
     },
 
+    cancelPlayback(): void {
+      const win = getWindow();
+      if (win && !win.isDestroyed()) {
+        win.webContents.send("audio-output:cancel");
+      }
+    },
+
     async stop(): Promise<void> {
       const win = getWindow();
       if (win && !win.isDestroyed()) {

@@ -55,6 +55,27 @@ export class TranslationManager {
   private lastFinalKey: string = "";
   private lastFinalTime: number = 0;
 
+  /* ---------------- Incremental (partial-based) translation ----------------
+   * Controlled interim translation: at most ONE provider request per
+   * utterance, fired only when a STT partial has been stable for
+   * PARTIAL_TRANSLATION_STABLE_MS and carries at least
+   * PARTIAL_TRANSLATION_MIN_WORDS words that were not already translated.
+   * The final-based path remains fully authoritative; an interim result is
+   * dropped when its final arrives before the request completes. */
+
+  private readonly partialEnabled: boolean;
+  private readonly partialMinWords: number;
+  private readonly partialStableMs: number;
+  private partialText: string = "";
+  private partialChangedAt: number = 0;
+  private partialTimer: ReturnType<typeof setTimeout> | null = null;
+  /** One interim request per utterance (reset on the next utterance's first partial). */
+  private interimUsedForUtterance: boolean = false;
+  private interimInFlight: boolean = false;
+  /** Set when a final arrives while an interim request is in flight. */
+  private interimSuperseded: boolean = false;
+  private lastInterimKey: string = "";
+
   constructor(dedupeWindowMs?: number) {
     if (dedupeWindowMs !== undefined) {
       this.dedupeWindowMs = dedupeWindowMs;
@@ -65,6 +86,22 @@ export class TranslationManager {
         DEFAULT_STT_FINAL_DEDUPE_WINDOW_MS
       );
     }
+
+    const enabledRaw = (process.env.PARTIAL_TRANSLATION_ENABLED ?? "true")
+      .trim()
+      .toLowerCase();
+    this.partialEnabled = enabledRaw !== "false" && enabledRaw !== "0";
+
+    this.partialMinWords = parseWindowMs(
+      process.env.PARTIAL_TRANSLATION_MIN_WORDS,
+      "PARTIAL_TRANSLATION_MIN_WORDS",
+      4
+    );
+    this.partialStableMs = parseWindowMs(
+      process.env.PARTIAL_TRANSLATION_STABLE_MS,
+      "PARTIAL_TRANSLATION_STABLE_MS",
+      700
+    );
   }
 
   get isActive(): boolean {
@@ -95,6 +132,13 @@ export class TranslationManager {
     this.pendingCount = 0;
     this.lastFinalKey = "";
     this.lastFinalTime = 0;
+    this.clearPartialTimer();
+    this.partialText = "";
+    this.partialChangedAt = 0;
+    this.interimUsedForUtterance = false;
+    this.interimInFlight = false;
+    this.interimSuperseded = false;
+    this.lastInterimKey = "";
 
     emit({ type: "translation:started", provider: provider.name });
     return { ok: true, provider: provider.name };
@@ -106,7 +150,20 @@ export class TranslationManager {
       log("onSttText IGNORED — not active:", text);
       return;
     }
-    if (!isFinal) return;
+    if (!isFinal) {
+      this.onPartial(text);
+      return;
+    }
+
+    // A final supersedes any in-flight interim request: its result will be
+    // dropped when it lands, and the final path below stays authoritative.
+    if (this.interimInFlight) {
+      log("final arrived — superseding in-flight interim request");
+      this.interimSuperseded = true;
+    }
+    this.clearPartialTimer();
+    this.partialText = "";
+    this.partialChangedAt = 0;
 
     // Upstream dedupe: suppress identical consecutive finals before any
     // provider request. Sliding window — duplicates refresh the timer.
@@ -141,6 +198,90 @@ export class TranslationManager {
     this.processQueue();
   }
 
+  /**
+   * Track a growing STT partial. Schedules a single controlled interim
+   * translation when the text has been stable for the debounce window.
+   */
+  private onPartial(text: string): void {
+    const trimmed = text.trim();
+    if (!trimmed) return; // never send silence
+
+    // First partial of a new utterance resets per-utterance limits.
+    if (!this.partialText && !this.interimInFlight) {
+      this.interimUsedForUtterance = false;
+      this.interimSuperseded = false;
+    }
+
+    const key = normalizeForDedupe(trimmed);
+    if (key === normalizeForDedupe(this.partialText)) return;
+    this.partialText = trimmed;
+    this.partialChangedAt = Date.now();
+
+    if (!this.partialEnabled || this.partialStableMs <= 0) return;
+    this.clearPartialTimer();
+    this.partialTimer = setTimeout(() => {
+      this.partialTimer = null;
+      this.maybeTranslateInterim(this.partialText);
+    }, this.partialStableMs);
+  }
+
+  private clearPartialTimer(): void {
+    if (this.partialTimer !== null) {
+      clearTimeout(this.partialTimer);
+      this.partialTimer = null;
+    }
+  }
+
+  private maybeTranslateInterim(text: string): void {
+    if (
+      !this.active ||
+      !this.partialEnabled ||
+      this.interimUsedForUtterance ||
+      this.interimInFlight ||
+      // Pipeline busy with finals — skip to keep ordering and cost bounded.
+      this.pendingCount > 0 ||
+      this.processing
+    ) {
+      return;
+    }
+    const words = text.split(/\s+/).filter(Boolean).length;
+    if (words < this.partialMinWords) {
+      log(`interim skipped — ${words} < ${this.partialMinWords} words`);
+      return;
+    }
+    const key = normalizeForDedupe(text);
+    if (key === "" || key === this.lastInterimKey) {
+      return; // unchanged / already translated
+    }
+
+    this.interimUsedForUtterance = true;
+    this.interimInFlight = true;
+    this.lastInterimKey = key;
+    void this.translateInterim(text);
+  }
+
+  private async translateInterim(text: string): Promise<void> {
+    const provider = this.provider;
+    const emit = this.emit;
+    try {
+      log("interim translate:", text);
+      const english = await provider!.translate(text);
+      log("interim result:", english);
+      if (this.active && this.emit === emit && !this.interimSuperseded) {
+        emit?.({ type: "translation:text", urdu: text, english, interim: true });
+      } else {
+        log("interim result dropped (superseded/inactive)");
+      }
+    } catch (err) {
+      // Interim failures are silent by design: the final path reports errors
+      // and retries nothing. Rate-limit cooldowns inside providers still run.
+      log("interim translate failed:", errMessage(err));
+    } finally {
+      this.interimInFlight = false;
+      this.interimSuperseded = false;
+    }
+  }
+
   stop(): void {
     this.provider = null;
     this.emit = null;
@@ -150,6 +291,13 @@ export class TranslationManager {
     this.pendingCount = 0;
     this.lastFinalKey = "";
     this.lastFinalTime = 0;
+    this.clearPartialTimer();
+    this.partialText = "";
+    this.partialChangedAt = 0;
+    this.interimUsedForUtterance = false;
+    this.interimInFlight = false;
+    this.interimSuperseded = false;
+    this.lastInterimKey = "";
     pipelineTelemetry.resetPipeline();
   }
 

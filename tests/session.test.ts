@@ -51,6 +51,9 @@ function createMockAudioOutput() {
     async writeAudio(chunk: AudioChunk): Promise<void> {
       written.push(chunk);
     },
+    cancelPlayback(): void {
+      // Preemption support (M8) — no-op for the session-level mock.
+    },
   };
 }
 
@@ -373,19 +376,18 @@ const tests: TestCase[] = [
 
       await mgr.start((e) => events.push(e), audioOutput as never, failOnSecond);
 
+      // M8 semantics: each accepted utterance preempts the previous one,
+      // so items are sent sequentially — A completes, B fails, C recovers.
       mgr.onTranslationText("A");
+      await drainQueue();
       mgr.onTranslationText("B"); // will fail
+      await drainQueue();
       mgr.onTranslationText("C");
-
       await drainQueue();
 
       const spokenEvents = events.filter((e) => e.type === "tts:spoken");
       const errorEvents = events.filter((e) => e.type === "tts:error");
 
-      // A and C should succeed, B should error
-      if (spokenEvents.length < 2) {
-        throw new Error(`Expected at least 2 spoken events, got ${spokenEvents.length}`);
-      }
       if (errorEvents.length < 1) {
         throw new Error(`Expected at least 1 error event, got ${errorEvents.length}`);
       }

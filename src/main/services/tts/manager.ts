@@ -49,6 +49,9 @@ export class TtsManager {
   private active: boolean = false;
   private speaking: boolean = false;
   private queue: string[] = [];
+  /** Aborts the in-flight synthesis (interruption / stop). */
+  private currentSynthesis: AbortController | null = null;
+  private currentSynthesisText: string = "";
 
   private lastSpokenText: string = "";
   private lastSpokenTime: number = 0;
@@ -126,13 +129,48 @@ export class TtsManager {
     this.lastSpokenText = trimmed;
     this.lastSpokenTime = now;
 
-    // Backpressure: if queue is full, drop oldest to keep latest
+    // Preemption: newer translated content replaces whatever is currently
+    // synthesizing/playing so first audio for the latest utterance starts
+    // immediately instead of waiting behind stale audio.
+    this.interruptForNewUtterance();
+
+    // Backpressure guard kept as an invariant (queue is normally emptied by
+    // the interruption above).
     if (this.queue.length >= MAX_TTS_QUEUE) {
       this.queue.shift();
     }
 
     this.queue.push(trimmed);
     this.processQueue();
+  }
+
+  /**
+   * Interrupt whatever is currently queued/speaking so a NEW utterance's
+   * audio can start immediately. Cancels in-flight synthesis (aborting the
+   * provider call), drops pending queue items, and stops renderer playback.
+   * The caller then enqueues the new text as usual.
+   */
+  interruptForNewUtterance(): void {
+    if (!this.active) return;
+    const hadWork = this.speaking || this.queue.length > 0;
+    if (!hadWork) return;
+    const interruptedText = this.currentSynthesisText || "";
+    // Finalize the in-flight trace (if any), then every queued item, so the
+    // telemetry FIFO stays consistent after the queue is cleared.
+    pipelineTelemetry.markTtsInterrupted();
+    for (let i = 0; i < this.queue.length; i++) {
+      pipelineTelemetry.markTtsInterrupted();
+    }
+    this.queue = [];
+    if (this.speaking && this.currentSynthesis) {
+      log("interrupt: aborting in-flight synthesis");
+      this.currentSynthesis.abort(new Error("interrupted by new utterance"));
+    }
+    log("interrupt: clearing playback + queue");
+    this.audioOutput?.cancelPlayback();
+    if (this.emit) {
+      this.emit({ type: "tts:interrupted", text: interruptedText });
+    }
   }
 
   stop(): void {
@@ -164,12 +202,18 @@ export class TtsManager {
 
     const text = this.queue.shift()!;
     this.speaking = true;
+    const synthesis = new AbortController();
+    this.currentSynthesis = synthesis;
+    this.currentSynthesisText = text;
     this.emit({ type: "tts:speaking", text });
 
     try {
       log("synthesize:", text);
       pipelineTelemetry.beginTts();
-      const audioChunk = await this.provider.synthesize(text);
+      const audioChunk = await this.provider.synthesize(
+        text,
+        synthesis.signal
+      );
       pipelineTelemetry.endTtsSuccess();
       log("writeAudio bytes:", audioChunk.data.byteLength);
       await this.audioOutput.writeAudio(audioChunk);
@@ -177,11 +221,21 @@ export class TtsManager {
         this.emit({ type: "tts:spoken", text });
       }
     } catch (err) {
-      pipelineTelemetry.endTtsError();
-      if (this.emit) {
-        this.emit({ type: "tts:error", message: errMessage(err) });
+      if (synthesis.signal.aborted) {
+        // Interruption is intentional — not a user-facing error. The
+        // trace was already finalized by markTtsInterrupted().
+        log("synthesize aborted:", errMessage(err));
+      } else {
+        pipelineTelemetry.endTtsError();
+        if (this.emit) {
+          this.emit({ type: "tts:error", message: errMessage(err) });
+        }
       }
     } finally {
+      if (this.currentSynthesis === synthesis) {
+        this.currentSynthesis = null;
+        this.currentSynthesisText = "";
+      }
       this.speaking = false;
       this.processQueue();
     }

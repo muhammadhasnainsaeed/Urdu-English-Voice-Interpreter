@@ -89,6 +89,13 @@ const api: ElectronAPI = {
       ipcRenderer.removeListener("audio-output:audio", listener);
     };
   },
+  onAudioCancel: (handler: () => void) => {
+    const listener = () => handler();
+    ipcRenderer.on("audio-output:cancel", listener);
+    return () => {
+      ipcRenderer.removeListener("audio-output:cancel", listener);
+    };
+  },
   detectBlackHole: () =>
     ipcRenderer.invoke("audio-output:detect-blackhole") as Promise<boolean>,
 

@@ -2,7 +2,12 @@ import type { AudioChunk } from "@shared/index";
 
 export interface TtsProvider {
   readonly name: string;
-  synthesize(text: string): Promise<AudioChunk>;
+  /**
+   * Synthesize `text` to an audio chunk. Implementations SHOULD abort work
+   * promptly when `signal` aborts (e.g. kill a spawned synthesizer process)
+   * and reject with the abort reason. Cancellation is best-effort.
+   */
+  synthesize(text: string, signal?: AbortSignal): Promise<AudioChunk>;
   stop(): Promise<void>;
 }
 

@@ -63,6 +63,10 @@ export default function PipelinePanel({ currentStage }: PipelinePanelProps) {
             <td colSpan={2} />
           </tr>
           <tr className="pipeline-e2e">
+            <td>First Audio</td>
+            <td>{fmt(ms?.firstAudioMs ?? null)}</td>
+          </tr>
+          <tr className="pipeline-e2e">
             <td>End-to-End</td>
             <td>{fmt(e2e?.lastMs ?? null)}</td>
           </tr>

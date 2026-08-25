@@ -26,6 +26,9 @@ export function useTts() {
         case "tts:spoken":
           setCurrentText("");
           break;
+        case "tts:interrupted":
+          setCurrentText("");
+          break;
         case "tts:error":
           setError(event.message);
           break;

@@ -52,6 +52,7 @@ function emptyBreakdown(): UtteranceLatencyBreakdown {
     sttFinalToTranslationMs: null,
     translationToTtsReadyMs: null,
     ttsReadyToAudioOutMs: null,
+    firstAudioMs: null,
   };
 }
 
@@ -71,6 +72,7 @@ export class PipelineTelemetry {
     sttFinalToTranslationMs: 0,
     translationToTtsReadyMs: 0,
     ttsReadyToAudioOutMs: 0,
+    firstAudioMs: 0,
   };
   private phaseCounts = {
     sttFirstPartialMs: 0,
@@ -81,6 +83,7 @@ export class PipelineTelemetry {
     sttFinalToTranslationMs: 0,
     translationToTtsReadyMs: 0,
     ttsReadyToAudioOutMs: 0,
+    firstAudioMs: 0,
   };
   private totalCompleted = 0;
   private lastE2E: number | null = null;
@@ -246,6 +249,17 @@ export class PipelineTelemetry {
     if (trace) this.finalize(trace, "tts-suppressed");
   }
 
+  /**
+   * TTS work was discarded by an interruption (in-flight synthesis aborted
+   * or a queued item dropped). Finalizes ONE trace per call so the caller
+   * can drain exactly as many traces as were dropped.
+   */
+  markTtsInterrupted(): void {
+    const trace = this.inFlightTts ?? this.awaitingTts.shift();
+    this.inFlightTts = null;
+    if (trace) this.finalize(trace, "tts-interrupted");
+  }
+
   beginTts(): void {
     const trace = this.awaitingTts.shift();
     if (!trace) return;
@@ -360,6 +374,10 @@ export class PipelineTelemetry {
           this.phaseSums.ttsReadyToAudioOutMs,
           this.phaseCounts.ttsReadyToAudioOutMs
         ),
+        firstAudioMs: avg(
+          this.phaseSums.firstAudioMs,
+          this.phaseCounts.firstAudioMs
+        ),
       },
     };
   }
@@ -394,6 +412,9 @@ export class PipelineTelemetry {
     if (t.ttsReady !== null && t.audioOutputStart !== null) {
       ms.ttsReadyToAudioOutMs = t.audioOutputStart - t.ttsReady;
     }
+    if (t.audioOutputStart !== null) {
+      ms.firstAudioMs = t.audioOutputStart - t.speechStart;
+    }
     return ms;
   }
 
@@ -418,6 +439,7 @@ export class PipelineTelemetry {
     add("sttFinalToTranslationMs", ms.sttFinalToTranslationMs);
     add("translationToTtsReadyMs", ms.translationToTtsReadyMs);
     add("ttsReadyToAudioOutMs", ms.ttsReadyToAudioOutMs);
+    add("firstAudioMs", ms.firstAudioMs);
     if (ms.audioOutputMs !== null) {
       this.phaseSums.audioOutputMs =
         (this.phaseSums.audioOutputMs ?? 0) + ms.audioOutputMs;
@@ -450,6 +472,7 @@ export class PipelineTelemetry {
     this.debug(
       `#${trace.id} ${outcome}` +
         ` e2e=${ms.endToEndMs ?? "-"}ms` +
+        ` firstAudio=${ms.firstAudioMs ?? "-"}ms` +
         ` firstPartial=${ms.sttFirstPartialMs ?? "-"}ms` +
         ` sttFinal=${ms.sttFinalMs ?? "-"}ms` +
         ` translation=${ms.translationMs ?? "-"}ms` +

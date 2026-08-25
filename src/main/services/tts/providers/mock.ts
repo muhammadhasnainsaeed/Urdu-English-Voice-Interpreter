@@ -8,8 +8,18 @@ export function createMockTtsProvider(): TtsProvider {
   return {
     name: "mock",
 
-    async synthesize(_text: string): Promise<AudioChunk> {
-      await new Promise((resolve) => setTimeout(resolve, MOCK_DURATION_MS));
+    async synthesize(_text: string, signal?: AbortSignal): Promise<AudioChunk> {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, MOCK_DURATION_MS);
+        signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            reject(signal.reason);
+          },
+          { once: true }
+        );
+      });
       const sampleCount = Math.floor(
         (MOCK_SAMPLE_RATE * MOCK_DURATION_MS) / 1000
       );

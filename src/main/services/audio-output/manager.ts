@@ -81,6 +81,16 @@ export class AudioOutputManager {
     }
   }
 
+  /** Stop current renderer playback and drop queued audio (interruption). */
+  cancelPlayback(): void {
+    if (!this.active || !this.provider) return;
+    try {
+      this.provider.cancelPlayback();
+    } catch {
+      // Cancellation must never break the pipeline.
+    }
+  }
+
   stop(): void {
     const provider = this.provider;
     this.provider = null;

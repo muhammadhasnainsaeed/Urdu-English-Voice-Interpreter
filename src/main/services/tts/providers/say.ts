@@ -1,12 +1,9 @@
-import { execFile } from "child_process";
-import { promisify } from "util";
+import { spawn } from "child_process";
 import * as path from "path";
 import * as os from "os";
 import * as fs from "fs";
 import type { AudioChunk } from "@shared/index";
 import type { TtsProvider } from "../provider";
-
-const execFileAsync = promisify(execFile);
 
 /**
  * Walk RIFF chunks to find the "data" chunk. macOS `say` may insert
@@ -59,19 +56,41 @@ export function createSayTtsProvider(): TtsProvider {
   return {
     name: "say",
 
-    async synthesize(text: string): Promise<AudioChunk> {
+    async synthesize(text: string, signal?: AbortSignal): Promise<AudioChunk> {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const tmpFile = path.join(os.tmpdir(), `tts-${id}.wav`);
 
       try {
-        await execFileAsync("say", [
-          "-v", "Samantha",
-          "-r", "200",
-          "--file-format=WAVE",
-          "--data-format=LEI16@24000",
-          "-o", tmpFile,
-          text,
-        ]);
+        if (signal?.aborted) {
+          throw signal.reason;
+        }
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn("say", [
+            "-v", "Samantha",
+            "-r", "200",
+            "--file-format=WAVE",
+            "--data-format=LEI16@24000",
+            "-o", tmpFile,
+            text,
+          ]);
+
+          const onAbort = () => {
+            // Kill the synthesizer promptly; say plays nothing itself here.
+            child.kill("SIGKILL");
+            reject(signal!.reason);
+          };
+          signal?.addEventListener("abort", onAbort, { once: true });
+
+          child.on("error", (err) => {
+            signal?.removeEventListener("abort", onAbort);
+            reject(err);
+          });
+          child.on("close", (code) => {
+            signal?.removeEventListener("abort", onAbort);
+            if (code === 0) resolve();
+            else reject(new Error(`say exited with code ${code}`));
+          });
+        });
 
         const raw = await fs.promises.readFile(tmpFile);
 
@@ -100,7 +119,11 @@ export function createSayTtsProvider(): TtsProvider {
 
     async stop(): Promise<void> {
       try {
-        await execFileAsync("killall", ["say"]);
+        await new Promise<void>((resolve) => {
+          const child = spawn("killall", ["say"]);
+          child.on("close", () => resolve());
+          child.on("error", () => resolve());
+        });
       } catch {
         // say may not be running.
       }

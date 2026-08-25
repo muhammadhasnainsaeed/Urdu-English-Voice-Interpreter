@@ -28,6 +28,9 @@ export function useAudioOutput() {
   const queueRef = useRef<ArrayBuffer[]>([]);
   const playingRef = useRef(false);
   const sampleRateRef = useRef(24000);
+  /** Set while a source is playing so cancellation can stop it mid-flight. */
+  const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const cancelPlaybackRef = useRef<() => void>(() => {});
 
   const supportsSetSinkId = useCallback(() => {
     return typeof AudioContext !== "undefined" &&
@@ -177,21 +180,36 @@ export function useAudioOutput() {
       }
 
       await new Promise<void>((resolve) => {
+        let cancelled = false;
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(ctx.destination);
-        source.onended = () => {
-          window.electron.reportPlaybackEvent({
-            event: "complete",
-            bytes: data.byteLength,
-          });
+        activeSourceRef.current = source;
+        const finish = () => {
+          activeSourceRef.current = null;
+          if (!cancelled) {
+            window.electron.reportPlaybackEvent({
+              event: "complete",
+              bytes: data.byteLength,
+            });
+          }
           resolve();
         };
+        source.onended = finish;
         window.electron.reportPlaybackEvent({
           event: "start",
           bytes: data.byteLength,
         });
         source.start();
+        // Cancellation: stop the source; onended still fires and resolves.
+        cancelPlaybackRef.current = () => {
+          cancelled = true;
+          try {
+            source.stop();
+          } catch {
+            // already stopped
+          }
+        };
       });
     }
 
@@ -208,6 +226,14 @@ export function useAudioOutput() {
     );
     return unsub;
   }, [playFromQueue]);
+
+  useEffect(() => {
+    return window.electron.onAudioCancel(() => {
+      queueRef.current = [];
+      cancelPlaybackRef.current();
+      cancelPlaybackRef.current = () => {};
+    });
+  }, []);
 
   const start = useCallback(async () => {
     setError(null);

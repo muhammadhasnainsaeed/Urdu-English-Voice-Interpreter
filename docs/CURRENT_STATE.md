@@ -148,23 +148,47 @@ Status: **COMPLETE** (verified on 2026-08-17; regression fixed + runtime-verifie
 - **Pipeline status types** — `SessionStatus`, `PipelineStageStatus`, `SessionEvent` in shared types.
 - **Milestone 8 — Low-latency interpretation (2026-08-25, complete)**:
   - *Incremental translation*: at most one interim request per utterance
-    from stabilized partials (≥4 words, ≥700 ms stable, unchanged text
+    from stabilized partials (≥4 words, ≥200 ms stable, unchanged text
     skipped, silence never sent, `PARTIAL_TRANSLATION_ENABLED` gate);
-    final path authoritative, superseded interims dropped.
+    final path authoritative, superseded interims dropped. Stability
+    default lowered from 700 → 200 ms by M9 (700 ms unreachable with
+    segmentation=300 ms).
   - *TTS preemption*: new utterances abort in-flight synthesis
     (`AbortSignal` in `TtsProvider`; `say` spawn-based kill), clear the
     queue, cancel renderer playback (`audio-output:cancel`), emit
-    `tts:interrupted`. Dedupe precedes preemption.
+    `tts:interrupted`. Dedupe precedes preemption. M9 added
+    *interim-replacement preemption*: finals arriving while interim audio
+    is still audible cancel playback and clear the queue; FIFO drain
+    guarded so the final's own trace completes normally.
   - *Azure segmentation*: `AZURE_STT_SEGMENTATION_SILENCE_MS`
     (100–5000 clamped; benchmark 300) — finals ~0.86–1.13 s vs 1.1–2.3 s.
   - *Telemetry*: `firstAudioMs` + `interimFirstAudioMs`, playbackId
     correlation (0 = interim) so interim playback feeds First Audio
-    without consuming FIFO slots; outcome `tts-interrupted`.
-  - *Measured (Azure→Azure→say loopback)*: First Audio 2.46–4.03 s,
-    E2E avg 4.82 s vs baseline avg 5.65 s (~15% faster); preemption
-    verified in logs. Interim translation untriggered in benchmark due to
-    sparse Azure partials over acoustic loopback (honest limitation;
-    real-mic behavior expected denser).
+    without consuming FIFO slots; `sttPartialCount` per utterance; outcome
+    `tts-interrupted`.
+  - *Measured (M9 Digital)*: First Audio avg 1.88 s, E2E avg 5.33 s,
+    interim translations firing 2/4 utterances; preemption verified.
+  - *Root cause resolved*: M8 sparse partials caused by acoustic loopback
+    degradation + STABLE_MS=700 unreachable. M9 validated clean audio
+    produces 2–8 partials/utterance and 200 ms stability triggers interim.
+- **Milestone 9 — STT streaming & partial translation (2026-08-26, complete)**:
+  - *STT diagnostics*: Azure recognizing/final events logged with counts,
+    inter-partial gaps, and text preview (PIPELINE_DEBUG). Audio-chunk
+    cadence summary on session end. `sttPartialCount` in trace reports +
+    UI.
+  - *Interim-replacement preemption*: `handlePlaybackLifecycle()` tracks
+    renderer interim playback via `telemetry:playback` IPC; finals
+    arriving while provisional English is still audible cancel playback.
+    FIFO drain guarded: only stale synthesis/queue traces consumed, not
+    the final's own trace.
+  - *STABLE_MS validated at 200*: With segmentation=300 ms, Azure partials
+    grow every ~300 ms so700 ms stability was unreachable. 200 ms fits
+    within natural inter-partial gaps for longer sentences. Configurable
+    via `PARTIAL_TRANSLATION_STABLE_MS`.
+  - *Measured*: Digital pass First Audio avg 1.88 s (interim 2/4), E2E
+    avg 5.33 s. Acoustic pass First Audio avg 2.01 s (interim 2/4), E2E
+    avg 5.33 s. Azure partials healthy (2–8/utterance, 100% coverage)
+    with both digital and physical mic input.
 - **Pipeline latency telemetry (2026-08-25, dev-only)** — `PipelineTelemetry`
   singleton (`src/main/services/telemetry/pipeline-telemetry.ts`) observes the
   existing pipeline: speechStart (Azure `speechStartDetected`), first partial,

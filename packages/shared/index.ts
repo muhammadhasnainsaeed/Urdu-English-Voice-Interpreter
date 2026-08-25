@@ -220,6 +220,8 @@ export interface UtteranceTraceReport {
   speechStartApprox: boolean;
   urdu?: string;
   english?: string;
+  /** Number of STT partial (recognizing) events observed for this utterance. */
+  sttPartialCount?: number;
   t: {
     speechStart: number;
     firstPartial: number | null;

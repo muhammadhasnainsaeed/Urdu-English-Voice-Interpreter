@@ -61,6 +61,7 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.on('telemetry:playback', (_event, payload: PlaybackTelemetryEvent) => {
+    ttsManager.handlePlaybackLifecycle(payload);
     if (
       payload &&
       (payload.event === 'start' || payload.event === 'complete') &&

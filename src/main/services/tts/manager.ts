@@ -1,4 +1,8 @@
-import type { TtsEvent, TtsStartResult } from "@shared/index";
+import type {
+  PlaybackTelemetryEvent,
+  TtsEvent,
+  TtsStartResult,
+} from "@shared/index";
 import type { TtsProvider } from "./provider";
 import { createTtsProvider } from "./provider";
 import type { AudioOutputManager } from "../audio-output/manager";
@@ -6,6 +10,8 @@ import { pipelineTelemetry } from "../telemetry/pipeline-telemetry";
 
 const DEFAULT_DEDUPE_WINDOW_MS = 2000;
 const MAX_TTS_QUEUE = 5;
+/** Interim audio playing longer than this is no longer reaped. */
+const INTERIM_STALE_MS = 8_000;
 
 function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -49,6 +55,15 @@ export class TtsManager {
   private active: boolean = false;
   private speaking: boolean = false;
   private queue: Array<{ text: string; interim: boolean }> = [];
+  /**
+   * Timestamp of an interim chunk that the renderer is (or was recently)
+   * playing. A final translation must be able to replace provisional
+   * audio that is still audible, so playing interims count as work for
+   * preemption even though synthesis already finished.
+   */
+  private playingInterimAt: number | null = null;
+  private onPlaybackLifecycle: ((payload: PlaybackTelemetryEvent) => void) | null =
+    null;
   /** Aborts the in-flight synthesis (interruption / stop). */
   private currentSynthesis: AbortController | null = null;
   private currentSynthesisText: string = "";
@@ -110,6 +125,21 @@ export class TtsManager {
     return { ok: true, provider: provider.name };
   }
 
+  /**
+   * Playback lifecycle reports (from the renderer, via main) let the
+   * manager know when a provisional interim chunk is actually audible
+   * and when it finishes, enabling final-translation replacement of
+   * stale interim audio. Interim chunks use playbackId 0.
+   */
+  handlePlaybackLifecycle(payload: PlaybackTelemetryEvent): void {
+    if (!payload || payload.playbackId !== 0) return;
+    if (payload.event === "start") {
+      this.playingInterimAt = Date.now();
+    } else if (payload.event === "complete") {
+      this.playingInterimAt = null;
+    }
+  }
+
   onTranslationText(text: string, interim: boolean = false): void {
     if (!this.active) {
       log("onTranslationText IGNORED — not active:", text);
@@ -155,14 +185,20 @@ export class TtsManager {
    */
   interruptForNewUtterance(): void {
     if (!this.active) return;
-    const hadWork = this.speaking || this.queue.length > 0;
+    const interimAudible =
+      this.playingInterimAt !== null &&
+      Date.now() - this.playingInterimAt < INTERIM_STALE_MS;
+    const hadWork = this.speaking || this.queue.length > 0 || interimAudible;
     if (!hadWork) return;
     const interruptedText = this.currentSynthesisText || "";
-    // Finalize the in-flight trace (if any), then every FINAL queued item.
-    // Interim items never entered the telemetry FIFO and must not drain it.
-    pipelineTelemetry.markTtsInterrupted();
-    for (const item of this.queue) {
-      if (!item.interim) pipelineTelemetry.markTtsInterrupted();
+    // Only drain FIFO traces for stale synthesis/queue work. When only
+    // interim audio is being replaced, the final's own trace is already
+    // in awaitingTts and must NOT be consumed — it should complete normally.
+    if (this.speaking || this.queue.length > 0) {
+      pipelineTelemetry.markTtsInterrupted();
+      for (const item of this.queue) {
+        if (!item.interim) pipelineTelemetry.markTtsInterrupted();
+      }
     }
     this.queue = [];
     if (this.speaking && this.currentSynthesis) {
@@ -170,6 +206,7 @@ export class TtsManager {
       this.currentSynthesis.abort(new Error("interrupted by new utterance"));
     }
     log("interrupt: clearing playback + queue");
+    this.playingInterimAt = null;
     this.audioOutput?.cancelPlayback();
     if (this.emit) {
       this.emit({ type: "tts:interrupted", text: interruptedText });
@@ -184,6 +221,7 @@ export class TtsManager {
     this.active = false;
     this.speaking = false;
     this.queue = [];
+    this.playingInterimAt = null;
     this.lastSpokenText = "";
     this.lastSpokenTime = 0;
     pipelineTelemetry.resetPipeline();
@@ -226,6 +264,7 @@ export class TtsManager {
       if (!item.interim) pipelineTelemetry.endTtsSuccess();
       log("writeAudio bytes:", chunk.data.byteLength);
       await this.audioOutput.writeAudio(chunk);
+      if (item.interim) this.playingInterimAt = Date.now();
       if (this.emit) {
         this.emit({ type: "tts:spoken", text });
       }

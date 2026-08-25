@@ -48,6 +48,14 @@ export default function PipelinePanel({ currentStage }: PipelinePanelProps) {
             <td>{fmt(ms?.sttFinalMs ?? null)}</td>
           </tr>
           <tr>
+            <td>STT Partials</td>
+            <td>
+              {lastUtterance?.sttPartialCount !== undefined
+                ? `${lastUtterance.sttPartialCount} event(s)`
+                : "—"}
+            </td>
+          </tr>
+          <tr>
             <td>Translation</td>
             <td>{fmt(ms?.translationMs ?? null)}</td>
           </tr>

@@ -920,3 +920,52 @@ documentation rewrite, and type-check fixing.
 Legacy commits built the original Electron + React (JS) app with a Python
 FastAPI backend (`backend/`) for Whisper transcription and translation. Both
 were removed during Milestone 1.
+
+---
+
+## 2026-08-26 — Milestone 9: STT streaming & partial translation validation
+
+### Added
+
+- **STT recognizing diagnostics** (`azure.ts`): `makeDiagnostics()` logs every Azure `recognizing` event with count, gap from previous, and text preview (PIPELINE_DEBUG gated). Logs final text with partial count and average interval. Logs audio-chunk delivery cadence summary on session end.
+- **Per-utterance partial count telemetry**: `sttPartialCount` added to `UtteranceTraceReport` (shared type), `Trace` interface, `toReport()`, and the Pipeline Performance panel row "STT Partials".
+- **Interim-replacement preemption** (`tts/manager.ts`): `playingInterimAt` tracks when the renderer is playing provisional interim audio (set on `writeAudio` for interim items, cleared on `handlePlaybackLifecycle({event:"complete"})` for `playbackId===0`). Final translations arriving while interim audio is still audible now cancel playback and clear the queue; FIFO traces are only drained when stale *synthesis/queue* work exists — not when only interim audio is being replaced, so the final's own trace completes normally.
+- **Playback lifecycle wiring** (`main/index.ts`): renderer `telemetry:playback` events forwarded to `ttsManager.handlePlaybackLifecycle()` to support interim audio tracking.
+- **`PARTIAL_TRANSLATION_STABLE_MS` default changed to 200** (from 700): with `segmentation=300ms`, Azure partials arrive every ~300ms and finals ~10ms after the last partial, making 700ms stability mathematically unreachable. Validated value of 200ms triggers interim translation for longer utterances without incorrect short-phrase translations.
+
+### Verified
+
+- Azure partials are healthy with clean audio: 2–8 partials per utterance, avg interval 250–317ms, 100% coverage (digital + physical mic). The M8 loopback sparsity was caused by acoustic speaker→mic degradation combined with conservative stability settings.
+- `PARTIAL_TRANSLATION_STABLE_MS=200` enables interim translation for longer Urdu sentences: English speech starts 1456–1982ms after speech onset (vs M8's 0 interim translations across all utterances).
+- Final translations correctly supersede interim audio: interim playback is cancelled by `interruptForNewUtterance()` when a final arrives while provisional English is still audible; the final's own trace completes normally (`completed` outcome).
+- Ground truth for benchmark WAVs: `urdu1.wav` = multi-sentence alternating pair; `urdu2.wav` = "ہم اگلے ہفتے..." repeated; `urdu3.wav` = "کیا آپ مجھے بتا سکتے ہیں کہ رپورٹ کب تیار ہوگی" repeated.
+
+### Benchmark (M9 Digital — BlackHole input, Azure TTS, STABLE_MS=200)
+
+| # | Partials | First Partial | STT Final | Translation | First Audio | E2E |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 (urdu2) | 7 | 103 ms | 2253 ms | 67 ms | 1982 ms (interim) | 6629 ms |
+| 2 (urdu3) | 9 | 0 ms | 2509 ms | 70 ms | 1632 ms (interim) | 5816 ms |
+| 3 (urdu1-a) | 3 | 0 ms | 942 ms | 192 ms | 1749 ms | 4449 ms |
+| 4 (urdu1-b) | 1 | 0 ms | 421 ms | 71 ms | 2153 ms | 4212 ms |
+
+Average: First Audio 1879 ms · E2E 5327 ms · Interim triggered 2/4
+
+### Benchmark (M9 Acoustic — MacBook Air Mic, Azure TTS, STABLE_MS=200)
+
+| # | Partials | First Partial | STT Final | Translation | First Audio | E2E |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 (urdu1-a) | 3 | 103 ms | 789 ms | 671 ms | 2192 ms | 4893 ms |
+| 2 (urdu1-b) | 3 | 0 ms | 769 ms | 218 ms | 2569 ms | 4748 ms |
+| 3 (urdu2) | 8 | 0 ms | 2157 ms | 72 ms | 1456 ms (interim) | 6055 ms |
+| 4 (urdu3) | 8 | 0 ms | 2306 ms | 71 ms | 1834 ms (interim) | 5627 ms |
+
+Average: First Audio 2013 ms · E2E 5331 ms · Interim triggered 2/4
+
+### Root cause of M8 sparse partials
+
+Two factors:
+1. **Acoustic loopback quality**: M8 used speaker→mic loopback which degraded audio; Azure produces fewer confident partials with noisy input but still produces finals.
+2. **PARTIAL_TRANSLATION_STABLE_MS=700 + segmentation=300ms**: Partial text grows every ~300ms, so the 700ms stability window resets on nearly every event. Finals arrive ~10ms after the last partial, making the debounce timer unreachable before the final clears it. M9's 200ms validated value fits within Azure's natural inter-partial gap for longer utterances.
+
+Both factors are now addressed: interim translations trigger for longer sentences (physical mic confirmed), and final translations correctly replace stale interim audio.

@@ -38,6 +38,8 @@ interface Trace {
   speechStartApprox: boolean;
   urdu?: string;
   english?: string;
+  /** STT partial (recognizing) events observed for this utterance. */
+  sttPartialCount?: number;
   t: UtteranceTraceReport["t"];
   /** Earliest interim (partial-based) playback start, when one occurred. */
   interimFirstAudioAt?: number | null;
@@ -99,6 +101,7 @@ export class PipelineTelemetry {
     speechStartApprox: boolean;
     firstPartialAt: number | null;
     interimFirstAudioAt: number | null;
+    partialCount: number;
   } | null = null;
   /**
    * Interim playback observed after the intake was already closed by a final
@@ -153,6 +156,7 @@ export class PipelineTelemetry {
         speechStartApprox: false,
         firstPartialAt: null,
         interimFirstAudioAt: null,
+        partialCount: 0,
       };
       this.debug("speechStart");
     }
@@ -168,9 +172,11 @@ export class PipelineTelemetry {
         speechStartApprox: true,
         firstPartialAt: ts,
         interimFirstAudioAt: null,
+        partialCount: 1,
       };
       return;
     }
+    this.intake.partialCount++;
     if (this.intake.firstPartialAt === null) {
       this.intake.firstPartialAt = ts;
       this.debug("firstPartial");
@@ -185,6 +191,7 @@ export class PipelineTelemetry {
       speechStartApprox: true,
       firstPartialAt: null,
       interimFirstAudioAt: null,
+      partialCount: 0,
     };
     this.intake = null;
 
@@ -199,6 +206,7 @@ export class PipelineTelemetry {
       outcome: "incomplete",
       speechStartApprox: intake.speechStartApprox,
       urdu,
+      sttPartialCount: intake.partialCount,
       interimFirstAudioAt,
       t: {
         speechStart: intake.speechStartAt,
@@ -527,6 +535,7 @@ export class PipelineTelemetry {
       speechStartApprox: trace.speechStartApprox,
       urdu: trace.urdu,
       english: trace.english,
+      sttPartialCount: trace.sttPartialCount,
       t: { ...trace.t },
       ms,
     };
@@ -547,6 +556,7 @@ export class PipelineTelemetry {
           : "") +
         ` firstPartial=${ms.sttFirstPartialMs ?? "-"}ms` +
         ` sttFinal=${ms.sttFinalMs ?? "-"}ms` +
+        ` partials=${trace.sttPartialCount ?? "-"}` +
         ` translation=${ms.translationMs ?? "-"}ms` +
         ` tts=${ms.ttsMs ?? "-"}ms` +
         ` audioOut=${ms.audioOutputMs ?? "-"}ms`

@@ -36,6 +36,75 @@ function isNonEmpty(text: string | undefined): text is string {
   return typeof text === "string" && text.trim().length > 0;
 }
 
+/**
+ * M9 diagnostics (PIPELINE_DEBUG only): recognizing-event cadence,
+ * final events, and mic-audio chunk delivery timing. Never logs keys.
+ */
+function makeDiagnostics() {
+  let recognizingCount = 0;
+  let lastRecognizingAt = 0;
+  const gaps: number[] = [];
+  let chunkCount = 0;
+  let lastChunkAt = 0;
+  const chunkGaps: number[] = [];
+  return {
+    onRecognizing(text: string): void {
+      if (!AZURE_STT_DEBUG) return;
+      const now = Date.now();
+      recognizingCount++;
+      if (lastRecognizingAt > 0) gaps.push(now - lastRecognizingAt);
+      const gap =
+        lastRecognizingAt > 0 ? ` (+${now - lastRecognizingAt}ms)` : "";
+      lastRecognizingAt = now;
+      console.log(
+        `[AZURE-STT] recognizing #${recognizingCount}${gap} text="${text.slice(0, 80)}"`
+      );
+    },
+    onFinal(text: string): void {
+      if (!AZURE_STT_DEBUG) return;
+      const avg = gaps.length
+        ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length)
+        : 0;
+      console.log(
+        `[AZURE-STT] recognized final after ${recognizingCount} partial(s)` +
+          `${gaps.length ? ` (avg partial interval ${avg}ms)` : ""}` +
+          ` text="${text.slice(0, 80)}"`
+      );
+      recognizingCount = 0;
+      gaps.length = 0;
+      lastRecognizingAt = 0;
+    },
+    onChunk(bytes: number): void {
+      if (!AZURE_STT_DEBUG) return;
+      const now = Date.now();
+      chunkCount++;
+      if (lastChunkAt > 0) chunkGaps.push(now - lastChunkAt);
+      lastChunkAt = now;
+      if (chunkCount % 100 === 0) {
+        const avg = Math.round(
+          chunkGaps.reduce((a, b) => a + b, 0) / chunkGaps.length
+        );
+        console.log(
+          `[AZURE-STT] audio chunks=${chunkCount} avgInterval=${avg}ms bytes=${bytes}`
+        );
+      }
+    },
+    onStop(): void {
+      if (!AZURE_STT_DEBUG || chunkCount === 0) return;
+      const sorted = [...chunkGaps].sort((a, b) => a - b);
+      const avg = Math.round(
+        chunkGaps.reduce((a, b) => a + b, 0) / chunkGaps.length
+      );
+      console.log(
+        `[AZURE-STT] session audio summary: chunks=${chunkCount}` +
+          ` avgInterval=${avg}ms` +
+          ` p50=${sorted[Math.floor(sorted.length / 2)] ?? 0}ms` +
+          ` max=${sorted[sorted.length - 1] ?? 0}ms`
+      );
+    },
+  };
+}
+
 export function createAzureSttProvider(
   key: string,
   region: string,
@@ -43,6 +112,7 @@ export function createAzureSttProvider(
 ): SttProvider {
   let recognizer: sdk.SpeechRecognizer | null = null;
   let pushStream: sdk.PushAudioInputStream | null = null;
+  const diag = makeDiagnostics();
 
   return {
     name: "azure",
@@ -76,6 +146,7 @@ export function createAzureSttProvider(
 
       recognizer.recognizing = (_sender, event) => {
         const text = event.result.text;
+        diag.onRecognizing(text);
         if (isNonEmpty(text)) handlers.onPartial(text.trim());
       };
 
@@ -87,7 +158,10 @@ export function createAzureSttProvider(
       recognizer.recognized = (_sender, event) => {
         if (event.result.reason === sdk.ResultReason.RecognizedSpeech) {
           const text = event.result.text;
-          if (isNonEmpty(text)) handlers.onFinal(text.trim());
+          if (isNonEmpty(text)) {
+            diag.onFinal(text);
+            handlers.onFinal(text.trim());
+          }
         }
       };
 
@@ -126,11 +200,13 @@ export function createAzureSttProvider(
 
     pushAudio(buffer: ArrayBuffer) {
       if (pushStream) {
+        diag.onChunk(buffer.byteLength);
         pushStream.write(buffer);
       }
     },
 
     async stop() {
+      diag.onStop();
       const active = recognizer;
       recognizer = null;
 

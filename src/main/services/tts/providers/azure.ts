@@ -8,7 +8,7 @@ export function createAzureTtsProvider(): TtsProvider {
 
   if (!key || !region) {
     throw new Error(
-      "Azure TTS requires AZURE_SPEECH_KEY and AZURE_SPEECH_REGION in .env."
+      "Azure TTS requires AZURE_SPEECH_KEY and AZURE_SPEECH_REGION in .env.",
     );
   }
 
@@ -29,6 +29,21 @@ export function createAzureTtsProvider(): TtsProvider {
           text,
           (result) => {
             synthesizer.close();
+
+            if (result.reason !== sdk.ResultReason.SynthesizingAudioCompleted) {
+              reject(
+                new Error(
+                  `Azure TTS failed: ${result.reason} ${result.errorDetails ?? ""}`,
+                ),
+              );
+              return;
+            }
+
+            if (!result.audioData) {
+              reject(new Error("Azure TTS returned no audio data."));
+              return;
+            }
+
             resolve({
               data: result.audioData,
               format: { sampleRate: 24000, bitsPerSample: 16, channels: 1 },
@@ -37,7 +52,7 @@ export function createAzureTtsProvider(): TtsProvider {
           (err: string) => {
             synthesizer.close();
             reject(new Error(err));
-          }
+          },
         );
       });
     },

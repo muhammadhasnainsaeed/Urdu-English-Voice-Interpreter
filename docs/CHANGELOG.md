@@ -3,6 +3,17 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-28 — Project README and metadata refresh
+
+- Replaced the outdated M1-only README with current project status, complete
+  Urdu → English pipeline flow, provider options, configuration, BlackHole
+  setup, validation commands, manual test requirements, repository layout,
+  and scope boundaries.
+- Updated the package description to: "Real-time Urdu-to-English voice
+  interpreter for macOS meetings".
+- GitHub CLI was unavailable, so hosted repository title/description metadata
+  could not be changed from this workspace.
+
 ## 2026-08-28 — M10 Phase 2: fix interim→final streaming telemetry attribution
 
 - Fixed the interim→final streaming race observed in the Phase 2 Digital

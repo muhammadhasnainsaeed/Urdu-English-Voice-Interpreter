@@ -1,7 +1,7 @@
 {
   "name": "urdu-english-interpreter",
   "version": "0.1.0",
-  "description": "Real-Time Urdu to English Voice Interpreter",
+  "description": "Real-time Urdu-to-English voice interpreter for macOS meetings",
   "main": "dist/main/index.js",
   "private": true,
   "scripts": {

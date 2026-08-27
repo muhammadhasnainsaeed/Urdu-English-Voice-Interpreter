@@ -7,11 +7,21 @@ use in Google Meet, Zoom, or Microsoft Teams.
 
 ## Project status
 
-The core pipeline and M1–M10 implementation are complete and tested. M10
-streaming TTS is implemented, including cancellation, interim/final
-replacement, telemetry, and legacy-provider compatibility. The M10 Phase 2
-acoustic benchmark remains a manual/environment-dependent validation task, so
-no end-to-end latency improvement is claimed yet.
+- The core M1–M10 Phase 2 implementation is complete and tested: microphone
+  capture, Urdu speech-to-text, Urdu → English translation, live subtitles,
+  English text-to-speech, and BlackHole audio-output routing.
+- M10 streaming TTS is implemented, including cancellation, interim/final
+  replacement, telemetry, and legacy-provider compatibility.
+- The M10 Phase 2 **acoustic streaming benchmark is still pending** (manual,
+  environment-dependent), so no end-to-end latency improvement is claimed yet.
+- **Full real Google Meet / Zoom / Microsoft Teams validation is still
+  pending** and is manual. No meeting-app API integration exists.
+- **Azure credentials are required** for the production cloud path (Speech,
+  Translator, and TTS keys). MyMemory is demo/fallback only. Deepgram, OpenAI,
+  and other providers are future/optional work, not current requirements.
+- BlackHole is required for virtual audio routing into a meeting app.
+- The app has **no authentication system**, no backend service, no database,
+  and no direct Google Meet/Zoom/Teams API integration.
 
 ## Complete application flow
 
@@ -140,12 +150,12 @@ play the Urdu test audio through MacBook speakers into the MacBook microphone.
 ```bash
 npm run type-check
 npm run build
-npx tsx --test tests/*.test.ts
+npm test
 ```
 
-The automated suite covers session lifecycle, provider resilience, duplicate
-suppression, telemetry, audio routing, streaming chunk ordering, preemption,
-session-stop cancellation, and interim-to-final attribution.
+The automated suite (43 tests) covers session lifecycle, provider resilience,
+duplicate suppression, telemetry, audio routing, streaming chunk ordering,
+preemption, session-stop cancellation, and interim-to-final attribution.
 
 Manual validation is still required for:
 
@@ -175,6 +185,17 @@ docs/           Architecture, current state, and changelog
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development and pull-request guide
 - [`SECURITY.md`](SECURITY.md) — vulnerability reporting and secret handling
 - [`LICENSE`](LICENSE) — MIT License
+
+## Roadmap
+
+- **M10 Phase 3 (planned):** production meeting-pipeline hardening and
+  end-to-end validation of the streaming path.
+- Full real meeting-app validation in Google Meet, Zoom, and Microsoft Teams.
+- M10 Phase 2 acoustic streaming benchmark (manual, pending).
+- Future/optional provider integrations (e.g., Deepgram, OpenAI) behind the
+  existing provider abstractions.
+- Reverse-direction (English → Urdu) and additional language pairs are
+  possible future extensions.
 
 ## Scope boundaries
 

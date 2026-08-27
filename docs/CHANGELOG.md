@@ -3,6 +3,25 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-28 — Open-source readiness: security cleanup and refinements
+
+- **Security cleanup:** removed accidentally-tracked audio recordings
+  (`-.wav`, `-.aiff`) from version control and disk. `.gitignore` already
+  covered `*.wav` / `*.aiff` / `.env` and preserved `.env.example`; confirmed
+  no `.env`, secrets, or API keys are tracked.
+- Converted GitHub issue templates from `.yml` to `.md` (`bug_report.md`,
+  `feature_request.md`) to match the project's declared template convention;
+  removed the `.yml` duplicates. Pull-request template unchanged.
+- Converted `project_readme.md` (the stale pre-migration Python/FastAPI design
+  draft) into an explicitly labeled historical/superseded document that points
+  to the current README and docs, so it no longer misleads contributors.
+- README: added explicit status statements (acoustic benchmark pending, real
+  meeting validation pending, Azure credentials required, BlackHole required,
+  no auth/backend/meeting API, Deepgram/OpenAI future/optional, MyMemory
+  demo-only) and a Roadmap section.
+- GitHub repo title/description/topics metadata remains manual (GitHub CLI not
+  available in this workspace).
+
 ## 2026-08-28 — Open-source project preparation
 
 - Added MIT license, contribution guide, code of conduct, and security policy.
@@ -1046,8 +1065,9 @@ renderer through the real preload bridge and gets `'idle'` via IPC
 (`SMOKE_PASS`), and the app launched via `npx electron .` stays alive with no
 errors.
 
-Leftovers intentionally not touched: `project_readme.md` (old pre-migration
-readme backup), `.aider.*` files, `.DS_Store`.
+Leftovers intentionally not touched: `.aider.*` files, `.DS_Store`.
+(`project_readme.md` was later converted to a labeled historical design draft —
+see the 2026-08-28 open-source readiness entry.)
 
 ## 2026-08-16 — Milestone 1 migration work (Gemini session)
 

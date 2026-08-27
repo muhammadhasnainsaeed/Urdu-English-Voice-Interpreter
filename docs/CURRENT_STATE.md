@@ -5,7 +5,12 @@ _Last updated: 2026-08-28_
 ## Open-source readiness
 
 - Public project documentation, MIT licensing, contribution/security/community
-  policies, GitHub CI, and issue/PR templates are now present.
+  policies, GitHub CI, and issue/PR templates are present.
+- Accidentally-tracked local audio recordings (`-.wav`, `-.aiff`) were removed
+  from version control and disk. `.gitignore` covers `*.wav`, `*.aiff`,
+  `.env` (preserving `.env.example`), logs, and build outputs.
+- Confirmed no `.env`, credentials, API keys, recordings, or sensitive logs are
+  tracked in the current tree.
 - Real Azure credentials, meeting audio, transcripts, and local recordings must
   remain outside the repository.
 

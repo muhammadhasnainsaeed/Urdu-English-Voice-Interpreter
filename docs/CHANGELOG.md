@@ -3,6 +3,14 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-28 — Open-source project preparation
+
+- Added MIT license, contribution guide, code of conduct, and security policy.
+- Added GitHub Actions CI for install, type-check, build, and test validation.
+- Added bug-report and feature-request issue forms plus a pull-request template.
+- Added the public `npm test` script and ignored local audio recordings.
+- Linked the open-source governance documents from the README.
+
 ## 2026-08-28 — Project README and metadata refresh
 
 - Replaced the outdated M1-only README with current project status, complete

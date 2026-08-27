@@ -29,6 +29,11 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Local audio recordings and generated benchmark media
+*.wav
+*.aiff
+*.mp3
+
 # Environment variables
 .env
 .env.*

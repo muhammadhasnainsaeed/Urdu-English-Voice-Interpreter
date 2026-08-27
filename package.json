@@ -9,7 +9,8 @@
     "watch": "node esbuild.config.js --watch",
     "start": "npm run build && electron .",
     "setup:whisper": "bash scripts/setup-whisper.sh",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "npx tsx --test tests/*.test.ts"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",

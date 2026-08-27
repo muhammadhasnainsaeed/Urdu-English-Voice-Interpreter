@@ -2,6 +2,13 @@
 
 _Last updated: 2026-08-28_
 
+## Open-source readiness
+
+- Public project documentation, MIT licensing, contribution/security/community
+  policies, GitHub CI, and issue/PR templates are now present.
+- Real Azure credentials, meeting audio, transcripts, and local recordings must
+  remain outside the repository.
+
 ## Milestone 1 — Project Architecture & Electron Foundation
 
 Status: **COMPLETE** (verified from code on 2026-08-16)

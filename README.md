@@ -172,6 +172,9 @@ docs/           Architecture, current state, and changelog
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — dated implementation history
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — process boundaries and data flow
 - [`AGENTS.md`](AGENTS.md) — repository workflow and validation rules
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — development and pull-request guide
+- [`SECURITY.md`](SECURITY.md) — vulnerability reporting and secret handling
+- [`LICENSE`](LICENSE) — MIT License
 
 ## Scope boundaries
 

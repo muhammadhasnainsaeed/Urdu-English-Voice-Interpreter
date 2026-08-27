@@ -25,7 +25,7 @@ export function useAudioOutput() {
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const currentSinkRef = useRef<string>("");
-  const queueRef = useRef<Array<{ data: ArrayBuffer; playbackId: number | null }>>([]);
+  const queueRef = useRef<Array<{ data: ArrayBuffer; playbackId: number | null; streamStart?: boolean; streamEnd?: boolean }>>([]);
   const playingRef = useRef(false);
   const sampleRateRef = useRef(24000);
   /** Set while a source is playing so cancellation can stop it mid-flight. */
@@ -189,7 +189,7 @@ export function useAudioOutput() {
         activeSourceRef.current = source;
         const finish = () => {
           activeSourceRef.current = null;
-          if (!cancelled) {
+          if (!cancelled && item.streamEnd !== false) {
             window.electron.reportPlaybackEvent({
               event: "complete",
               bytes: data.byteLength,
@@ -199,11 +199,13 @@ export function useAudioOutput() {
           resolve();
         };
         source.onended = finish;
-        window.electron.reportPlaybackEvent({
-          event: "start",
-          bytes: data.byteLength,
-          playbackId: playbackId,
-        });
+        if (item.streamStart !== false) {
+          window.electron.reportPlaybackEvent({
+            event: "start",
+            bytes: data.byteLength,
+            playbackId: playbackId,
+          });
+        }
         source.start();
         // Cancellation: stop the source; onended still fires and resolves.
         cancelPlaybackRef.current = () => {
@@ -222,9 +224,9 @@ export function useAudioOutput() {
 
   useEffect(() => {
     const unsub = window.electron.onAudioData(
-      (chunk: { data: ArrayBuffer; format: AudioFormat; playbackId?: number | null }) => {
+      (chunk: { data: ArrayBuffer; format: AudioFormat; playbackId?: number | null; streamStart?: boolean; streamEnd?: boolean }) => {
         sampleRateRef.current = chunk.format.sampleRate;
-        queueRef.current.push({ data: chunk.data, playbackId: chunk.playbackId ?? null });
+        queueRef.current.push({ data: chunk.data, playbackId: chunk.playbackId ?? null, streamStart: chunk.streamStart, streamEnd: chunk.streamEnd });
         playFromQueue();
       }
     );

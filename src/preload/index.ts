@@ -81,8 +81,8 @@ const api: ElectronAPI = {
       ipcRenderer.removeListener("audio-output:event", listener);
     };
   },
-  onAudioData: (handler: (chunk: { data: ArrayBuffer; format: AudioFormat }) => void) => {
-    const listener = (_event: unknown, payload: { data: ArrayBuffer; format: AudioFormat }) =>
+  onAudioData: (handler: (chunk: { data: ArrayBuffer; format: AudioFormat; playbackId?: number | null; streamStart?: boolean; streamEnd?: boolean }) => void) => {
+    const listener = (_event: unknown, payload: { data: ArrayBuffer; format: AudioFormat; playbackId?: number | null; streamStart?: boolean; streamEnd?: boolean }) =>
       handler(payload);
     ipcRenderer.on("audio-output:audio", listener);
     return () => {

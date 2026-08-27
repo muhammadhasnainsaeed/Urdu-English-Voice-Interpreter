@@ -64,6 +64,10 @@ export default function PipelinePanel({ currentStage }: PipelinePanelProps) {
             <td>{fmt(ms?.ttsMs ?? null)}</td>
           </tr>
           <tr>
+            <td>TTS First Chunk</td>
+            <td>{fmt(ms?.ttsFirstChunkMs ?? null)}</td>
+          </tr>
+          <tr>
             <td>Audio Output</td>
             <td>{fmt(ms?.audioOutputMs ?? null)}</td>
           </tr>

@@ -339,14 +339,15 @@ TTS Manager (onTranslationText)
    ├── dedup (time-window: suppress within TTS_DEDUPE_WINDOW_MS)
    ├── queue (sequential playback)
    └── TtsProvider.synthesize(text) → AudioChunk (raw PCM)
-      ├── azure: SpeechSynthesizer (null AudioConfig) → result.audioData
+      ├── azure: optional synthesizeStream() via synthesizing callbacks
+      │          → ordered PCM chunks (streamStart/streamEnd markers)
       └── say:   execFile say -o /tmp/tts-{id}.wav → parse WAV → PCM slice
    ↓
 AudioOutputManager.writeAudio(chunk)
    └── AudioOutputProvider.writeAudio(chunk)
       └── speaker: webContents.send("audio-output:audio", {data, format})
          ↓
-Renderer useAudioOutput → AudioContext → play PCM
+Renderer useAudioOutput → AudioContext → queued PCM playback
 ```
 
 **Provider selection** — `src/main/services/tts/provider.ts` reads `TTS_PROVIDER`
@@ -375,6 +376,10 @@ from the environment:
   expires is spoken again. Set to 0 to disable dedup.
 - **Queue**: rapid successive translations are queued and spoken sequentially
   (not dropped or concatenated).
+- **Streaming**: Azure may emit ordered PCM chunks before synthesis completes;
+  the renderer uses stream boundary markers to report one playback start and
+  one completion while preserving chunk order. `say` and `mock` retain the
+  complete-buffer path.
 - Emits `TtsEvent`s to the renderer: `tts:started`, `tts:speaking` (with text),
   `tts:spoken`, `tts:error`, `tts:stopped`.
 - Audio is routed through `AudioOutputManager` for device-targeted output.
@@ -406,8 +411,13 @@ interface AudioOutputProvider {
 }
 ```
 
-**AudioChunk** — `{ data: ArrayBuffer, format: AudioFormat }` where
+**AudioChunk** — `{ data: ArrayBuffer, format: AudioFormat, playbackId?, streamStart?, streamEnd? }` where
 `AudioFormat = { sampleRate: number, bitsPerSample: number, channels: number }`.
+
+`streamStart` and `streamEnd` are optional compatibility markers; omitted
+values represent a complete non-streamed chunk. Azure streaming uses raw
+24 kHz, 16-bit, mono PCM and keeps one pending chunk so the final chunk can be
+marked reliably.
 
 **BlackHole detection** — two-layer approach:
 1. Renderer: `navigator.mediaDevices.enumerateDevices()` discovers real

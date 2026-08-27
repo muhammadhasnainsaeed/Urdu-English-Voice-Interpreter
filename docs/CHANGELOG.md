@@ -3,6 +3,86 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-28 — M10 Phase 2: fix interim→final streaming telemetry attribution
+
+- Fixed the interim→final streaming race observed in the Phase 2 Digital
+  benchmark (utterance would be recorded `tts-interrupted` and its final
+  synthesis was not telemetry-attributed).
+- Root cause: a single FIFO telemetry trace per STT-final is shared between an
+  utterance's interim and final translations. When a final arrived while the
+  interim TTS was still streaming in-flight, `TtsManager.interruptForNewUtterance`
+  called `markTtsInterrupted()`, draining the shared trace; the subsequent final
+  synthesis then had no trace to adopt, so its completion was lost.
+- Fix: track whether the in-flight synthesis is an interim (`speakingInterim`).
+  When an in-flight interim is replaced by that utterance's final (`toInterim`
+  is false), preserve the shared trace (`preserveInterimTrace`) instead of
+  draining it as interrupted, so the final adopts it and is attributed as
+  "completed". Real preemption and interim→interim replacement still drain as
+  before (audio delivery and preemption behavior unchanged).
+- Added deterministic regression test `interim→final streaming replacement
+  keeps the final telemetry-attributed` (proven to fail without the fix, pass
+  with it). 43/43 tests now pass.
+- Validation: `npm run type-check` clean, `npm run build` OK, all 43 tests pass.
+
+## 2026-08-28 — M10 Phase 2: final runtime benchmark (Digital)
+
+- Ran the real Azure streaming (Phase 2) Digital before/after benchmark using
+  the same 5 Urdu utterances (short/medium-short/medium/long/very-long) from
+  Phase 1: 5 valid post-warm-up completions via BlackHole input to MacBook
+  speakers, PIPELINE_DEBUG=1.
+- Verified live streaming path: `[TTS] writeAudio stream bytes` chunks
+  forwarded incrementally and played correctly; no stale chunks, gaps, or
+  playback errors across the run.
+- Comparison vs Phase 1 (legacy) digital baseline (5-utterance averages):
+  First Audio 1844→2035ms (+191), E2E 5788→5771ms (−17), STT Final
+  1901→1919ms, Translation 404→412ms, TTS full 571→664ms, Audio Out
+  2910→2937ms. Run-to-run Azure STT variance dominates.
+- Internal streaming measurement: time-to-first-chunk (from synthesis start)
+  avg 499ms vs full synthesis 664ms (~165ms/utterance, per-utterance
+  121–215ms). Reported separately — this is NOT an overall latency
+  improvement (does not change user-facing First Audio/E2E).
+- Latency improvement **not proven** end-to-end.
+- Observed a timing-dependent interim→final streaming race: utterance #5
+  (medium) was recorded `tts-interrupted` because the final arrived while the
+  interim TTS was still mid-stream; its final synthesis played but was not
+  telemetry-attributed. Same text re-run cleanly (#8). Telemetry-attribution
+  gap only; audio was delivered.
+- Acoustic benchmark **not completed / blocked** (requires a feedback-isolated
+  speakers→Mac-mic physical run; not executed this session). No acoustic
+  latency claim made.
+- No code changed in this benchmark step. Type-check clean, build OK, 42/42
+  tests passing (verified before the benchmark run; unchanged afterward).
+- Docs: `docs/CURRENT_STATE.md` updated with digital results + blocked
+  acoustic status.
+
+## 2026-08-27 — M10 Phase 2: session-stop cancels active TTS stream (fix)
+
+- `TtsManager.stop()` now aborts the in-flight `currentSynthesis` (previously
+  it only nulled provider/emit/audioOutput without canceling the stream).
+- Verified defect: a streamed synthesis in flight during a session stop kept
+  consuming the Azure provider (and could forward stale chunks / hold
+  `speaking` state). Stopping now cancels it and forwards nothing after stop.
+- Added deterministic regression test in `tests/m10-streaming.test.ts`
+  ("stopping the session aborts an active stream..."), proven to fail without
+  the abort and pass with it.
+- Full validation: `npm run type-check` clean, `npm run build` OK, all 42
+  tests pass (4 streaming tests now).
+
+## 2026-08-27 — M10 Phase 2: streaming TTS implementation
+
+- Added optional `TtsProvider.synthesizeStream()` while preserving the
+  complete-buffer `synthesize()` path for `say`, `mock`, and legacy providers.
+- Azure TTS forwards ordered raw PCM chunks from `synthesizing`; one pending
+  chunk is retained so the final chunk receives a reliable stream-end marker.
+- TTS manager preserves FIFO/playback IDs, forwards chunks incrementally, and
+  aborts stale streams during preemption.
+- Renderer playback supports stream start/end markers and reports one telemetry
+  lifecycle per utterance while keeping chunk order.
+- Added `ttsFirstChunkMs` telemetry and deterministic streaming/preemption/
+  legacy-provider tests.
+- Real before/after Azure benchmark and live BlackHole validation remain
+  pending; no latency improvement is claimed yet.
+
 ## 2026-08-26 — M10 Phase 1 (complete): digital + acoustic benchmark + streaming TTS feasibility
 
 ### Digital benchmark (complete)

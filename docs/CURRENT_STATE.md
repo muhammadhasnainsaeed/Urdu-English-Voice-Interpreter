@@ -1,6 +1,6 @@
 # Current State
 
-_Last updated: 2026-08-17_
+_Last updated: 2026-08-28_
 
 ## Milestone 1 — Project Architecture & Electron Foundation
 
@@ -304,10 +304,74 @@ Status: **PHASE 1 COMPLETE** (2026-08-26)
   - `readyToPlay` — time from TTS ready to first playback start
   - These fill the inter-stage gaps that were previously unmeasured
 
-### What remains (M10 Phase 1)
+### M10 Phase 2 implementation
 
-- Nothing blocking. Digital (5 valid utterances) and Acoustic (5 valid
-  utterances) benchmarks are both complete with full per-stage data.
+- Azure TTS now exposes an additive `synthesizeStream()` capability using the
+  SDK `synthesizing` callback. Existing `synthesize()` remains available.
+- TTS manager forwards ordered streamed chunks with stable playback IDs and
+  `streamStart`/`streamEnd` markers. Preemption aborts the stream and stale
+  chunks are not forwarded.
+- Renderer queues streamed PCM chunks and reports one playback start and one
+  completion per streamed utterance. Legacy providers retain complete-buffer
+  playback.
+- Telemetry now records `ttsFirstChunkMs` separately from full `ttsMs`.
+- Session stop now aborts the in-flight synthesis (`currentSynthesis`) inside
+  `TtsManager.stop()`, so a stopped session cancels any active stream, forwards
+  no stale chunks, and stops consuming provider resources. Covered by a new
+  regression test in `tests/m10-streaming.test.ts`.
+- Interim→final streaming attribution fixed: when a final translation replaces
+  an active in-flight interim stream for the same utterance, the shared FIFO
+  trace is preserved (`preserveInterimTrace`) and adopted by the final so it is
+  telemetry-attributed as "completed" — not drained as `tts-interrupted`.
+  Real preemption and interim→interim replacement still drain as before.
+  Covered by a regression test in `tests/m10-streaming.test.ts`.
+
+### What remains (M10)
+
+- The **Acoustic** 5-utterance before/after benchmark is **BLOCKED**: it
+  requires playing the test WAVs through the MacBook speakers into the Mac
+  mic with app-TTS routed to BlackHole for feedback isolation (echo/ambient),
+  which was not set up/executed in this run. Digital benchmark completed;
+  acoustic was not run. No acoustic latency claim is made.
+
+### M10 Phase 2 benchmark — Digital (streaming, verified)
+
+5 valid post-warm-up utterances (short / medium-short / medium / long /
+very-long), BlackHole input, output to MacBook speakers, PIPELINE_DEBUG=1,
+Azure STT ur-IN seg=300ms + Azure Translator + Azure TTS streaming.
+
+| metric | Phase 1 (legacy) | Phase 2 (streaming) | delta |
+|---|---|---|---|
+| First Audio | 1844ms | 2035ms | +191ms |
+| E2E | 5788ms | 5771ms | −17ms |
+| STT Final | 1901ms | 1919ms | +18ms |
+| Translation | 404ms | 412ms | +8ms |
+| TTS full (ttsMs) | 571ms | 664ms | +93ms |
+| Audio Out | 2910ms | 2937ms | +27ms |
+
+Streaming measured: time-to-first-chunk (from synthesis start) averaged
+**499ms** vs full-synthesis **664ms** → **~165ms/utterance** saved before the
+first audible chunk (per-utterance 121–215ms). This matches the ~217ms warm
+feasibility estimate (first-chunk saving), but is **not** reflected in the
+user-facing `firstAudio` because (a) STT-final latency dominates and (b) the
+interim path already provides early audio in most utterances.
+
+- No stale chunks, no gaps, no playback errors observed in the 8 completed
+  utterances. Streaming path confirmed live: `[TTS] writeAudio stream bytes`
+  chunks forwarded incrementally and played correctly.
+- One timing-dependent race was observed: utterance #5 (medium text) was
+  recorded `tts-interrupted` when the final translation arrived while the
+  interim TTS was still mid-stream; its final synthesis played but was not
+  telemetry-attributed. **This was the interim→final streaming attribution
+  bug, now FIXED** (see "M10 Phase 2 implementation") with a regression test —
+  the final is now attributed as "completed" even when it replaces an active
+  interim stream. Re-run of the same medium text had already completed
+  cleanly (#8).
+
+**Latency improvement is NOT proven** end-to-end: user-facing `firstAudio`
+and `E2E` did not improve (within run-to-run Azure STT variance). Streaming
+lowers the time to the first TTS chunk by ~165ms/utterance, which is
+dominated by STT-final latency and the interim path.
 
 ### Bottleneck ranking (Digital + Acoustic benchmark, confirmed)
 
@@ -340,9 +404,11 @@ These are beyond Milestone 7. Milestones 1–7 are all complete.
 
 ## Next task
 
-M10 Phase 1 is complete: both Digital and Acoustic benchmarks validated (5
-utterances each). Next: M10 Phase 2 (streaming TTS implementation) or a new
-milestone as defined by the user.
+M10 Phase 2: Digital streaming benchmark completed and documented (see above);
+the interim→final streaming telemetry-attribution gap found in the benchmark
+was fixed with a regression test. Remaining: the Acoustic streaming benchmark
+(BLOCKED — requires physical speakers→mic feedback-isolated run that was not
+executed this session). Do not start M10 Phase 3.
 
 ## Files at a glance
 

@@ -22,6 +22,8 @@ export function createSystemSpeakerOutput(
           data: chunk.data,
           format: chunk.format,
           playbackId: chunk.playbackId ?? null,
+          streamStart: chunk.streamStart ?? true,
+          streamEnd: chunk.streamEnd ?? true,
         });
       }
     },

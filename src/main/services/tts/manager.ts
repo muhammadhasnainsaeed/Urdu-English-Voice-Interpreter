@@ -54,6 +54,10 @@ export class TtsManager {
   private emit: ((event: TtsEvent) => void) | null = null;
   private active: boolean = false;
   private speaking: boolean = false;
+  /** True while the in-flight synthesis (`currentSynthesis`) is an interim.
+   *  Used to decide whether a final replacing it should preserve the shared
+   *  FIFO telemetry trace instead of draining it as interrupted. */
+  private speakingInterim: boolean = false;
   private queue: Array<{ text: string; interim: boolean }> = [];
   /**
    * Timestamp of an interim chunk that the renderer is (or was recently)
@@ -165,7 +169,7 @@ export class TtsManager {
     // Preemption: newer translated content replaces whatever is currently
     // synthesizing/playing so first audio for the latest utterance starts
     // immediately instead of waiting behind stale audio.
-    this.interruptForNewUtterance();
+    this.interruptForNewUtterance(interim);
 
     // Backpressure guard kept as an invariant (queue is normally emptied by
     // the interruption above).
@@ -182,8 +186,16 @@ export class TtsManager {
    * audio can start immediately. Cancels in-flight synthesis (aborting the
    * provider call), drops pending queue items, and stops renderer playback.
    * The caller then enqueues the new text as usual.
+   *
+   * The single FIFO telemetry trace per STT-final is shared between an
+   * utterance's interim and final translations. When an in-flight INTERIM
+   * stream is replaced by that utterance's FINAL, the trace must be
+   * preserved (not drained) so the final synthesis adopts it and is
+   * telemetry-attributed; marking it `tts-interrupted` would lose the final.
+   *
+   * @param toInterim whether the incoming (replacing) text is itself an interim
    */
-  interruptForNewUtterance(): void {
+  interruptForNewUtterance(toInterim: boolean): void {
     if (!this.active) return;
     const interimAudible =
       this.playingInterimAt !== null &&
@@ -191,10 +203,14 @@ export class TtsManager {
     const hadWork = this.speaking || this.queue.length > 0 || interimAudible;
     if (!hadWork) return;
     const interruptedText = this.currentSynthesisText || "";
-    // Only drain FIFO traces for stale synthesis/queue work. When only
-    // interim audio is being replaced, the final's own trace is already
-    // in awaitingTts and must NOT be consumed — it should complete normally.
-    if (this.speaking || this.queue.length > 0) {
+    // When an in-flight interim is promoted to this utterance's final, keep
+    // its FIFO trace alive so the final can adopt and attribute it. Real
+    // preemption (or interim→interim replacement) still drains as usual.
+    const preserveInterimTrace =
+      this.speaking && this.speakingInterim && !toInterim;
+    // Only drain FIFO traces for stale synthesis/queue work (unless the
+    // trace belongs to an in-flight interim that the final should adopt).
+    if (!preserveInterimTrace && (this.speaking || this.queue.length > 0)) {
       pipelineTelemetry.markTtsInterrupted();
       for (const item of this.queue) {
         if (!item.interim) pipelineTelemetry.markTtsInterrupted();
@@ -215,15 +231,24 @@ export class TtsManager {
 
   stop(): void {
     const provider = this.provider;
+    const synthesis = this.currentSynthesis;
     this.provider = null;
     this.audioOutput = null;
     this.emit = null;
     this.active = false;
     this.speaking = false;
+    this.speakingInterim = false;
     this.queue = [];
     this.playingInterimAt = null;
     this.lastSpokenText = "";
     this.lastSpokenTime = 0;
+    this.currentSynthesis = null;
+    this.currentSynthesisText = "";
+    // Cancel any in-flight synthesis so a stopped session never forwards
+    // stale streamed chunks or keeps consuming provider resources.
+    if (synthesis) {
+      synthesis.abort(new Error("TTS stopped"));
+    }
     pipelineTelemetry.resetPipeline();
     if (provider) {
       provider.stop().catch(() => {});
@@ -244,6 +269,7 @@ export class TtsManager {
     const item = this.queue.shift()!;
     const text = item.text;
     this.speaking = true;
+    this.speakingInterim = item.interim;
     const synthesis = new AbortController();
     this.currentSynthesis = synthesis;
     this.currentSynthesisText = text;
@@ -252,18 +278,30 @@ export class TtsManager {
     try {
       log(`synthesize${item.interim ? " (interim)" : ""}:`, text);
       if (!item.interim) pipelineTelemetry.beginTts();
-      const audioChunk = await this.provider.synthesize(
-        text,
-        synthesis.signal
-      );
-      // Correlate playback events with the pipeline path that produced them.
-      const chunk: typeof audioChunk = {
-        ...audioChunk,
-        playbackId: item.interim ? 0 : this.nextPlaybackId++,
-      };
-      if (!item.interim) pipelineTelemetry.endTtsSuccess();
-      log("writeAudio bytes:", chunk.data.byteLength);
-      await this.audioOutput.writeAudio(chunk);
+      const playbackId = item.interim ? 0 : this.nextPlaybackId++;
+      if (this.provider.synthesizeStream) {
+        let first = true;
+        await this.provider.synthesizeStream(text, async (audioChunk, isFinal) => {
+          if (synthesis.signal.aborted) return;
+          if (!item.interim && first) pipelineTelemetry.markTtsFirstChunk();
+          const chunk = {
+            ...audioChunk,
+            playbackId,
+            streamStart: first,
+            streamEnd: isFinal,
+          };
+          first = false;
+          log("writeAudio stream bytes:", chunk.data.byteLength);
+          await this.audioOutput!.writeAudio(chunk);
+        }, synthesis.signal);
+        if (!item.interim) pipelineTelemetry.endTtsSuccess();
+      } else {
+        const audioChunk = await this.provider.synthesize(text, synthesis.signal);
+        const chunk = { ...audioChunk, playbackId, streamStart: true, streamEnd: true };
+        if (!item.interim) pipelineTelemetry.endTtsSuccess();
+        log("writeAudio bytes:", chunk.data.byteLength);
+        await this.audioOutput.writeAudio(chunk);
+      }
       if (item.interim) this.playingInterimAt = Date.now();
       if (this.emit) {
         this.emit({ type: "tts:spoken", text });
@@ -285,6 +323,7 @@ export class TtsManager {
         this.currentSynthesisText = "";
       }
       this.speaking = false;
+      this.speakingInterim = false;
       this.processQueue();
     }
   }

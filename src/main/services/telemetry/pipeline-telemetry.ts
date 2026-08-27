@@ -51,6 +51,7 @@ function emptyBreakdown(): UtteranceLatencyBreakdown {
     sttFinalMs: null,
     translationMs: null,
     ttsMs: null,
+    ttsFirstChunkMs: null,
     audioOutputMs: null,
     endToEndMs: null,
     sttFinalToTranslationMs: null,
@@ -73,6 +74,7 @@ export class PipelineTelemetry {
     sttFinalMs: 0,
     translationMs: 0,
     ttsMs: 0,
+    ttsFirstChunkMs: 0,
     audioOutputMs: null as number | null,
     sttFinalToTranslationMs: 0,
     translationToTtsReadyMs: 0,
@@ -85,6 +87,7 @@ export class PipelineTelemetry {
     sttFinalMs: 0,
     translationMs: 0,
     ttsMs: 0,
+    ttsFirstChunkMs: 0,
     audioOutputMs: 0,
     sttFinalToTranslationMs: 0,
     translationToTtsReadyMs: 0,
@@ -215,6 +218,7 @@ export class PipelineTelemetry {
         translationStart: null,
         translationComplete: null,
         ttsStart: null,
+        ttsFirstChunk: null,
         ttsReady: null,
         audioOutputStart: null,
         audioOutputComplete: null,
@@ -286,7 +290,11 @@ export class PipelineTelemetry {
   markTtsInterrupted(): void {
     const trace = this.inFlightTts ?? this.awaitingTts.shift();
     this.inFlightTts = null;
-    if (trace) this.finalize(trace, "tts-interrupted");
+    if (trace) {
+      this.awaitingAudioOut = this.awaitingAudioOut.filter((item) => item !== trace);
+      if (this.inFlightAudioOut === trace) this.inFlightAudioOut = null;
+      this.finalize(trace, "tts-interrupted");
+    }
   }
 
   beginTts(): void {
@@ -301,13 +309,30 @@ export class PipelineTelemetry {
     if (!trace) return;
     trace.t.ttsReady = this.now();
     this.inFlightTts = null;
-    this.awaitingAudioOut.push(trace);
+    if (!this.awaitingAudioOut.includes(trace) && this.inFlightAudioOut !== trace) {
+      this.awaitingAudioOut.push(trace);
+    }
+  }
+
+  /** First streamed TTS chunk became available. */
+  markTtsFirstChunk(): void {
+    const trace = this.inFlightTts;
+    if (!trace || trace.t.ttsFirstChunk !== null) return;
+    trace.t.ttsFirstChunk = this.now();
+    // Make the trace available for playback attribution before synthesis ends.
+    if (!this.awaitingAudioOut.includes(trace) && this.inFlightAudioOut !== trace) {
+      this.awaitingAudioOut.push(trace);
+    }
   }
 
   endTtsError(): void {
     const trace = this.inFlightTts;
     this.inFlightTts = null;
-    if (trace) this.finalize(trace, "tts-failed");
+    if (trace) {
+      this.awaitingAudioOut = this.awaitingAudioOut.filter((item) => item !== trace);
+      if (this.inFlightAudioOut === trace) this.inFlightAudioOut = null;
+      this.finalize(trace, "tts-failed");
+    }
   }
 
   /* ---------------------- Audio output ---------------------- */
@@ -411,6 +436,10 @@ export class PipelineTelemetry {
           this.phaseCounts.translationMs
         ),
         ttsMs: avg(this.phaseSums.ttsMs, this.phaseCounts.ttsMs),
+        ttsFirstChunkMs: avg(
+          this.phaseSums.ttsFirstChunkMs,
+          this.phaseCounts.ttsFirstChunkMs
+        ),
         audioOutputMs:
           this.phaseCounts.audioOutputMs > 0
             ? Math.round(
@@ -457,6 +486,9 @@ export class PipelineTelemetry {
     if (t.ttsStart !== null && t.ttsReady !== null) {
       ms.ttsMs = t.ttsReady - t.ttsStart;
     }
+    if (t.ttsFirstChunk !== null) {
+      ms.ttsFirstChunkMs = t.ttsFirstChunk - t.speechStart;
+    }
     if (t.audioOutputStart !== null && t.audioOutputComplete !== null) {
       ms.audioOutputMs = t.audioOutputComplete - t.audioOutputStart;
     }
@@ -469,8 +501,9 @@ export class PipelineTelemetry {
     if (t.translationComplete !== null && t.ttsReady !== null) {
       ms.translationToTtsReadyMs = t.ttsReady - t.translationComplete;
     }
-    if (t.ttsReady !== null && t.audioOutputStart !== null) {
-      ms.ttsReadyToAudioOutMs = t.audioOutputStart - t.ttsReady;
+    const audioReadyAt = t.ttsFirstChunk ?? t.ttsReady;
+    if (audioReadyAt !== null && t.audioOutputStart !== null) {
+      ms.ttsReadyToAudioOutMs = t.audioOutputStart - audioReadyAt;
     }
     // True First Audio: earliest audible playback from either path. A
     // pending interim timestamp (race: interim playback reported after the
@@ -512,6 +545,7 @@ export class PipelineTelemetry {
     add("sttFinalMs", ms.sttFinalMs);
     add("translationMs", ms.translationMs);
     add("ttsMs", ms.ttsMs);
+    add("ttsFirstChunkMs", ms.ttsFirstChunkMs);
     add("sttFinalToTranslationMs", ms.sttFinalToTranslationMs);
     add("translationToTtsReadyMs", ms.translationToTtsReadyMs);
     add("ttsReadyToAudioOutMs", ms.ttsReadyToAudioOutMs);

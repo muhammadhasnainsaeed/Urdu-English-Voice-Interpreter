@@ -117,6 +117,10 @@ export interface AudioChunk {
    * stage attribution; final-path chunks receive 1,2,3… Absent = legacy.
    */
   playbackId?: number;
+  /** True for the first chunk of a streamed playback. */
+  streamStart?: boolean;
+  /** False until the final chunk of a streamed playback. */
+  streamEnd?: boolean;
 }
 
 export interface AudioOutputDevice {
@@ -189,6 +193,8 @@ export interface UtteranceLatencyBreakdown {
   translationMs: number | null;
   /** ttsStart → ttsReady (audio buffer available) */
   ttsMs: number | null;
+  /** speechStart → first streamed TTS chunk available */
+  ttsFirstChunkMs: number | null;
   /** playbackStart → playbackComplete */
   audioOutputMs: number | null;
   /** speechStart → audioOutputComplete */
@@ -229,6 +235,7 @@ export interface UtteranceTraceReport {
     translationStart: number | null;
     translationComplete: number | null;
     ttsStart: number | null;
+    ttsFirstChunk: number | null;
     ttsReady: number | null;
     audioOutputStart: number | null;
     audioOutputComplete: number | null;
@@ -242,6 +249,7 @@ export interface PipelinePhaseAverages {
   sttFinalMs: number | null;
   translationMs: number | null;
   ttsMs: number | null;
+  ttsFirstChunkMs: number | null;
   audioOutputMs: number | null;
   sttFinalToTranslationMs: number | null;
   translationToTtsReadyMs: number | null;
@@ -296,7 +304,7 @@ export interface ElectronAPI {
   startAudioOutput: () => Promise<AudioOutputStartResult>;
   stopAudioOutput: () => Promise<void>;
   onAudioOutputEvent: (handler: (event: AudioOutputEvent) => void) => () => void;
-  onAudioData: (handler: (chunk: { data: ArrayBuffer; format: AudioFormat }) => void) => () => void;
+  onAudioData: (handler: (chunk: { data: ArrayBuffer; format: AudioFormat; playbackId?: number | null; streamStart?: boolean; streamEnd?: boolean }) => void) => () => void;
   onAudioCancel: (handler: () => void) => () => void;
   detectBlackHole: () => Promise<boolean>;
   startSession: () => Promise<SessionStartResult>;

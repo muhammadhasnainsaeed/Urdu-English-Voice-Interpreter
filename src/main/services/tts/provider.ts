@@ -8,6 +8,12 @@ export interface TtsProvider {
    * and reject with the abort reason. Cancellation is best-effort.
    */
   synthesize(text: string, signal?: AbortSignal): Promise<AudioChunk>;
+  /** Optional low-latency audio stream. Chunks must be emitted in order. */
+  synthesizeStream?: (
+    text: string,
+    onChunk: (chunk: AudioChunk, isFinal: boolean) => Promise<void> | void,
+    signal?: AbortSignal,
+  ) => Promise<void>;
   stop(): Promise<void>;
 }
 

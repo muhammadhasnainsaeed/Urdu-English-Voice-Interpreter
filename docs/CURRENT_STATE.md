@@ -4,6 +4,9 @@ _Last updated: 2026-08-28_
 
 ## Open-source readiness
 
+- Application version is now `1.0.0` (first public open-source release).
+  Release notes prepared in `docs/releases/v1.0.0.md`; the README presents the
+  v1.0.0 release. Tag/Release creation is a separate release step (not yet done).
 - Public project documentation, MIT licensing, contribution/security/community
   policies, GitHub CI, and issue/PR templates are present.
 - Accidentally-tracked local audio recordings (`-.wav`, `-.aiff`) were removed

@@ -3,6 +3,80 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## [1.0.0] - 2026-08-28
+
+First public open-source release of the Urdu → English Voice Interpreter for
+macOS.
+
+### Milestones M1–M7 (foundation)
+
+- M1: Electron + React + TypeScript project architecture and secure preload
+  bridge (`contextIsolation: true`, `nodeIntegration: false`).
+- M2: Microphone capture and audio device detection.
+- M3: Urdu speech-to-text (`ur-IN`), including local Whisper and Mock
+  alternatives to the Azure production provider.
+- M4: Urdu → English translation with live subtitles, in-app pipeline, durable
+  provider abstraction.
+- M5: Text-to-Speech with provider abstraction.
+- M6: Audio output routing to a selectable device, including BlackHole virtual
+  microphone.
+- M7: Production meeting pipeline, session orchestration, and hardening.
+
+### M8 — Low-latency interpretation
+
+- Streamlined real-time translation path with partial transcripts feeding the
+  translator as they arrive.
+
+### M9 — STT partial diagnostics and interim handling
+
+- Partial STT result diagnostics and interim-result processing for an earlier
+  first translation and subtitle.
+
+### M10 Phase 2 — Streaming TTS
+
+- Azure streaming TTS (`synthesizeStream`) with incremental PCM playback via
+  the renderer playback queue.
+- Incremental/interim translation with authoritative final replacement.
+- TTS preemption, FIFO queueing, bounded backpressure, and deduplication.
+- Azure STT segmentation tuning (silence-based segments for smooth flow).
+- PCM chunk ordering and playback correlator (streamStart/streamEnd).
+- Interim/final replacement during streaming.
+- Session-stop cancellation that aborts the in-flight synthesis.
+- Telemetry attribution fix for interim→final streaming replacement.
+
+### Cross-cutting
+
+- BlackHole detection and routing for virtual audio output into meeting apps.
+- Provider abstraction preserving deterministic Mock and macOS `say` providers
+  alongside Azure STT / Translator / TTS.
+- Automated test coverage (43 tests): session lifecycle, provider resilience,
+  translation resilience, duplicate suppression, telemetry, audio routing,
+  low-latency interim path, streaming chunk ordering, preemption, session-stop
+  cancellation, and interim-to-final attribution.
+- Secure configuration via `.env` (never committed; `.env.example` documents
+  every setting).
+
+### Validation status for this release
+
+- Automated suite (build, type-check, tests) passes.
+- M10 Phase 2 acoustic streaming benchmark is pending/manual — no end-to-end
+  latency claim is made in this release.
+- Full real Google Meet / Zoom / Microsoft Teams validation is pending/manual.
+
+## 2026-08-28 — Prepare v1.0.0 open-source release
+
+- Bumped application version from `0.1.0` to `1.0.0` in `package.json` and
+  `package-lock.json` (no dependency changes).
+- Added the `[1.0.0] - 2026-08-28` release section above summarizing the actual
+  implemented M1–M10 Phase 2 release.
+- README: added a "Current release: v1.0.0" presentation block (what is
+  included, validation status, demo placeholder, release-notes link) and linked
+  the release notes from the Documentation section.
+- Added `docs/releases/v1.0.0.md` — user-facing release notes (overview,
+  highlights, requirements, validation status, known limitations, future
+  roadmap).
+- No git tag and no GitHub Release were created (left for the release step).
+
 ## 2026-08-28 — Open-source readiness: security cleanup and refinements
 
 - **Security cleanup:** removed accidentally-tracked audio recordings

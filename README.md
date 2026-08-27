@@ -5,6 +5,21 @@ into your microphone, see the live transcript and English translation, and send
 the translated English voice to a selected output device such as BlackHole for
 use in Google Meet, Zoom, or Microsoft Teams.
 
+## Current release: v1.0.0
+
+This is the first public open-source release of the project.
+
+- **What is included:** the complete M1–M10 Phase 2 pipeline — Urdu speech-to-text
+  (`ur-IN`), Urdu → English translation, live subtitles, English TTS, and audio
+  routing to a selectable output device (including BlackHole). Azure STT →
+  Azure Translator → Azure streaming TTS is the production path; deterministic
+  Mock and macOS `say` providers are preserved for local testing.
+- **Validation status:** build, type-check, and 43 automated tests pass. The M10
+  Phase 2 acoustic streaming benchmark is pending/manual and full real Google
+  Meet / Zoom / Teams validation is pending/manual.
+- **Demo:** video/screenshots coming soon.
+- **Release notes:** [`docs/releases/v1.0.0.md`](docs/releases/v1.0.0.md)
+
 ## Project status
 
 - The core M1–M10 Phase 2 implementation is complete and tested: microphone
@@ -178,6 +193,7 @@ docs/           Architecture, current state, and changelog
 
 ## Documentation
 
+- [`docs/releases/v1.0.0.md`](docs/releases/v1.0.0.md) — v1.0.0 release notes
 - [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) — milestone status and remaining work
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — dated implementation history
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — process boundaries and data flow

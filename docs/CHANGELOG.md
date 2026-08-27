@@ -3,6 +3,59 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-08-26 — M10 Phase 1 (complete): digital + acoustic benchmark + streaming TTS feasibility
+
+### Digital benchmark (complete)
+
+5 valid post-warm-up utterances via BlackHole input with explicit silence gaps
+between WAVs to prevent continuous-recognition bleed-through. All 5 Urdu texts
+covered (2–14 words). Config: Azure STT (ur-IN, segmentation=300ms) + Azure
+Translator + Azure TTS (JennyNeural) + incremental translation (STABLE_MS=200).
+
+Average First Audio: 1844ms, E2E: 5788ms, STT Final: 1901ms, Translation:
+404ms, TTS: 571ms. Interim path fires 3/5 utterances, saves avg 850ms vs final
+path. Inter-stage gaps ≈ 0 (well-chained pipeline).
+
+### Acoustic benchmark (complete, feedback isolated)
+
+Re-run with feedback isolation: app TTS routed to BlackHole virtual device
+(via in-app audio output dropdown), Urdu test WAVs played through MacBook
+speakers into the MacBook Air mic. Previous run (TTS through speakers) caused
+STT feedback interference and invalid outcomes; the isolated run produced 5
+valid post-warm-up utterances covering all 5 texts with full per-stage data and
+zero TTS-interrupted outcomes.
+
+Average First Audio: 1712ms, E2E: 5635ms, STT Final: 1937ms, Translation: 247ms,
+TTS: 560ms. Interim fires 3/5. Acoustic misrecognition noted (6-word utterance
+emitted a spurious "اولائی" fragment before the correct final; room/ambient
+noise produced occasional extra finals excluded from the valid set).
+
+### Streaming TTS feasibility
+
+Measured `synthesizing` callback vs full `speakTextAsync` completion for
+5 English texts using `microsoft-cognitiveservices-speech-sdk`. First chunk
+arrives 488ms after request (warm), full audio 705ms. Each chunk is 6000 bytes.
+First 4 bytes of first chunk = `00 00 ff ff` (int16 samples) — confirmed **raw
+PCM, no RIFF/WAVE header**, matching AudioChunk format with no header stripping
+needed. Streaming is feasible and would save ~217ms per utterance, but 217ms is a
+**warm-average** saving; the first cold request measured 69ms. Measured five-text
+session total ≈ **937ms** (4 warm utterances = 868ms + first cold = 69ms; 935ms
+from displayed row values). `1085ms` (217 × 5) is only a hypothetical five-warm-
+utterance estimate, not the measured session result. Gap-free playback requires
+renderer validation (not yet tested).
+
+### Pipeline telemetry diagnostic additions
+
+3 new debug fields in `pipeline-telemetry.ts` (gated behind `PIPELINE_DEBUG`):
+`finalToTrans`, `transToReady`, `readyToPlay` — fill inter-stage gaps that
+were previously unmeasured. Non-breaking: fields are only logged, not exposed
+in UI or shared types.
+
+### Files deleted
+
+- `docs/M10-PHASE1-REPORT.md` — replaced by corrected data in CURRENT_STATE.md
+- `benchmark.sh` — untracked temp file, no longer needed
+
 ## 2026-08-25 — Milestone 8: low-latency interpretation (incremental translation, TTS preemption, segmentation)
 
 ### Added

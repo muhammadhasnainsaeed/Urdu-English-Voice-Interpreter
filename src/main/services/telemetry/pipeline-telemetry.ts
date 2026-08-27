@@ -559,7 +559,10 @@ export class PipelineTelemetry {
         ` partials=${trace.sttPartialCount ?? "-"}` +
         ` translation=${ms.translationMs ?? "-"}ms` +
         ` tts=${ms.ttsMs ?? "-"}ms` +
-        ` audioOut=${ms.audioOutputMs ?? "-"}ms`
+        ` audioOut=${ms.audioOutputMs ?? "-"}ms` +
+        ` finalToTrans=${ms.sttFinalToTranslationMs ?? "-"}ms` +
+        ` transToReady=${ms.translationToTtsReadyMs ?? "-"}ms` +
+        ` readyToPlay=${ms.ttsReadyToAudioOutMs ?? "-"}ms`
     );
     this.emit({ type: "pipeline:utterance", utterance: this.toReport(trace, outcome, ms) });
     this.emit({ type: "pipeline:summary", summary: this.getSummary() });

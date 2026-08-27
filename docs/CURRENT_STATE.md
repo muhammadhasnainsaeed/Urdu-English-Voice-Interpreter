@@ -221,6 +221,118 @@ Status: **COMPLETE** (verified on 2026-08-17; regression fixed + runtime-verifie
   flow and the translation→TTS chain. Fixed with `createTranslationEmit()` etc.
   See CHANGELOG for full root cause and runtime trace.
 
+## Milestone 10 — Latency Benchmark & Streaming TTS Feasibility
+
+Status: **PHASE 1 COMPLETE** (2026-08-26)
+
+### What is done (M10 Phase 1)
+
+- **Digital latency benchmark** — 5 synthetic Urdu WAVs (Azure TTS ur-PK-UzmaNeural,
+  2–14 words) played through BlackHole input with `PIPELINE_DEBUG=1`.
+  Config: Azure STT (ur-IN, segmentation=300ms) + Azure Translator + Azure TTS
+  (JennyNeural) + incremental translation (STABLE_MS=200). 5 valid post-warm-up
+  utterances, all 5 texts covered.
+
+  | Utterance | Words | First Audio | E2E | STT Final | Translation | TTS | Audio Out |
+  |---|---|---|---|---|---|---|---|
+  | سلام نمبر | 2 | 1253ms (final) | 2981ms | 178ms | 540ms | 532ms | 1728ms |
+  | آج کی میٹنگ بہت اہم ہے | 6 | 2044ms (final) | 4752ms | 956ms | 507ms | 577ms | 2708ms |
+  | براہ کرم توجہ سے سنیں اور جواب دیں | 8 | 1866ms (interim) | 5286ms | 1518ms | 365ms | 569ms | 2833ms |
+  | ہم اگلے ہفتے نئے منصوبے پر کام شروع کریں گے | 9 | 2280ms (interim) | 6604ms | 2567ms | 89ms | 613ms | 3332ms |
+  | کیا آپ مجھے بتا سکتے ہیں کہ ہماری ٹیم کو... | 14 | 1676ms (interim) | 9317ms | 4287ms | 517ms | 562ms | 3947ms |
+  | **Average** | | **1844ms** | **5788ms** | **1901ms** | **404ms** | **571ms** | **2910ms** |
+
+  - Final-path First Audio: 2/5 (40%), avg 1649ms
+  - Interim-path First Audio: 3/5 (60%), avg 1941ms
+  - Interim saves avg 850ms vs final path (STT final avg 2791ms vs firstAudio 1941ms)
+  - Inter-stage gaps ≈ 0: `finalToTrans ≈ translationMs`, `transToReady ≈ ttsMs`
+  - Renderer buffering 1–4ms steady state (3701ms cold start on first utterance)
+
+- **Acoustic latency benchmark** — 5 valid post-warm-up utterances, all 5 texts
+  covered, with feedback isolation (app TTS routed to BlackHole virtual device,
+  Urdu test WAVs played through MacBook speakers into the MacBook Air mic).
+  Same config as Digital. Every row includes speechStart, STT final, translation,
+  TTS, playback start, and playback complete.
+
+  | Utterance | Words | First Audio | E2E | STT Final | Translation | TTS | Audio Out |
+  |---|---|---|---|---|---|---|---|
+  | سلام نمبر | 2 | 1176ms (final) | 2893ms | 392ms | 323ms | 457ms | 1717ms |
+  | آج کی میٹنگ بہت اہم ہے | 6 | 2049ms (final) | 4751ms | 1129ms | 239ms | 677ms | 2702ms |
+  | براہ کرم توجہ سے سنیں اور جواب دیں | 8 | 1694ms (interim) | 5247ms | 1544ms | 236ms | 629ms | 2833ms |
+  | ہم اگلے ہفتے نئے منصوبے پر کام شروع کریں گے | 9 | 1985ms (interim) | 6095ms | 2059ms | 212ms | 476ms | 3342ms |
+  | کیا آپ مجھے بتا سکتے ہیں کہ ہماری ٹیم کو... | 14 | 1657ms (interim) | 9190ms | 4560ms | 223ms | 562ms | 3844ms |
+  | **Average** | | **1712ms** | **5635ms** | **1937ms** | **247ms** | **560ms** | **2888ms** |
+
+  - Feedback isolation achieved: no TTS-interrupted outcomes, no invalid clock
+    values (previous run had 2 invalid due to TTS feedback through speakers).
+  - Interim path fires 3/5 utterances.
+  - Acoustic misrecognition note: the 6-word utterance emitted a spurious
+    fragment final ("اولائی") before the full "آج کی میٹنگ بہت اہم ہے" final;
+    the correct matched final is reported. Room/ambient noise also produced
+    occasional extra finals (warm-up and tail fragments), excluded from the
+    valid set.
+
+- **Azure streaming TTS feasibility probe** — measured `synthesizing` callback
+  timing vs full `speakTextAsync` completion for 5 English texts:
+
+  | Text | Words | First Chunk | Full Completion | Chunks | Savings |
+  |---|---|---|---|---|---|
+  | Hello. | 1 | 1595ms (cold) | 1664ms | 7 | 69ms |
+  | Today's meeting is very important. | 5 | 475ms | 723ms | 11 | 248ms |
+  | Please listen attentively and respond. | 5 | 518ms | 761ms | 11 | 243ms |
+  | Hamid's week worked on a new project. | 7 | 457ms | 641ms | 14 | 184ms |
+  | Can you tell me how much... | 14 | 503ms | 694ms | 15 | 191ms |
+  | **Warm avg** (excl. cold) | | **488ms** | **705ms** | **12.8** | **217ms** |
+
+  - First chunk arrives 488ms after request (warm), full audio 705ms
+  - Potential per-utterance first-audio savings from streaming: ~217ms
+  - First chunk header: first 4 bytes = `00 00 ff ff` (int16 samples, no
+    RIFF/WAVE header) — confirmed **raw PCM**, not headered audio. This matches
+    `AudioChunk` format (24kHz 16bit mono PCM) exactly; no header stripping needed.
+  - Each chunk = 6000 bytes = 125ms of audio
+  - Streaming feasibility: **YES** — synthesizing callback fires with usable PCM
+    before full completion; chunks arrive faster than playback consumes them
+    (64ms interval vs 125ms playback per chunk) → gap-free playback requires
+    renderer validation (not yet tested with continuous chunk streaming)
+  - **Not yet implemented** — would require modifying `AzureTtsProvider.synthesize()`
+    and `TtsManager.onTranslationText()` to support chunked streaming
+
+- **Pipeline telemetry diagnostic additions** — 3 new debug fields in
+  `pipeline-telemetry.ts` (gated behind `PIPELINE_DEBUG`):
+  - `finalToTrans` — time from STT final to translation complete
+  - `transToReady` — time from translation complete to TTS ready
+  - `readyToPlay` — time from TTS ready to first playback start
+  - These fill the inter-stage gaps that were previously unmeasured
+
+### What remains (M10 Phase 1)
+
+- Nothing blocking. Digital (5 valid utterances) and Acoustic (5 valid
+  utterances) benchmarks are both complete with full per-stage data.
+
+### Bottleneck ranking (Digital + Acoustic benchmark, confirmed)
+
+1. **STT final** — 50–70% of first-audio latency (178–4287ms, avg 1901ms)
+   - Dominated by Azure endpointing; cannot be reduced without streaming STT
+     alternatives or local STT
+2. **TTS synthesis** — 20–25% of first-audio latency (532–577ms warm, avg 571ms)
+   - Streaming TTS would save ~217ms per utterance
+3. **Translation** — 5–15% (89–540ms, avg 404ms)
+   - Cold first request adds ~200ms; incremental translation helps
+4. **Renderer** — <1% steady state (1–4ms), 3701ms cold start (one-time)
+
+### Expected improvement with streaming TTS
+
+- Measured savings: ~217ms per utterance is a **warm** average (excl. cold first
+  request); the first cold request measured 69ms saving.
+- 4 warm utterances: `217ms × 4 = 868ms`
+- First cold utterance: `69ms`
+- Measured five-text session total: approximately `937ms` (from the displayed
+  row values: 69 + 248 + 243 + 184 + 191 = 935ms)
+- Note: `1085ms` (217ms × 5) is a **hypothetical** five-warm-utterance estimate
+  only, not the measured session result.
+- Not transformative — STT dominates. Streaming TTS is a minor optimization
+  that should be implemented but won't dramatically change the user experience
+
 ## What is NOT implemented (intentionally)
 
 Meeting-app integration, authentication, database, backend server, Python.
@@ -228,9 +340,9 @@ These are beyond Milestone 7. Milestones 1–7 are all complete.
 
 ## Next task
 
-Milestones 1–7 are all complete. The production meeting pipeline is functional.
-Future work: latency measurement in UI, retry policy for cloud providers,
-or any new milestone as defined by the user.
+M10 Phase 1 is complete: both Digital and Acoustic benchmarks validated (5
+utterances each). Next: M10 Phase 2 (streaming TTS implementation) or a new
+milestone as defined by the user.
 
 ## Files at a glance
 

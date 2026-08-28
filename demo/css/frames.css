@@ -1,0 +1,387 @@
+/* Demo video frames — designed for a 1152x648 CSS viewport,
+   captured at 2x device scale → 2304x1296 broadcast frame. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #07080b;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #f5f6f8;
+  -webkit-font-smoothing: antialiased;
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  display: none;
+  overflow: hidden;
+}
+
+.scene.active {
+  display: block;
+}
+
+/* subtle grid backdrop */
+.grid-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(1200px 560px at 50% 0%, rgba(79, 124, 255, 0.10), transparent 65%),
+    radial-gradient(900px 500px at 88% 100%, rgba(34, 197, 94, 0.08), transparent 60%),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 47px,
+      rgba(255, 255, 255, 0.025) 48px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 47px,
+      rgba(255, 255, 255, 0.025) 48px
+    );
+}
+
+/* ---------- 01 · title ---------- */
+.title-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.logo-mark {
+  width: 96px;
+  height: 96px;
+  border-radius: 26px;
+  background: linear-gradient(135deg, #2a4fd0, #22c55e);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 52px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 34px;
+  box-shadow: 0 24px 60px rgba(47, 86, 214, 0.35);
+}
+
+.title-kicker {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: #4f7cff;
+}
+
+.headline {
+  margin: 20px 0 0;
+  font-size: 76px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.headline .arrow {
+  background: linear-gradient(90deg, #4f7cff 0%, #22c55e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tagline {
+  margin: 26px 0 0;
+  font-size: 28px;
+  color: #9aa0ac;
+  max-width: 780px;
+  line-height: 1.5;
+}
+
+.title-badges {
+  display: flex;
+  gap: 16px;
+  margin-top: 44px;
+}
+
+.badge {
+  border: 1px solid #2e3542;
+  background: #14171d;
+  color: #b6bcc8;
+  border-radius: 999px;
+  padding: 12px 26px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.badge.green {
+  border-color: #1f5c43;
+  color: #4ade80;
+}
+
+/* ---------- product shots ---------- */
+.caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 22px 48px 28px;
+  background: rgba(7, 8, 11, 0.88);
+  border-top: 1px solid #1c212b;
+}
+
+.caption h2 {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.caption p {
+  margin: 8px 0 0;
+  color: #b6bcc8;
+  font-size: 19px;
+  line-height: 1.4;
+  max-width: 980px;
+}
+
+.vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(5, 6, 9, 0.72) 100%);
+  pointer-events: none;
+}
+
+.win-chrome {
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.55);
+  border: 1px solid #2a3140;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #0b0d11;
+}
+
+.win-chrome .bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 16px;
+  background: #14171d;
+  border-bottom: 1px solid #232932;
+}
+
+.win-chrome .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.win-chrome .dot.r { background: #ff5f57; }
+.win-chrome .dot.y { background: #ffbd2e; }
+.win-chrome .dot.g { background: #28c840; }
+
+.win-chrome .title {
+  margin-left: 12px;
+  color: #8f96a3;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
+.win-chrome img {
+  display: block;
+}
+
+.product-stage {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 22px;
+}
+
+/* ---------- routing scene ---------- */
+.routing-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 40px;
+}
+
+.routing h1 {
+  margin: 0;
+  font-size: 54px;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: -0.01em;
+}
+
+.routing p.sub {
+  margin: 14px 0 54px;
+  text-align: center;
+  color: #9aa0ac;
+  font-size: 24px;
+}
+
+.flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
+.fbox {
+  width: 250px;
+  border-radius: 18px;
+  padding: 26px 20px;
+  text-align: center;
+  background: #14181f;
+  border: 1px solid #2e3542;
+}
+
+.fbox .emo {
+  font-size: 42px;
+  line-height: 1;
+}
+
+.fbox .name {
+  margin-top: 14px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.fbox .note {
+  margin-top: 8px;
+  font-size: 16px;
+  color: #8f96a3;
+  line-height: 1.4;
+}
+
+.fbox.accent {
+  border-color: #2e48a8;
+  background: #15203a;
+}
+
+.fbox.accent .name {
+  color: #9cc2ff;
+}
+
+.fbox.blackhole {
+  border-color: #1f5c43;
+  background: #13251e;
+}
+
+.fbox.blackhole .name {
+  color: #4ade80;
+}
+
+.farrow {
+  color: #7d8590;
+  font-size: 52px;
+  font-weight: 300;
+  flex: 0 0 auto;
+}
+
+/* ---------- highlights ---------- */
+.hl-head {
+  margin-top: 70px;
+  text-align: center;
+}
+
+.hl-head h1 {
+  margin: 0;
+  font-size: 58px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.hl-head p {
+  margin: 12px 0 0;
+  color: #9aa0ac;
+  font-size: 23px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 26px;
+  width: 1000px;
+  margin: 52px auto 0;
+}
+
+.card {
+  background: #131721;
+  border: 1px solid #262d3a;
+  border-radius: 18px;
+  padding: 28px 30px;
+}
+
+.card h3 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.card h3 .accent {
+  color: #4f7cff;
+}
+
+.card h3 .stat {
+  color: #4ade80;
+}
+
+.card p {
+  margin: 12px 0 0;
+  color: #9aa0ac;
+  font-size: 19px;
+  line-height: 1.5;
+}
+
+.footnote {
+  margin-top: 40px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 17px;
+}
+
+/* ---------- open source ---------- */
+.oss .title-center {
+  gap: 0;
+}
+
+.oss .big {
+  margin-top: 30px;
+  font-size: 66px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(90deg, #4f7cff 0%, #22c55e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.oss .repo {
+  margin-top: 18px;
+  font-size: 24px;
+  color: #b6bcc8;
+}
+
+.oss .stack {
+  margin-top: 40px;
+  color: #6b7280;
+  font-size: 20px;
+}

@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Demo harness intermediates (raw frames, clips, staged html)
+demo/out/
+
 # Build outputs
 dist/
 out/

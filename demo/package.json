@@ -1,0 +1,11 @@
+{
+  "name": "urdu-english-interpreter-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deterministic demo harness: loads the REAL built renderer (dist/) with a scripted demo preload to capture product screenshots, compose 1920x1080 video frames, and render the README demo video. Development-only; not shipped.",
+  "scripts": {
+    "capture": "../node_modules/.bin/electron src/capture-app.mjs",
+    "frames": "../node_modules/.bin/electron src/compose-frames.mjs",
+    "video": "bash video/build-video.sh"
+  }
+}

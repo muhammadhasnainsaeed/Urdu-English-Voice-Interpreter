@@ -63,6 +63,42 @@ macOS.
   latency claim is made in this release.
 - Full real Google Meet / Zoom / Microsoft Teams validation is pending/manual.
 
+## 2026-08-28 — Demo deliverables (video, screenshots, architecture diagram)
+
+- Added the deterministic demo harness under `demo/`: a scripted preload bridge
+  (`demo/preload/demo-preload.js`) and `mediaDevices` shims drive the **real
+  built renderer** (`dist/renderer/index.html?demo=…`) so screenshots are real
+  UI, honestly labeled **Mock (dev)** where mock providers run.
+- `demo/src/capture-app.mjs`: full-page capture via vertical `capturePage()`
+  strips + stitch (macOS clamps window height), 2× device-scale output, CSS→
+  pixel crop scaling, and per-region rendered-text verification before saving.
+- Captured three screenshots from the real app into `docs/images/`:
+  `app-overview.png` (928×1180), `live-translation.png` (928×2584),
+  `telemetry.png` (928×1110) — live scene driven by a synthetic tone into the
+  real analyser level meter (100%), with real M10 Phase 2 Azure digital
+  benchmark numbers in the telemetry panel (first audio 2035 ms, E2E 5771 ms).
+- Added `docs/images/architecture.svg` (matching `docs/ARCHITECTURE.md` and the
+  source) and `docs/images/architecture.png` (3840×2160, rendered via
+  `demo/src/render-svg.mjs`; qlmanage letterboxes odd-aspect SVGs).
+- Added `demo/src/compose-frames.mjs` + `demo/css/frames.css`: seven 2304×1296
+  broadcast frames (title, overview, live translation, architecture, routing,
+  highlights, open source) composed from the real screenshots.
+- Added `demo/video/build-video.sh`: ffmpeg slow-zoom clips (zoompan, with
+  sanitize-to-static fallback) and a 0.5 s xfade crossfade chain producing the
+  final MP4. `settb=AVTB` normalization fixes zoompan's non-standard timebase in
+  the xfade chain.
+- **Output:** `docs/demo/demo-v1.0.0.mp4` (48 s, 1920×1080, 30 fps, silent,
+  H.264, 2.0 MB, faststart) and `docs/images/demo-poster.png` (1920×1080).
+- README: added explicit `## Demo` and `## Architecture` sections (video link +
+  MP4 release-asset pointer, screenshots, architecture diagram), replaced the
+  "demo coming soon" placeholder, and listed `demo/` in the repository layout.
+- `docs/releases/v1.0.0.md`: added a `## Demo` block linking the video, poster,
+  screenshots, and architecture assets.
+- Added `demo/README.md` (harness documentation + regenerate commands) and
+  `.gitignore` entry for `demo/out/` intermediates.
+- The MP4 still needs to be **uploaded as a v1.0.0 Release asset** (manual step;
+  `gh` not invoked). No git commit, tag, or Release was created.
+
 ## 2026-08-28 — Prepare v1.0.0 open-source release
 
 - Bumped application version from `0.1.0` to `1.0.0` in `package.json` and

@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f1115"/>
+      <stop offset="1" stop-color="#0a0c10"/>
+    </linearGradient>
+    <linearGradient id="titleGlow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4f7cff"/>
+      <stop offset="1" stop-color="#22c55e"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7d8590"/>
+    </marker>
+    <marker id="arrowAccent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4f7cff"/>
+    </marker>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+
+  <!-- Header -->
+  <rect x="80" y="64" width="30" height="30" rx="8" fill="#181c24" stroke="#2a3140"/>
+  <text x="95" y="85" fill="#4f7cff" font-size="19" font-weight="700" text-anchor="middle">U</text>
+  <text x="95" y="88" fill="#f5f6f8" font-size="15" font-weight="700" text-anchor="middle">→</text>
+  <text x="134" y="86" fill="#ffffff" font-size="38" font-weight="700" letter-spacing="0.2">Architecture</text>
+  <text x="134" y="112" fill="#9aa0ac" font-size="20">Real-time Urdu → English voice interpreter · Electron · React · TypeScript · macOS</text>
+
+  <!-- =====================  Renderer swimlane  ===================== -->
+  <rect x="60" y="150" width="520" height="640" rx="18" fill="#12151b" stroke="#232a36"/>
+  <text x="78" y="182" fill="#9aa0ac" font-size="17" font-weight="600" letter-spacing="0.12">RENDERER</text>
+  <text x="78" y="202" fill="#5b616c" font-size="14">React UI + Chromium WebRTC (sandboxed, no Node.js)</text>
+
+  <!-- Microphone (input, sits above capture) -->
+  <rect x="110" y="220" width="300" height="66" rx="12" fill="#1b2029" stroke="#2e3542"/>
+  <text x="260" y="248" fill="#f5f6f8" font-size="19" font-weight="600" text-anchor="middle">Microphone</text>
+  <text x="260" y="270" fill="#9aa0ac" font-size="15" text-anchor="middle">Urdu speech in</text>
+
+  <!-- Capture -->
+  <rect x="110" y="320" width="300" height="86" rx="12" fill="#1b2029" stroke="#2e3542"/>
+  <text x="260" y="346" fill="#9aa0ac" font-size="14" font-weight="600" letter-spacing="0.08">AUDIO CAPTURE</text>
+  <text x="260" y="370" fill="#e7eaf0" font-size="16" text-anchor="middle">getUserMedia(deviceId)</text>
+  <text x="260" y="392" fill="#9aa0ac" font-size="15" text-anchor="middle">WebAudio AnalyserNode (level, RMS)</text>
+
+  <!-- PCM -->
+  <rect x="110" y="444" width="300" height="86" rx="12" fill="#1b2029" stroke="#2e3542"/>
+  <text x="260" y="470" fill="#9aa0ac" font-size="14" font-weight="600" letter-spacing="0.08">PREPARE STREAM</text>
+  <text x="260" y="494" fill="#e7eaf0" font-size="16" text-anchor="middle">resample → 16 kHz mono 16-bit PCM</text>
+  <text x="260" y="516" fill="#9aa0ac" font-size="15" text-anchor="middle">ScriptProcessorNode tap · Int16 PCM</text>
+
+  <!-- Live subtitles -->
+  <rect x="110" y="568" width="300" height="86" rx="12" fill="#1b2029" stroke="#2a3140"/>
+  <text x="260" y="594" fill="#22c55e" font-size="14" font-weight="600" letter-spacing="0.08">LIVE SUBTITLES</text>
+  <text x="260" y="618" fill="#e7eaf0" font-size="16" text-anchor="middle">Urdu transcript · English output</text>
+  <text x="260" y="640" fill="#9aa0ac" font-size="15" text-anchor="middle">React UI (Home screen)</text>
+
+  <!-- Playback -->
+  <rect x="110" y="692" width="300" height="76" rx="12" fill="#16223a" stroke="#2e48a8"/>
+  <text x="260" y="720" fill="#7fb0ff" font-size="14" font-weight="600" letter-spacing="0.08">PLAYBACK</text>
+  <text x="260" y="743" fill="#e7eaf0" font-size="15" text-anchor="middle">WebAudio queue → AudioBufferSourceNode</text>
+  <text x="260" y="762" fill="#9aa0ac" font-size="14" text-anchor="middle">AudioContext.setSinkId(deviceId)</text>
+
+  <!-- Down arrows in renderer -->
+  <path d="M 260 286 L 260 320" stroke="#545c68" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 260 406 L 260 444" stroke="#545c68" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 260 530 L 260 568" stroke="#545c68" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- =====================  Preload / IPC boundary  ===================== -->
+  <g stroke="#2e3542" stroke-width="3" stroke-dasharray="10 9">
+    <line x1="636" y1="140" x2="636" y2="800"/>
+  </g>
+  <text x="644" y="168" fill="#4f7cff" font-size="15" font-weight="700" letter-spacing="0.1">SECURE IPC</text>
+  <text x="644" y="190" fill="#9aa0ac" font-size="14">preload (contextBridge)</text>
+  <text x="644" y="210" fill="#9aa0ac" font-size="14">typed ElectronAPI only</text>
+  <text x="644" y="230" fill="#5b616c" font-size="13">no require / fs / process</text>
+
+  <!-- =====================  Main process swimlane  ===================== -->
+  <rect x="706" y="150" width="1154" height="640" rx="18" fill="#12151b" stroke="#232a36"/>
+  <text x="724" y="182" fill="#9aa0ac" font-size="17" font-weight="600" letter-spacing="0.12">ELECTRON MAIN PROCESS</text>
+  <text x="724" y="202" fill="#5b616c" font-size="14">provider abstractions · env config (dotenv) · secure config only</text>
+
+  <!-- STT -->
+  <rect x="740" y="220" width="460" height="96" rx="12" fill="#1b2029" stroke="#2e3542"/>
+  <rect x="752" y="232" width="8" height="72" rx="4" fill="#4f7cff"/>
+  <text x="774" y="254" fill="#e7eaf0" font-size="17" font-weight="600">Speech-to-Text</text>
+  <text x="774" y="278" fill="#9aa0ac" font-size="15">Azure Speech (ur-PK, streaming)</text>
+  <text x="774" y="300" fill="#9aa0ac" font-size="15">whisper.cpp (offline) · mock</text>
+
+  <!-- Translation -->
+  <rect x="740" y="342" width="460" height="96" rx="12" fill="#1b2029" stroke="#2e3542"/>
+  <rect x="752" y="354" width="8" height="72" rx="4" fill="#4f7cff"/>
+  <text x="774" y="376" fill="#e7eaf0" font-size="17" font-weight="600">Urdu → English Translation</text>
+  <text x="774" y="400" fill="#9aa0ac" font-size="15">Azure Translator (REST, fetch)</text>
+  <text x="774" y="422" fill="#9aa0ac" font-size="15">MyMemory fallback · mock</text>
+
+  <!-- TTS -->
+  <rect x="740" y="464" width="460" height="96" rx="12" fill="#1b2029" stroke="#2e3542"/>
+  <rect x="752" y="476" width="8" height="72" rx="4" fill="#4f7cff"/>
+  <text x="774" y="498" fill="#e7eaf0" font-size="17" font-weight="600">Text-to-Speech</text>
+  <text x="774" y="522" fill="#9aa0ac" font-size="15">Azure neural TTS (streaming chunks)</text>
+  <text x="774" y="544" fill="#9aa0ac" font-size="15">macOS say · mock · dedup + queue + preempt</text>
+
+  <!-- Audio output -->
+  <rect x="740" y="586" width="460" height="96" rx="12" fill="#1b2029" stroke="#2e3542"/>
+  <rect x="752" y="598" width="8" height="72" rx="4" fill="#22c55e"/>
+  <text x="774" y="620" fill="#e7eaf0" font-size="17" font-weight="600">Audio Output Manager</text>
+  <text x="774" y="644" fill="#9aa0ac" font-size="15">device detection · BlackHole check</text>
+  <text x="774" y="666" fill="#9aa0ac" font-size="15">speaker provider → IPC to renderer</text>
+
+  <!-- Session + telemetry -->
+  <rect x="1236" y="220" width="300" height="96" rx="12" fill="#1b2029" stroke="#2e3542"/>
+  <text x="1386" y="256" fill="#e7eaf0" font-size="16" font-weight="600" text-anchor="middle">Session Manager</text>
+  <text x="1386" y="280" fill="#9aa0ac" font-size="14" text-anchor="middle">start/stop order · rollback</text>
+  <text x="1386" y="300" fill="#9aa0ac" font-size="14" text-anchor="middle">4-stage pipeline status pill</text>
+
+  <rect x="1236" y="342" width="300" height="96" rx="12" fill="#1b2029" stroke="#2e3542"/>
+  <text x="1386" y="378" fill="#fbbf24" font-size="16" font-weight="700" text-anchor="middle">Pipeline Telemetry</text>
+  <text x="1386" y="402" fill="#9aa0ac" font-size="14" text-anchor="middle">per-utterance latency breakdown</text>
+  <text x="1386" y="422" fill="#9aa0ac" font-size="14" text-anchor="middle">PIPELINE_DEBUG · renderer panel</text>
+
+  <!-- main process down arrows -->
+  <path d="M 970 316 L 970 342" stroke="#545c68" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 970 438 L 970 464" stroke="#545c68" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 970 560 L 970 586" stroke="#545c68" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- renderer → main IPC arrow (audio) -->
+  <path d="M 410 482 L 700 482 L 700 268 L 740 268" stroke="#4f7cff" stroke-width="4" fill="none" marker-end="url(#arrowAccent)"/>
+  <text x="512" y="470" fill="#4f7cff" font-size="14" font-weight="600" text-anchor="middle">stt:audio-data (PCM chunks)</text>
+
+  <!-- main → renderer events arrow (transcripts + audio) -->
+  <path d="M 700 640 L 640 640 L 640 730 L 410 730" stroke="#4f7cff" stroke-width="4" fill="none" marker-end="url(#arrowAccent)"/>
+  <text x="524" y="630" fill="#4f7cff" font-size="14" font-weight="600" text-anchor="middle">stt:event · translation:text · audio-output:audio</text>
+  <path d="M 640 640 L 640 730" stroke="#4f7cff" stroke-width="4" fill="none"/>
+
+  <!-- transcription events → subtitles -->
+  <path d="M 700 384 L 660 384 L 660 611 L 410 611" stroke="#545c68" stroke-width="3" stroke-dasharray="7 6" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- =====================  Output chain  ===================== -->
+  <rect x="60" y="828" width="1800" height="150" rx="18" fill="#12151b" stroke="#232a36"/>
+  <text x="84" y="862" fill="#9aa0ac" font-size="16" font-weight="600" letter-spacing="0.1">OUTPUT CHAIN</text>
+  <text x="84" y="884" fill="#5b616c" font-size="14">English audio is routed to the meeting through the BlackHole virtual microphone — client/incoming audio must NOT be translated.</text>
+
+  <rect x="460" y="870" width="360" height="64" rx="12" fill="#1b2029" stroke="#2e3542"/>
+  <text x="640" y="906" fill="#e7eaf0" font-size="17" font-weight="600" text-anchor="middle">Audio Output (renderer)</text>
+  <text x="640" y="927" fill="#9aa0ac" font-size="14" text-anchor="middle">targeted by AudioContext.setSinkId</text>
+
+  <rect x="900" y="870" width="360" height="64" rx="12" fill="#151a27" stroke="#2e48a8"/>
+  <text x="1080" y="894" fill="#e7eaf0" font-size="18" font-weight="600" text-anchor="middle">BlackHole 2ch</text>
+  <text x="1080" y="918" fill="#9aa0ac" font-size="14" text-anchor="middle">virtual microphone (user-installed)</text>
+
+  <rect x="1340" y="870" width="360" height="64" rx="12" fill="#1b2029" stroke="#2e3542"/>
+  <text x="1520" y="894" fill="#e7eaf0" font-size="18" font-weight="600" text-anchor="middle">Meeting App</text>
+  <text x="1520" y="918" fill="#9aa0ac" font-size="14" text-anchor="middle">Zoom · Google Meet · Microsoft Teams</text>
+
+  <path d="M 820 902 L 900 902" stroke="#7d8590" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 1260 902 L 1340 902" stroke="#7d8590" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- playback exit from renderer down to output chain -->
+  <path d="M 260 768 L 260 798 L 640 798 L 640 870" stroke="#7d8590" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Footer badges -->
+  <rect x="60" y="1000" width="150" height="44" rx="22" fill="#132020" stroke="#1f5c43"/>
+  <text x="135" y="1028" fill="#4ade80" font-size="15" font-weight="700" text-anchor="middle">v1.0.0</text>
+  <rect x="226" y="1000" width="250" height="44" rx="22" fill="#181c24" stroke="#2a3140"/>
+  <text x="351" y="1026" fill="#9aa0ac" font-size="15" text-anchor="middle">M1–M7 complete</text>
+  <text x="351" y="1042" fill="#5b616c" font-size="12" text-anchor="middle">(audio v1)</text>
+  <rect x="492" y="1000" width="380" height="44" rx="22" fill="#181c24" stroke="#2a3140"/>
+  <text x="682" y="1026" fill="#9aa0ac" font-size="15" text-anchor="middle">Azure keys stay in the main process (.env)</text>
+  <text x="682" y="1042" fill="#5b616c" font-size="12" text-anchor="middle">renderer never receives credentials</text>
+</svg>

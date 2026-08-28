@@ -17,8 +17,26 @@ This is the first public open-source release of the project.
 - **Validation status:** build, type-check, and 43 automated tests pass. The M10
   Phase 2 acoustic streaming benchmark is pending/manual and full real Google
   Meet / Zoom / Teams validation is pending/manual.
-- **Demo:** video/screenshots coming soon.
+- **Demo:** [▶ Watch the 48-second demo](https://github.com/muhammadhasnainsaeed/Urdu-English-Voice-Interpreter/releases/tag/v1.0.0) — the MP4 is attached to the v1.0.0 release (see [below](#demo)).
 - **Release notes:** [`docs/releases/v1.0.0.md`](docs/releases/v1.0.0.md)
+
+## Demo
+
+A 48-second, silent, 1080p product walkthrough of the real app. It starts with
+the overview screen, then shows live Urdu → English translation in action
+(meeting mode, mock provider, deterministic demo harness), the system
+architecture, how translated audio routes through BlackHole into a meeting app,
+what works today, and the v1.0.0 open-source details.
+
+- **Video:** [`docs/demo/demo-v1.0.0.mp4`](docs/demo/demo-v1.0.0.mp4) — 1920×1080, 30 fps (also attached to the v1.0.0 release assets)
+- **Poster:** [`docs/images/demo-poster.png`](docs/images/demo-poster.png)
+- **Screenshots:** [overview](docs/images/app-overview.png) · [live translation](docs/images/live-translation.png) · [performance telemetry](docs/images/telemetry.png)
+- **Architecture diagram:** [`docs/images/architecture.png`](docs/images/architecture.png)
+
+The demo screenshots are taken from the real built renderer, driven by the
+deterministic demo harness in [`demo/`](demo/README.md). Provider badges say
+**Mock (dev)** because the demo build runs the local mock provider; production
+backends (Azure, whisper.cpp, macOS `say`) plug in behind the same interfaces.
 
 ## Project status
 
@@ -188,8 +206,24 @@ src/preload/    Secure contextBridge API
 src/renderer/   React UI, microphone capture, and WebAudio playback
 packages/shared Shared TypeScript contracts
 tests/          Deterministic unit and integration-style tests
+demo/           Demo-harness: screenshot, architecture, and video generation
 docs/           Architecture, current state, and changelog
 ```
+
+## Architecture
+
+![Interpreter architecture](docs/images/architecture.png)
+
+A sandboxed React renderer captures the microphone (16 kHz mono PCM) and plays
+translated audio back through WebAudio, talking to the main process only
+through the typed `contextBridge` bridge (`window.electron`). Speech
+recognition, translation, text-to-speech, and audio-output providers run in the
+Electron main process; a session manager orchestrates them behind a single
+Start/Stop contract. Translated audio is routed to the selected output device —
+typically BlackHole — which meeting apps see as a microphone. Client and
+incoming meeting audio is never translated.
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design.
 
 ## Documentation
 

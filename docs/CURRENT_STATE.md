@@ -17,6 +17,24 @@ _Last updated: 2026-08-28_
 - Real Azure credentials, meeting audio, transcripts, and local recordings must
   remain outside the repository.
 
+## Demo deliverables (2026-08-28)
+
+- **Video:** `docs/demo/demo-v1.0.0.mp4` — 48 s, 1920×1080, 30 fps, silent,
+  H.264/yuv420p, faststart, 2.0 MB. Seven scenes (title, overview, live
+  translation, architecture, routing, highlights, open source) with 0.5 s
+  crossfades and slow-zoom motion on screenshot scenes.
+- **Screenshots** (real built renderer, deterministic harness, mock provider):
+  `docs/images/app-overview.png`, `docs/images/live-translation.png`,
+  `docs/images/telemetry.png`.
+- **Architecture:** `docs/images/architecture.svg` (source) +
+  `docs/images/architecture.png` (3840×2160).
+- **Poster:** `docs/images/demo-poster.png` (1920×1080).
+- Harness: `demo/` (README inside). Captures are driven through the real
+  `window.electron` bridge + synthetic `mediaDevices` tone; full-page capture
+  uses vertical strip stitching. Mock provider badges are intentional.
+- The MP4 must still be **uploaded to the v1.0.0 Release assets** (manual step;
+  `gh` not invoked, no commits/tags/Releases created).
+
 ## Milestone 1 — Project Architecture & Electron Foundation
 
 Status: **COMPLETE** (verified from code on 2026-08-16)
@@ -421,9 +439,12 @@ These are beyond Milestone 7. Milestones 1–7 are all complete.
 
 M10 Phase 2: Digital streaming benchmark completed and documented (see above);
 the interim→final streaming telemetry-attribution gap found in the benchmark
-was fixed with a regression test. Remaining: the Acoustic streaming benchmark
-(BLOCKED — requires physical speakers→mic feedback-isolated run that was not
-executed this session). Do not start M10 Phase 3.
+was fixed with a regression test. Demo deliverables (video, screenshots,
+architecture diagram, README sections) are complete and validated. Remaining:
+(1) **upload `docs/demo/demo-v1.0.0.mp4` as a v1.0.0 Release asset** (manual),
+(2) the Acoustic streaming benchmark (BLOCKED — requires physical speakers→mic
+feedback-isolated run that was not executed this session). Do not start M10
+Phase 3.
 
 ## Files at a glance
 

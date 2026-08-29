@@ -361,11 +361,9 @@ Status: **PHASE 1 COMPLETE** (2026-08-26)
 
 ### What remains (M10)
 
-- The **Acoustic** 5-utterance before/after benchmark is **BLOCKED**: it
-  requires playing the test WAVs through the MacBook speakers into the Mac
-  mic with app-TTS routed to BlackHole for feedback isolation (echo/ambient),
-  which was not set up/executed in this run. Digital benchmark completed;
-  acoustic was not run. No acoustic latency claim is made.
+- The **Acoustic** 5-utterance before/after benchmark was **completed on
+  2026-08-28**. See "M10 Phase 2 benchmark — Acoustic (streaming, verified)"
+  below.
 
 ### M10 Phase 2 benchmark — Digital (streaming, verified)
 
@@ -406,6 +404,56 @@ and `E2E` did not improve (within run-to-run Azure STT variance). Streaming
 lowers the time to the first TTS chunk by ~165ms/utterance, which is
 dominated by STT-final latency and the interim path.
 
+### M10 Phase 2 benchmark — Acoustic (streaming, verified)
+
+5 valid post-warm-up utterances, physical feedback-isolated run executed
+2026-08-28: test WAVs played through the MacBook speakers into the MacBook Air
+microphone; app TTS routed to BlackHole (feedback isolation); STT, translation,
+and TTS all real (Azure ur-IN seg=300ms + Azure Translator + Azure TTS
+streaming, JennyNeural); `PIPELINE_DEBUG=1`. Each row parsed from
+`[TELEMETRY] ... completed` lines in the main-process log.
+
+| Utterance | Words | First Audio | E2E | STT Final | Translation | TTS | Audio Out |
+|---|---|---|---|---|---|---|---|
+| سلام نمبر | 2 | 1020ms (final) | 2783ms | 323ms | 197ms | 589ms | 1763ms |
+| آج کی میٹنگ بہت اہم ہے | 6 | 1231ms (final) | 3982ms | 684ms | 234ms | 481ms | 2751ms |
+| براہ کرم توجہ سے سنیں اور جواب دیں | 8 | 1540ms (interim) | 4924ms | 1506ms | 107ms | 1079ms | 2832ms |
+| ہم اگلے ہفتے نئے منصوبے پر کام شروع کریں گے | 9 | 1780ms (interim) | 6035ms | 2142ms | 109ms | 562ms | 3421ms |
+| کیا آپ مجھے بتا سکتے ہیں کہ ہماری ٹیم منصوبے کام شروع کرے گی | 14 | 1306ms (interim) | 6561ms | 2985ms | 118ms | 518ms | 3111ms |
+| **Average** | | **1375ms** | **4857ms** | **1528ms** | **153ms** | **646ms** | **2776ms** |
+
+Comparison vs Phase 1 (legacy) and Phase 2 (streaming) digital averages:
+
+| metric | Acoustic Ph1 | Acoustic Ph2 | Δ Ph1→Ph2 | Digital Ph2 |
+|---|---|---|---|---|
+| First Audio | 1712ms | 1375ms | −337ms | 2035ms |
+| E2E | 5635ms | 4857ms | −778ms | 5771ms |
+| STT Final | 1937ms | 1528ms | −409ms | 1919ms |
+| Translation | 247ms | 153ms | −94ms | 412ms |
+| TTS full | 560ms | 646ms | +86ms | 664ms |
+| Audio Out | 2888ms | 2776ms | −112ms | 2937ms |
+
+- Interim-path First Audio: 3/5 utterances (60%), matching Phase 1 acoustic.
+- No failed utterances, no duplicated finals, no dropped finals; each of the 5
+  reached playback via BlackHole(`audioOut` present in all rows).
+- Streaming path confirmed live on the acoustic loop: `[TTS] writeAudio stream
+  bytes` chunk forwarding observed; the one `interimFirstAudio (pending)` +
+  `[TTS] interrupt` sequence (#8) is the expected interim→final replacement
+  (incremental translation stabilizing at STABLE_MS=200), with the final still
+  telemetry-attributed `completed` — same behavior as Phase 2 digital.
+- Methodology notes (transparent deviations from the Phase 1 acoustic run):
+  - Test WAVs were amplified +12dB to ensure the MacBook mic captured them
+    reliably (default system input volume 27 is too low for TTS-level audio);
+    OS input volume raised to 100 for the same reason. Latency is playback
+    start-anchored, so level does not affect measured values.
+  - The exact 14-word Phase 1 text was unrecoverable (`M10-PHASE1-REPORT.md`
+    was never committed); a reconstructed 14-word Urdu sentence was used. STT
+    heard it as «...منصوبے کون شروع کریں؟» and translated it accordingly —
+    the reconstructed sentence is recorded verbatim in the table for
+    reproducibility.
+  - The 8-word final was recognized as «براہ کرم توجہ سے سنیں اور جواب۔»
+    (final «دیں» dropped by STT); translation remained correct.
+
 ### Bottleneck ranking (Digital + Acoustic benchmark, confirmed)
 
 1. **STT final** — 50–70% of first-audio latency (178–4287ms, avg 1901ms)
@@ -437,14 +485,15 @@ These are beyond Milestone 7. Milestones 1–7 are all complete.
 
 ## Next task
 
-M10 Phase 2: Digital streaming benchmark completed and documented (see above);
-the interim→final streaming telemetry-attribution gap found in the benchmark
-was fixed with a regression test. Demo deliverables (video, screenshots,
-architecture diagram, README sections) are complete and validated. Remaining:
-(1) **upload `docs/demo/demo-v1.0.0.mp4` as a v1.0.0 Release asset** (manual),
-(2) the Acoustic streaming benchmark (BLOCKED — requires physical speakers→mic
-feedback-isolated run that was not executed this session). Do not start M10
-Phase 3.
+M10 Phase 2 is complete: both Digital and Acoustic streaming benchmarks ran and
+are documented above (2026-08-28); the interim→final streaming
+telemetry-attribution gap found earlier was fixed with a regression test.
+Demo deliverables (video, screenshots, architecture diagram, README sections)
+are complete and validated. Remaining:
+1. **upload `docs/demo/demo-v1.0.0.mp4` as a v1.0.0 Release asset** (manual),
+2. **manual Google Meet / Zoom / Teams validation** — project is ready for the user to
+   open a meeting and confirm live subtitles + BlackHole capture (no further
+   code work needed). Do not start M10 Phase 3.
 
 ## Files at a glance
 

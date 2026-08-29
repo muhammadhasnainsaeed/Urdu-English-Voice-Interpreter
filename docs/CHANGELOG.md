@@ -59,9 +59,32 @@ macOS.
 ### Validation status for this release
 
 - Automated suite (build, type-check, tests) passes.
-- M10 Phase 2 acoustic streaming benchmark is pending/manual — no end-to-end
-  latency claim is made in this release.
+- M10 Phase 2 acoustic streaming benchmark completed 2026-08-28 (physical
+  feedback-isolated run; see CURRENT_STATE for the latency tables).
 - Full real Google Meet / Zoom / Microsoft Teams validation is pending/manual.
+
+## 2026-08-28 — M10 Phase 2 acoustic streaming benchmark (verified)
+
+- Completed the previously BLOCKED acoustic 5-utterance benchmark: test WAVs
+  played through the MacBook speakers into the MacBook Air microphone, app TTS
+  routed to BlackHole for feedback isolation, real Azure STT (ur-IN seg=300ms)
+  + Azure Translator + Azure streaming TTS, `PIPELINE_DEBUG=1`, app driven via
+  CDP (`--remote-debugging-port`) with mic = MacBook Air Microphone and output
+  = BlackHole 2ch.
+- 5/5 valid post-warm-up utterances reached playback through BlackHole; no
+  failed, dropped, or duplicated finals. Interim First Audio 3/5 (60%).
+- Averages: First Audio **1375ms**, E2E **4857ms**, STT Final **1528ms**,
+  Translation **153ms**, TTS full **646ms**, Audio Out **2776ms** — the
+  physical loop reproduced sub-5s E2E and sub-2s First Audio.
+- Streaming path verified on the acoustic loop (`[TTS] writeAudio stream bytes`
+  chunk forwarding); the single interim→final `[TTS] interrupt` is the expected
+  STABLE_MS=200 replacement, final still attributed `completed`.
+- Methodology (transparent): test WAVs amplified +12dB and OS input volume
+  raised to 100 (default 27 too low for reliable capture); the exact 14-word
+  Phase 1 text was unrecoverable (M10-PHASE1-REPORT.md never committed) and a
+  reconstructed 14-word sentence was used and recorded verbatim.
+- Regression: 43/43 tests pass, `type-check` clean, build succeeds. No
+  production code changed.
 
 ## 2026-08-28 — Demo deliverables (video, screenshots, architecture diagram)
 

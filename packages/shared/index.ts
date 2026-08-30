@@ -283,10 +283,40 @@ export type PlaybackTelemetryEvent =
   | { event: "start"; bytes: number; playbackId?: number | null }
   | { event: "complete"; bytes: number; playbackId?: number | null };
 
+/* ---- Open-external (productization: first-launch onboarding) ---- */
+
+export interface OpenExternalResult {
+  ok: boolean;
+  message?: string;
+}
+
+/**
+ * Links the renderer may ask the OS to open. Living in shared keeps the
+ * renderer-facing link set and the main-process allowlist in lock-step.
+ */
+export const RENDERER_OPEN_EXTERNAL_LINKS: Record<
+  "micPrivacySettings" | "blackholeDownload",
+  string
+> = {
+  micPrivacySettings:
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+  blackholeDownload: "https://existential.audio/blackhole/",
+};
+
+export const ALLOWED_OPEN_EXTERNAL_LINKS: readonly string[] = Object.values(
+  RENDERER_OPEN_EXTERNAL_LINKS
+);
+
+/** True only for exact allow-listed external links (no sub-paths, no tampering). */
+export function isAllowedOpenExternalUrl(url: string): boolean {
+  return ALLOWED_OPEN_EXTERNAL_LINKS.some((allowed) => url === allowed);
+}
+
 /* ---- Electron API bridge ---- */
 
 export interface ElectronAPI {
   getAppStatus: () => Promise<ApplicationStatus>;
+  openExternal: (url: string) => Promise<OpenExternalResult>;
   getMicPermission: () => Promise<PermissionStatus>;
   requestMicPermission: () => Promise<PermissionStatus>;
   startStt: () => Promise<SttStartResult>;

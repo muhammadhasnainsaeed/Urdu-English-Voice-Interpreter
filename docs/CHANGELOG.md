@@ -63,6 +63,43 @@ macOS.
   feedback-isolated run; see CURRENT_STATE for the latency tables).
 - Full real Google Meet / Zoom / Microsoft Teams validation is pending/manual.
 
+## 2026-08-29 — M10 Phase 3: production packaging & macOS distribution (COMPLETE)
+
+- Added `electron-builder` `^26.15.3` as the single packaging system
+  (devDependency). New scripts: `npm run package` (.app + DMG, arm64) and
+  `npm run package:dir` (.app only); output goes to `dist_electron/` (already
+  git-ignored), resources in `packaging/`. `react`/`react-dom` moved to
+  devDependencies (esbuild bundles them into the renderer bundle).
+- `package.json` `build` config: appId `com.urduenglish.voiceinterpreter`,
+  productName "Urdu English Interpreter", explicit `files` whitelist
+  (`dist/**/*`, `package.json`) so `.env`, source, docs, demo, and tests are
+  never packaged; mac target `dmg` with hardened runtime; version derived from
+  package.json (1.0.0).
+- `packaging/entitlements.mac.plist`: hardened-runtime JIT (`allow-jit`) +
+  microphone access (`device.audio-input`) — embedded at signing time.
+- Info.plist via `extendInfo`: `NSMicrophoneUsageDescription` (clear
+  user-facing text) + `NSHumanReadableCopyright`.
+- Secure runtime config: packaged builds load a user-owned
+  `~/.urdu-english-interpreter/.env` (quiet, never bundled) or process
+  environment; dev `./.env` behavior unchanged. Verified: the packaged asar
+  contains no `.env` and no secret values.
+- Runtime pipeline untouched: Azure/Whisper/MyMemory/`say`/Mock all preserved;
+  `PIPELINE_DEBUG` env-gated off by default; Whisper stays user-scoped
+  (`~/.cache/urdu-english-interpreter`), `say` uses the system binary, and
+  BlackHole remains a runtime-detected, never-bundled HAL device.
+- Produced and verified: `dist_electron/mac-arm64/Urdu English
+  Interpreter.app` (arm64) + `Urdu English
+  Interpreter-1.0.0-arm64.dmg` (CRC-verified). Clean-install smoke test of the
+  packaged binary passed (renderer from app.asar, preload bridge intact,
+  device enumeration, granted mic permission for the new bundle id, graceful
+  behavior without keys).
+- Signing NOT configured-faked: no Apple identity present (0 valid
+  identities); builds skip signing by documented design. Notarization
+  documented, needs Apple credentials — marked BLOCKED/pending, never faked.
+- Regression: 43/43 tests pass; type-check clean; build succeeds. No
+  production pipeline code behavior changed (one additive config-loading
+  change in `src/main/index.ts`).
+
 ## 2026-08-28 — M10 Phase 2 acoustic streaming benchmark (verified)
 
 - Completed the previously BLOCKED acoustic 5-utterance benchmark: test WAVs
@@ -1274,3 +1311,42 @@ Two factors:
 2. **PARTIAL_TRANSLATION_STABLE_MS=700 + segmentation=300ms**: Partial text grows every ~300ms, so the 700ms stability window resets on nearly every event. Finals arrive ~10ms after the last partial, making the debounce timer unreachable before the final clears it. M9's 200ms validated value fits within Azure's natural inter-partial gap for longer utterances.
 
 Both factors are now addressed: interim translations trigger for longer sentences (physical mic confirmed), and final translations correctly replace stale interim audio.
+
+## [1.0.0] - 2026-08-30
+
+### M10 Phase 4 — Non-technical install & first-launch onboarding
+
+- **New SetupPanel** (`src/renderer/components/SetupPanel.tsx`) at the top of
+  the home screen guiding a non-technical user through three prerequisites in
+  plain language before Start Meeting: Microphone (Allow Microphone / Open
+  System Settings when denied), Audio output (shows selected device + selector,
+  "No audio output available"), and BlackHole ("installed" / "install for
+  meeting apps" + download link). Summary shows "Ready — press Start Meeting
+  below." once mic + output + BlackHole are satisfied; "Checking your setup…"
+  while probing. Existing meeting flow untouched.
+- **Pure onboarding logic** (`src/renderer/setup/setupState.ts`):
+  `deriveSetupState()` maps permission/device/BlackHole inputs to per-step
+  states; BlackHole detected via main HAL check OR `/blackhole/i` device
+  labels. **17 new deterministic tests** (`tests/setup-onboarding.test.ts`,
+  suite total **60 passing**).
+- **Probe hook** (`src/renderer/setup/useSetup.ts`): probes on mount and on
+  `devicechange`, re-checks BlackHole each time.
+- **Secure open-external IPC** (`src/main/ipc/system.ts`): `system:open-external`
+  opens only **exact** allow-listed links from `shared/index.ts`
+  (`RENDERER_OPEN_EXTERNAL_LINKS` — macOS mic-privacy settings pane + BlackHole
+  download). Arbitrary/tampered URLs blocked; renderer can never open untrusted
+  links. Initial prefix-match implementation shown insecure by tests
+  (path-tampering) and tightened to exact-match.
+- **`useMicrophone`** now exposes `requestPermission()`; the SetupPanel's
+  "Allow Microphone" uses it and re-enumerates outputs on grant.
+- Preload adds `openExternal(url)`; main/index registers
+  `registerSystemIpc()`.
+- **Validated**: `npm run type-check` clean; 60/60 tests; `npm run build` OK;
+  `npm run package` rebuilt `dist_electron/mac-arm64/Urdu English
+  Interpreter.app` + `Urdu English Interpreter-1.0.0-arm64.dmg`. Packaged
+  binary CDP-verified: renders from `app.asar`, SetupPanel shows all three
+  steps Ready on this host, `openExternal` rejects arbitrary URLs from the
+  renderer, Start Meeting + all existing panels intact, asar has no `.env`/
+  secrets.
+- Docs updated: `docs/CURRENT_STATE.md` (M10 Phase 4 section + next task),
+  this file.

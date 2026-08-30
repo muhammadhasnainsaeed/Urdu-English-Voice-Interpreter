@@ -10,20 +10,53 @@
     "start": "npm run build && electron .",
     "setup:whisper": "bash scripts/setup-whisper.sh",
     "type-check": "tsc --noEmit",
-    "test": "npx tsx --test tests/*.test.ts"
+    "test": "npx tsx --test tests/*.test.ts",
+    "package": "npm run build && electron-builder --mac --arm64",
+    "package:dir": "npm run build && electron-builder --mac --arm64 --dir"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "electron": "^42.4.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.21.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsx": "^4.23.12",
     "typescript": "^5.4.5"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
-    "microsoft-cognitiveservices-speech-sdk": "^1.51.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "microsoft-cognitiveservices-speech-sdk": "^1.51.0"
+  },
+  "build": {
+    "appId": "com.urduenglish.voiceinterpreter",
+    "productName": "Urdu English Interpreter",
+    "directories": {
+      "output": "dist_electron",
+      "buildResources": "packaging"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "identity": null,
+      "gatekeeperAssess": false,
+      "entitlements": "packaging/entitlements.mac.plist",
+      "entitlementsInherit": "packaging/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "This app uses the microphone to capture your Urdu speech and provide real-time English subtitles and audio during meetings.",
+        "NSHumanReadableCopyright": "© 2026 Urdu English Interpreter"
+      }
+    },
+    "dmg": {
+      "sign": false
+    }
   }
 }

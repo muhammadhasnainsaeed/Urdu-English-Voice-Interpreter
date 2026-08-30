@@ -6,6 +6,8 @@ import { useTranslation } from "./services/useTranslation";
 import { useTts } from "./services/useTts";
 import { useAudioOutput } from "./services/useAudioOutput";
 import { useSession } from "./services/useSession";
+import { useSetup } from "./setup/useSetup";
+import { RENDERER_OPEN_EXTERNAL_LINKS } from "@shared/index";
 import "./styles/App.css";
 
 export default function App() {
@@ -15,6 +17,15 @@ export default function App() {
   const tts = useTts();
   const audioOutput = useAudioOutput();
   const session = useSession();
+
+  const setup = useSetup({
+    micPermission: microphone.permission,
+    hasMicDevice: microphone.devices.length > 0,
+    outputDevices: audioOutput.devices,
+    selectedOutputDeviceId: audioOutput.selectedDeviceId,
+    refreshOutputDevices: audioOutput.refreshDevices,
+    checkBlackHole: () => window.electron.detectBlackHole(),
+  });
 
   const handleSttStart = async () => {
     const capture = await microphone.start();
@@ -94,6 +105,24 @@ export default function App() {
 
   return (
     <HomeScreen
+      setup={setup.state}
+      onRequestMicPermission={async () => {
+        const granted = await microphone.requestPermission();
+        if (granted) {
+          audioOutput.refreshDevices();
+          setup.recheck();
+        }
+      }}
+      onOpenMicSettings={() =>
+        window.electron.openExternal(
+          RENDERER_OPEN_EXTERNAL_LINKS.micPrivacySettings
+        )
+      }
+      onOpenBlackHoleSite={() =>
+        window.electron.openExternal(
+          RENDERER_OPEN_EXTERNAL_LINKS.blackholeDownload
+        )
+      }
       permission={microphone.permission}
       status={microphone.status}
       devices={microphone.devices}

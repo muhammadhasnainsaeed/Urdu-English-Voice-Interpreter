@@ -1,6 +1,7 @@
-import 'dotenv/config';
-import { app, BrowserWindow, ipcMain } from 'electron';
-import * as path from 'path';
+import * as dotenv from "dotenv";
+import { app, BrowserWindow, ipcMain } from "electron";
+import * as os from "os";
+import * as path from "path";
 import type { ApplicationStatus, PipelineEvent, PlaybackTelemetryEvent } from '@shared/index';
 import { registerAudioIpc } from './ipc/audio';
 import { registerAudioOutputIpc, audioOutputManager } from './ipc/audio-output';
@@ -8,7 +9,18 @@ import { registerSttIpc } from './ipc/stt';
 import { registerTranslationIpc, translationManager } from './ipc/translation';
 import { registerTtsIpc, ttsManager } from './ipc/tts';
 import { registerSessionIpc, sessionManager } from './ipc/session';
+import { registerSystemIpc } from './ipc/system';
 import { pipelineTelemetry } from './services/telemetry/pipeline-telemetry';
+
+// Configuration loading.
+//
+// Development: `.env` in the current working directory (repository root).
+// Production: the packaged app never contains `.env` / credentials. If the
+// user supplies a runtime config, it is loaded from the user-owned path
+// `~/.urdu-english-interpreter/.env` (documented). Shell environment
+// variables always take precedence and are never overridden by dotenv.
+dotenv.config();
+dotenv.config({ path: path.join(os.homedir(), ".urdu-english-interpreter", ".env"), quiet: true });
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -51,6 +63,7 @@ app.whenReady().then(() => {
   );
   registerTtsIpc(() => mainWindow, audioOutputManager);
   registerSessionIpc(() => mainWindow);
+  registerSystemIpc();
 
   // Pipeline telemetry (development-only): forward events to the renderer
   // and accept playback lifecycle reports for output latency timing.

@@ -129,6 +129,63 @@ For development rebuilds:
 npm run watch
 ```
 
+## Install & first run (end users)
+
+Non-technical users do **not** need Node, npm, Terminal, or a `.env` file:
+
+1. Open `Urdu English Interpreter-1.0.0-arm64.dmg` and drag the app into
+   **Applications**.
+2. Launch **Urdu English Interpreter** from Applications.
+3. The **Get set up** panel walks through three checks with plain-language
+   buttons:
+   - **Microphone** — click *Allow Microphone* when macOS asks; if it was
+     denied, click *Open System Settings* to re-enable it for the app.
+   - **Audio output** — pick the device English subtitles/audio should play on.
+   - **BlackHole (for meeting apps)** — if it isn't installed, click *Open
+     BlackHole download page* and install the free virtual microphone, then
+     restart the app. (Translation and English audio still work locally
+     without it.)
+4. When the panel says **Ready — press Start Meeting below.**, your setup is
+   complete.
+
+Cloud credentials for the translation services are read from
+`~/.urdu-english-interpreter/.env` if you received one, or from the system
+environment — you never create or edit this yourself.
+
+## Build & distribute (macOS)
+
+Build a production `.app` + DMG (Apple Silicon arm64) with electron-builder:
+
+```bash
+npm run package          # .app + DMG into dist_electron/
+npm run package:dir      # .app only (faster checks; GitHub release asset = `package`)
+```
+
+The packaged app includes only `dist/`, `package.json`, and production
+dependencies — never `.env`, source, tests, or docs. Secrets stay in the main
+process; at runtime the packaged app reads a user-owned config file at
+`~/.urdu-english-interpreter/.env` (same variables as `.env.example`) or
+process environment variables. No keys are ever bundled.
+
+```dotenv
+# ~/.urdu-english-interpreter/.env  (packaged-app runtime config)
+AZURE_SPEECH_KEY=...
+AZURE_SPEECH_REGION=...
+AZURE_TRANSLATOR_KEY=...
+AZURE_TRANSLATOR_REGION=...
+```
+
+The app declares the microphone usage description (`NSMicrophoneUsageDescription`)
+and hardened-runtime audio-input entitlement (`packaging/entitlements.mac.plist`).
+On first launch macOS will ask for microphone access once for the app.
+
+**Code signing / notarization** are configured but require Apple Developer
+credentials and are therefore skipped in this environment (builds are
+unsigned). To enable signing, remove `"identity": null` from the `build`
+section of `package.json`, set `CSC_LINK` / `CSC_KEY_PASSWORD`, and for
+notarization also set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and
+`APPLE_TEAM_ID`. See `.env.example` for the complete packaging notes.
+
 ## Configuration
 
 The recommended production configuration is:
@@ -169,7 +226,9 @@ production-grade provider for sustained meeting traffic.
 ## BlackHole and meeting setup
 
 1. Install BlackHole 2ch on macOS.
-2. Start the app and select the desired translated-audio output device.
+2. Launch the app and follow the **Get set up** panel until it says
+   **Ready — press Start Meeting below.** (it verifies microphone access,
+   the output device, and BlackHole).
 3. Select **BlackHole 2ch** as the microphone in Google Meet, Zoom, or Teams.
 4. Start the meeting pipeline in the app.
 5. Speak Urdu into the app's selected microphone.
@@ -186,9 +245,11 @@ npm run build
 npm test
 ```
 
-The automated suite (43 tests) covers session lifecycle, provider resilience,
+The automated suite (60 tests) covers session lifecycle, provider resilience,
 duplicate suppression, telemetry, audio routing, streaming chunk ordering,
-preemption, session-stop cancellation, and interim-to-final attribution.
+preemption, session-stop cancellation, interim-to-final attribution, and the
+first-launch onboarding states (mic permission, output selection, BlackHole
+detection, open-external allow-list).
 
 Manual validation is still required for:
 

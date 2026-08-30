@@ -6,6 +6,7 @@ import type {
   AudioOutputEvent,
   AudioOutputStartResult,
   ElectronAPI,
+  OpenExternalResult,
   PermissionStatus,
   PipelineEvent,
   PlaybackTelemetryEvent,
@@ -22,6 +23,8 @@ import type {
 const api: ElectronAPI = {
   getAppStatus: () =>
     ipcRenderer.invoke("get-app-status") as Promise<ApplicationStatus>,
+  openExternal: (url: string) =>
+    ipcRenderer.invoke("system:open-external", url) as Promise<OpenExternalResult>,
   getMicPermission: () =>
     ipcRenderer.invoke("mic:get-permission") as Promise<PermissionStatus>,
   requestMicPermission: () =>

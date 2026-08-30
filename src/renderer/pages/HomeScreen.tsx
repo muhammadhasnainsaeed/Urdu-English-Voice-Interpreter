@@ -12,8 +12,10 @@ import type {
   TtsStatus,
 } from "@shared/index";
 import MicrophonePanel from "../components/MicrophonePanel";
+import SetupPanel from "../components/SetupPanel";
 import SttPanel from "../components/SttPanel";
 import PipelinePanel from "../components/PipelinePanel";
+import type { SetupState } from "../setup/setupState";
 
 const SESSION_STATUS_LABELS: Record<SessionStatus, string> = {
   idle: "Ready",
@@ -24,6 +26,10 @@ const SESSION_STATUS_LABELS: Record<SessionStatus, string> = {
 };
 
 interface HomeScreenProps {
+  setup: SetupState;
+  onRequestMicPermission: () => void;
+  onOpenMicSettings: () => void;
+  onOpenBlackHoleSite: () => void;
   permission: PermissionStatus;
   status: ApplicationStatus;
   devices: AudioDevice[];
@@ -88,6 +94,16 @@ export default function HomeScreen(props: HomeScreenProps) {
   return (
     <div className="screen home-screen">
       <h1>Urdu → English Interpreter</h1>
+
+      <SetupPanel
+        state={props.setup}
+        outputDevices={props.audioOutputDevices}
+        selectedOutputDeviceId={props.audioOutputSelectedId}
+        onSelectOutputDevice={props.onSelectAudioOutput}
+        onRequestMicPermission={props.onRequestMicPermission}
+        onOpenMicSettings={props.onOpenMicSettings}
+        onOpenBlackHoleSite={props.onOpenBlackHoleSite}
+      />
 
       <div className="meeting-section">
         <div className="meeting-header">

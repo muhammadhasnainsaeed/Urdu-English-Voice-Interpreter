@@ -244,6 +244,7 @@ export function useMicrophone() {
     error,
     selectDevice: setSelectedDeviceId,
     refreshDevices,
+    requestPermission,
     start,
     stop,
   };

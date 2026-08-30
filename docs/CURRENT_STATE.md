@@ -254,9 +254,14 @@ Status: **COMPLETE** (verified on 2026-08-17; regression fixed + runtime-verifie
   flow and the translation→TTS chain. Fixed with `createTranslationEmit()` etc.
   See CHANGELOG for full root cause and runtime trace.
 
-## Milestone 10 — Latency Benchmark & Streaming TTS Feasibility
+## Milestone 10 — Latency Benchmark, Streaming TTS, Production Packaging
 
-Status: **PHASE 1 COMPLETE** (2026-08-26)
+Status:
+- **Phase 1** — latency benchmark: COMPLETE (2026-08-26)
+- **Phase 2** — streaming TTS + digital & acoustic benchmarks: COMPLETE (2026-08-28)
+- **Phase 3** — production packaging & macOS distribution: COMPLETE (2026-08-29)
+
+Do NOT start M11.
 
 ### What is done (M10 Phase 1)
 
@@ -478,22 +483,134 @@ Comparison vs Phase 1 (legacy) and Phase 2 (streaming) digital averages:
 - Not transformative — STT dominates. Streaming TTS is a minor optimization
   that should be implemented but won't dramatically change the user experience
 
+### M10 Phase 3 — production packaging & macOS distribution (2026-08-29, complete)
+
+- **Packager**: added `electron-builder` `^26.15.3` as a devDependency (only
+  packaging system; esbuild unchanged). Scripts `npm run package` (.app + DMG,
+  arm64) and `npm run package:dir` (.app only). Outputs to `dist_electron/`
+  (git-ignored), build resources in `build/`.
+- **Build config** (`package.json` → `build`): appId
+  `com.urduenglish.voiceinterpreter`, productName "Urdu English Interpreter",
+  `files: ["dist/**/*", "package.json"]` (explicit whitelist — `.env`, `src/`,
+  `docs/`, `demo/`, `tests/` are never packaged), mac target `dmg`, hardened
+  runtime, category productivity.
+- **Entitlements** (`packaging/entitlements.mac.plist`): hardened-runtime JIT
+  (`allow-jit`) + microphone (`device.audio-input`); embedded at signing time.
+- **Info.plist** via `extendInfo`: `NSMicrophoneUsageDescription` set with a
+  clear user-facing string; `NSHumanReadableCopyright`; version derives from
+  package.json (`1.0.0`).
+- **Secrets**: credentials remain main-process-only. The packaged app never
+  ships `.env` or keys (verified: asar contains only `dist/**`,
+  `package.json`, production `node_modules`; no secret values). Runtime config
+  for the packaged app is loaded from user-owned
+  `~/.urdu-english-interpreter/.env` (quiet load) or process environment;
+  development `.env` (repo cwd) behavior is unchanged.
+- **provider defaults untouched**: STT/Translation/TTS default to `azure`;
+  Mock/Whisper/MyMemory/`say` remain selectable via env. `PIPELINE_DEBUG`
+  is env-gated (off by default) — no production-forced debug.
+- **Whisper / say / BlackHole**: unchanged and packaged-safe. Whisper defaults
+  to user-scoped `~/.cache/urdu-english-interpreter/...` (override via
+  `WHISPER_EXECUTABLE_PATH` / `WHISPER_MODEL_PATH`); `say` spawns the system
+  binary in `/usr/bin`; BlackHole is runtime-detected HAL driver, never bundled.
+- **Artifacts** (unsigned): `dist_electron/mac-arm64/Urdu English
+  Interpreter.app` (arm64 Mach-O) + `Urdu English
+  Interpreter-1.0.0-arm64.dmg` (~119 MB, CRC verified).
+- **Clean-install test** (packaged binary, CDP-driven): app launches, renderer
+  loads from `app.asar`, full `window.electron` preload API surface present,
+  devices enumerate (MacBook mic + BlackHole), mic permission granted for the
+  new bundle id, no crash on provider start without keys (graceful "Ready"
+  state).
+- **Signing**: NOT done — no Apple Developer identity in this environment
+  (`0 valid identities`). Configured to skip (`mac.identity: null`); documented
+  to re-enable (`CSC_LINK`/`CSC_KEY_PASSWORD`). Entitlements are ready.
+- **Notarization**: NOT done — requires Apple Developer credentials
+  (`APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID`). Documented, never
+  faked. Marked BLOCKED pending external credentials.
+- **Icon**: default Electron icon (no custom `.icns` asset yet) — optional
+  polish, not a packaging blocker.
+
+### M10 Phase 4 — Non-technical installation & first-launch onboarding (2026-08-30, complete)
+
+- **Goal**: make the packaged app usable by a non-technical user — DMG →
+  Applications → launch → guided setup (microphone → audio output → BlackHole)
+  → Start Meeting — with no Terminal, npm, Node, or `.env` required.
+- **Setup panel** (`SetupPanel.tsx`) rendered at the top of the home screen,
+  above Meeting Mode. Three plain-language steps + a summary line:
+  1. *Microphone* — "Allow Microphone" action when permission is not
+     determined; "Open System Settings" (macOS microphone privacy pane)
+     action when denied/restricted; friendly "no microphone" state.
+  2. *Audio output* — shows the selected device + a compact device selector;
+     "No audio output available" state when the list is empty.
+  3. *BlackHole* — "BlackHole is installed" (ready) or "Install BlackHole
+     for meeting apps" with an "Open BlackHole download page" action
+     (existential.audio/blackhole). Copy explicitly notes English audio
+     still plays locally without BlackHole.
+  - Summary: "Ready — press Start Meeting below." when mic + output +
+    BlackHole are satisfied; a "Checking your setup…" state while probing.
+  - Meet-mode powers the states from **existing** permission/device hooks —
+    no new audio, STT, translation, or TTS code paths were added.
+- **Pure logic** (`src/renderer/setup/setupState.ts`): `deriveSetupState()`
+  maps `{probed, micPermission, hasMicDevice, outputDevices,
+  selectedOutputDeviceId, blackholeDetected}` → per-step state
+  (`checking | ready | action-required | error`) + overall `ready`, and
+  derives BlackHole presence from the main HAL check OR device labels
+  (`/blackhole/i`). Deterministic and unit-tested — no browser required.
+- **Probe** (`src/renderer/setup/useSetup.ts`): on mount and on
+  `devicechange`, refreshes output devices and re-checks BlackHole through
+  the main-process HAL detection; derives current step states.
+- **Open-external gate**: new small `system:open-external` IPC
+  (`src/main/ipc/system.ts`). The main process only opens **exact**
+  allow-listed links (`shared/index.ts` `RENDERER_OPEN_EXTERNAL_LINKS`):
+  the macOS microphone-privacy settings pane
+  (`x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone`)
+  and the BlackHole download page. Arbitrary or tampered URLs are blocked
+  (validated by tests). The renderer can never open a link the main process
+  did not enumerate.
+- **`useMicrophone`** now also exposes its existing internal
+  `requestPermission()` so the setup panel can request the TCC prompt
+  explicitly, then re-enumulates outputs on grant.
+- **Security/values**: no `.env`, credentials, or secrets introduced; the
+  dev Provider architecture, meeting flow, and Start/Stop buttons are
+  unchanged. Tests were tightened after the initial allow-list
+  implementation was shown to permit path-tampering (prefix match) — final
+  implementation is exact-match.
+- **Validation**: `npm run type-check` clean; **60/60 tests** (43 existing +
+  17 new in `tests/setup-onboarding.test.ts`) covering BlackHole label
+  detection, BlackHole detected/missing states, mic permission
+  (not-determined/denied/restricted/granted-no-device/unknown), output
+  selection + no-output state, overall ready/failure, and the open-external
+  allow-list; `npm run build` OK; `npm run package` rebuilt .app + DMG.
+- **Packaged-app verification** (CDP-driven): launched the packaged binary —
+  renderer from `app.asar`, SetupPanel rendered all three steps Ready on
+  this host (mic granted, output detected, BlackHole installed), summary
+  "Ready — press Start Meeting below.", `openExternal('https://evil.example.com')`
+  rejected with `{ok:false}` from the renderer context, Beautiful-Star
+  Meeting/Stop buttons and Microphone/STT panels intact. asar scan confirms
+  no `.env` or app-config secrets (only Azure SDK library files whose names
+  contain "credential"/"key").
+- **Signing/notarization**: still NOT done (no Apple Developer identity).
+  Same BLOCKED status as M10 Phase 3.
+
 ## What is NOT implemented (intentionally)
 
 Meeting-app integration, authentication, database, backend server, Python.
-These are beyond Milestone 7. Milestones 1–7 are all complete.
+These are beyond Milestone 7. Milestones 1–7 are all complete. Windows/Linux
+packaging is an architectural extension point only (electron-builder is
+cross-platform ready; not exercised in M10 Phase 3).
 
 ## Next task
 
-M10 Phase 2 is complete: both Digital and Acoustic streaming benchmarks ran and
-are documented above (2026-08-28); the interim→final streaming
-telemetry-attribution gap found earlier was fixed with a regression test.
-Demo deliverables (video, screenshots, architecture diagram, README sections)
-are complete and validated. Remaining:
-1. **upload `docs/demo/demo-v1.0.0.mp4` as a v1.0.0 Release asset** (manual),
-2. **manual Google Meet / Zoom / Teams validation** — project is ready for the user to
-   open a meeting and confirm live subtitles + BlackHole capture (no further
-   code work needed). Do not start M10 Phase 3.
+M10 Phase 3 (production packaging & macOS distribution) and M10 Phase 4
+(non-technical install + first-launch onboarding) are complete and documented
+above. M10 is fully complete — do not start M11.
+Remaining (manual, outside repo code):
+1. **upload `docs/demo/demo-v1.0.0.mp4` as a v1.0.0 Release asset**,
+2. **sign/notarize + release the built app** when Apple Developer credentials
+   are available (documented in `.env.example`, this file, and README),
+3. **manual Google Meet / Zoom / Teams validation** of the packaged `.app`
+   using the new SetupPanel guide (mic permission will prompt once for the
+   new bundle `com.urduenglish.voiceinterpreter`), and
+   confirm live subtitles + BlackHole capture across a real meeting app.
 
 ## Files at a glance
 
@@ -509,13 +626,14 @@ src/main/services/tts/{provider,manager}.ts
 src/main/services/tts/providers/{azure,mock,say}.ts
 src/main/services/audio-output/{provider,manager}.ts
 src/main/services/audio-output/providers/speaker.ts
-src/main/ipc/{audio,audio-output,session,stt,translation,tts}.ts
+src/main/ipc/{audio,audio-output,session,stt,translation,tts,system}.ts
 src/preload/index.ts
 src/renderer/{App.tsx,index.tsx,index.html}
 src/renderer/pages/HomeScreen.tsx
-src/renderer/components/{MicrophonePanel,AudioLevelMeter,SttPanel}.tsx
+src/renderer/components/{MicrophonePanel,AudioLevelMeter,SttPanel,SetupPanel}.tsx
 src/renderer/components/{SubtitleDisplay,StatusBar}.tsx
 src/renderer/pages/LiveTranslationScreen.tsx
+src/renderer/setup/{setupState,useSetup}.ts
 src/renderer/services/{useMicrophone,useSession,useStt,useTranslation,useTts,useAudioOutput}.ts
 src/renderer/styles/App.css
 src/renderer/types/electron.d.ts
@@ -523,9 +641,11 @@ packages/shared/index.ts
 tests/tts-dedup.test.ts
 tests/audio-output.test.ts
 tests/session.test.ts
+tests/setup-onboarding.test.ts
 scripts/setup-whisper.sh
 esbuild.config.js
-package.json
+packaging/entitlements.mac.plist
+package.json   (includes electron-builder "build" config + package scripts)
 tsconfig.json
 .env.example
 ```

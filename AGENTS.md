@@ -126,7 +126,13 @@ npm run type-check   # TypeScript type checking (tsc --noEmit)
 npm run build        # esbuild bundle (main, preload, renderer) -> dist/
 npm start            # build + launch Electron
 npm run watch        # esbuild watch mode
+npm run package      # production .app + DMG (electron-builder, macOS arm64) -> dist_electron/
+npm run package:dir  # production .app only (no DMG)
 ```
+
+Production packaging secrets rule: NEVER add `.env` or credentials to
+`package.json` `build.files`; runtime config for packaged builds comes from
+`~/.urdu-english-interpreter/.env` or process environment.
 
 ## Validation Checklist
 

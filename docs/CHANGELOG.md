@@ -1444,3 +1444,24 @@ component split, and functional wiring (UI/design-system migration only).
   errors.
 - Docs updated: `docs/CURRENT_STATE.md` (M11 follow-up section + files at a
   glance), this file.
+
+## 2026-09-01 — License migration: MIT → GPL-3.0
+
+- Replaced the MIT license with the canonical FSF **GNU General Public License
+  v3.0** (Version 3, 29 June 2007) in `LICENSE`, preserving the project
+  copyright notice (© 2026 Muhammad Hasnain Saeed). The full standard
+  worldwide GPL-3.0 text (FSF) is used verbatim, including the terms and
+  conditions (sections 0–17) and the "How to Apply These Terms" appendix.
+- Added `"license": "GPL-3.0"` (SPDX) to `package.json` (it previously had no
+  license field).
+- Updated README: license line in the docs/footer from "MIT License" to
+  "GNU General Public License v3.0", and added a GPLv3 license badge under the
+  title.
+- Updated `docs/CURRENT_STATE.md` reference from "MIT licensing" to
+  "GPL-3.0 licensing".
+- **Why:** GPL-3.0 (instead of MIT) prevents others from rebranding or
+  closing the open-source project as their own while still allowing
+  contributions, personal use, and commercial redistribution (with source
+  disclosure and attribution — the original copyright notice is preserved).
+- Validation: `npm run type-check` and `npm test` pass; only metadata/doc
+  files changed, so build tooling and runtime behavior are unaffected.

@@ -1,5 +1,7 @@
 # Urdu-English Voice Interpreter
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
 Real-time Urdu-to-English voice interpretation for macOS meetings. Speak Urdu
 into your microphone, see the live transcript and English translation, and send
 the translated English voice to a selected output device such as BlackHole for
@@ -295,7 +297,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design.
 - [`AGENTS.md`](AGENTS.md) — repository workflow and validation rules
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development and pull-request guide
 - [`SECURITY.md`](SECURITY.md) — vulnerability reporting and secret handling
-- [`LICENSE`](LICENSE) — MIT License
+- [`LICENSE`](LICENSE) — GNU General Public License v3.0
 
 ## Roadmap
 

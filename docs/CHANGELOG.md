@@ -1350,3 +1350,97 @@ Both factors are now addressed: interim translations trigger for longer sentence
   secrets.
 - Docs updated: `docs/CURRENT_STATE.md` (M10 Phase 4 section + next task),
   this file.
+
+## [1.0.1] - 2026-08-31
+
+### M11 — shadcn-style UI design-system revamp (UI/design-system only)
+
+- Replaced the renderer styles with a cohesive design-token system in
+  `src/renderer/styles/App.css`: CSS-variable tokens (`--bg/--panel/--surface/
+  --border/--fg*`, semantic `--success/--warning/--destructive/--info/--brand`,
+  `--radius-*`, 4/6/8/12/16 spacing scale, type scale, `--font-urdu`). Removed
+  ad-hoc hex literals and inconsistent radii.
+- Added hand-rolled shadcn-style primitives in `src/renderer/components/ui/`
+  (button, card, badge, label, select, separator, alert, progress) — same
+  component API/variants as shadcn but implemented in plain CSS + TSX with
+  CSS-variable tokens. **Zero new runtime dependencies** (no Tailwind/Radix/
+  shadcn-CLI), honoring the minimal-dependency footprint.
+- Redesigned onboarding into a compact "Get Ready" checklist (Microphone /
+  Audio Output / BlackHole rows with status Badges + inline actions; Ready or
+  pending banner). Same `setupState.ts` logic.
+- Rebuilt HomeScreen + all panels (Microphone, Translation, TTS, Audio Output,
+  Speech Recognition, Pipeline, AudioLevelMeter) into compact shadcn-style
+  cards; split the oversized SttPanel monolith into single-purpose panels.
+  Compact spacing (buttons 26px, titles 13px) and restrained typography.
+- Accessibility: `role=progressbar`, `role=alert`, `aria-*`, focus states.
+- No business-logic changes: `App.tsx` and `packages/shared/index.ts`
+  untouched; provider/session/IPC/audio/BlackHole logic unchanged.
+- Validation: `npm run type-check` clean; `npm test` 60/60; `npm run build`
+  OK; `npm run package:dir` OK. CDP-verified dev + packaged (`app.asar`) app:
+  all 8 cards render, selects populated, Get Ready "Ready", Start/Stop Meeting
+  3-cycle returns to Ready, zero console errors on reload.
+- Docs updated: `docs/CURRENT_STATE.md` (M11 section + files at a glance),
+  this file.
+
+## [1.1.0] - 2026-09-01
+
+### M11 follow-up — Migrate custom shadcn-style UI to real shadcn/ui + Tailwind
+
+Replaced the hand-rolled plain-CSS shadcn-style implementation with the actual
+shadcn/ui + Tailwind CSS foundation, preserving the complete M11 UX structure,
+component split, and functional wiring (UI/design-system migration only).
+
+- **Tailwind integration** (`tailwind.config.js`, `esbuild.config.js`): added
+  Tailwind v3 + `tailwindcss-animate`; renders any CSS via a new Tailwind CLI
+  pre-build step in `esbuild.config.js` that compiles
+  `src/renderer/styles/globals.css` → `dist/renderer/tailwind.css`; `index.html`
+  now links `tailwind.css` instead of `bundle.css`. esbuild still bundles JS
+  (main/preload/renderer) unchanged — no Vite, no new framework.
+- **shadcn/ui**: real shadcn source-style components in
+  `src/renderer/components/ui/` — `button.tsx` (cva + Radix Slot), `card.tsx`,
+  `badge.tsx` (cva + extended semantic variants success/warning/info/muted +
+  dot), `select.tsx` (Radix Select), `label.tsx` (Radix Label),
+  `separator.tsx` (Radix Separator), `alert.tsx` (cva + AlertTitle/
+  AlertDescription, extended warning/success variants), `progress.tsx`
+  (Radix Progress), `dropdown-menu.tsx` (Radix DropdownMenu), plus
+  `lib/utils.ts` (`cn()` via clsx + tailwind-merge). `@/` alias → `src/renderer`
+  added in `tsconfig.json` and esbuild.
+- **Theme system** (`components/theme-provider.tsx`): shadcn CSS-variable token
+  system (neutral/zinc palette) in `globals.css` `:root` (light) + `.dark`;
+  semantic tokens background/foreground/card/popover/primary/secondary/muted/
+  accent/destructive/border/input/ring. Theme switching via the standard shadcn
+  mode-toggle (`components/theme-selector.tsx`) — icon Button with Sun/Moon +
+  DropdownMenu (Light/Dark/System). Persists to `localStorage["ui-theme"]`;
+  System follows `prefers-color-scheme` via `matchMedia`, reactive to OS change.
+- **Components migrated** to Tailwind utility classes (no custom CSS classes):
+  HomeScreen, SetupPanel, MicrophonePanel, SttPanel, TranslationPanel,
+  TtsPanel, AudioOutputPanel, PipelinePanel, AudioLevelMeter. Panels switched
+  from native `<select>` to Radix Select; buttons/badges/alerts/progress now
+  use the real shadcn components. Compact/neutral/technical Linear-Vercel look
+  preserved (h-8 controls, 13px titles).
+- **Removed obsolete design system**: deleted `src/renderer/styles/App.css`
+  and the dead legacy stubs `StatusBar.tsx`, `SubtitleDisplay.tsx`,
+  `LiveTranslationScreen.tsx`; removed `import "./styles/App.css"` from
+  App.tsx. Only app-specific CSS kept in `globals.css` (Urdu RTL/Nastaliq
+  transcript, thin scrollbars). One UI system remains.
+- **Dependencies**: added `tailwindcss` (dev), `class-variance-authority`,
+  `clsx`, `tailwind-merge`, `tailwindcss-animate`, `@radix-ui/react-slot`,
+  `@radix-ui/react-select`, `@radix-ui/react-label`,
+  `@radix-ui/react-separator`, `@radix-ui/react-progress`,
+  `@radix-ui/react-dropdown-menu`, `lucide-react`. Removed redundant root
+  `postcss`/`autoprefixer` (Tailwind bundles them). No UI framework, no
+  animation/state libs, no build-tooling change.
+- **No business-logic changes**: STT/Translation/TTS/audio-output providers,
+  SessionManager, IPC contracts, mic permission flow, BlackHole detection,
+  telemetry, meeting start/stop, audio routing, `PIPELINE_DEBUG` all unchanged.
+  `packages/shared/index.ts`, `src/main/*`, `src/preload/*` untouched.
+- **Validation**: `npm run type-check` clean; `npm test` 60/60; `npm run build`
+  OK (produces `bundle.js` + `tailwind.css` + `index.html`); `npm run
+  package:dir` OK and asar contains all three renderer assets. Packaged-app CDP
+  verification (from `app.asar`): all 7 panels render; theme toggle opens menu;
+  Light (white bg)/Dark (zinc-950 bg)/System (follows OS) all switch correctly
+  and persist (`ui-theme`); output & mic Radix selects enumerate devices
+  (incl. BlackHole); Start/Stop Meeting 2-cycle returns Ready; zero console
+  errors.
+- Docs updated: `docs/CURRENT_STATE.md` (M11 follow-up section + files at a
+  glance), this file.

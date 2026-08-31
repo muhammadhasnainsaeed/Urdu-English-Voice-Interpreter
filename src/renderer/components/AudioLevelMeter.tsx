@@ -1,26 +1,24 @@
 import React from "react";
+import { Progress } from "./ui/progress";
 
 interface AudioLevelMeterProps {
   level: number;
 }
 
-const BLOCKS = 10;
-
 export default function AudioLevelMeter({ level }: AudioLevelMeterProps) {
   const normalized = Math.max(0, Math.min(1, level));
-  const filled = Math.round(normalized * BLOCKS);
 
   return (
-    <div className="level-meter">
-      <div className="level-blocks" aria-label={`Audio level ${Math.round(normalized * 100)}%`}>
-        {Array.from({ length: BLOCKS }).map((_, i) => (
-          <span
-            key={i}
-            className={`level-block${i < filled ? " filled" : ""}`}
-          />
-        ))}
+    <div className="flex items-center gap-2">
+      <div className="grow">
+        <Progress
+          value={normalized * 100}
+          aria-label={`Audio level ${Math.round(normalized * 100)}%`}
+        />
       </div>
-      <span className="level-percent">{Math.round(normalized * 100)}%</span>
+      <span className="min-w-8 text-right text-xs text-muted-foreground">
+        {Math.round(normalized * 100)}%
+      </span>
     </div>
   );
 }

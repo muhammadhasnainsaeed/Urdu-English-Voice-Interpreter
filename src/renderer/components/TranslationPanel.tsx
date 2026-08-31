@@ -1,64 +1,60 @@
 import React from "react";
-import type { SttStatus } from "@shared/index";
+import type { TranslationStatus } from "@shared/index";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { Alert } from "./ui/alert";
 import { Separator } from "./ui/separator";
 
-interface SttPanelProps {
-  status: SttStatus;
-  partialText: string;
-  finalText: string;
+interface TranslationPanelProps {
+  status: TranslationStatus;
+  finalEnglish: string;
   error: string | null;
   provider: string | null;
+  sttListening: boolean;
   onStart: () => void;
   onStop: () => void;
 }
 
-const STATUS_LABELS: Record<SttStatus, string> = {
-  idle: "Idle",
+const STATUS_LABELS: Record<TranslationStatus, string> = {
+  idle: "Off",
   starting: "Starting…",
-  listening: "Listening",
-  processing: "Processing…",
-  stopping: "Stopping…",
+  active: "Active",
+  "rate-limited": "Rate-limited",
   error: "Error",
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
   azure: "Azure",
-  whisper: "Local Whisper",
+  mymemory: "MyMemory",
   mock: "Mock (dev)",
 };
 
-export default function SttPanel({
+export default function TranslationPanel({
   status,
-  partialText,
-  finalText,
+  finalEnglish,
   error,
   provider,
+  sttListening,
   onStart,
   onStop,
-}: SttPanelProps) {
-  const listening =
-    status === "starting" ||
-    status === "listening" ||
-    status === "processing" ||
-    status === "stopping";
-  const startDisabled = status === "starting" || status === "stopping";
+}: TranslationPanelProps) {
+  const active = status === "active" || status === "starting";
+  const canToggle = sttListening;
 
   const variant =
-    status === "listening"
+    status === "active"
       ? "success"
       : status === "error"
         ? "destructive"
-        : status === "starting" || status === "processing" || status === "stopping"
+        : status === "rate-limited" || status === "starting"
           ? "warning"
           : "muted";
 
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between p-4 pb-2">
-        <CardTitle className="text-[13px]">Speech Recognition</CardTitle>
+        <CardTitle className="text-[13px]">Translation</CardTitle>
         <div className="flex items-center gap-2">
           {provider && (
             <Badge variant="outline">{PROVIDER_LABELS[provider] ?? provider}</Badge>
@@ -70,20 +66,16 @@ export default function SttPanel({
       </CardHeader>
 
       <CardContent className="flex flex-col gap-2 p-4 pt-0">
-        <div
-          className="textbox flex max-h-36 min-h-16 flex-col gap-2 overflow-y-auto rounded-md border p-3 text-[13px] leading-relaxed"
-          dir="rtl"
-        >
-          {finalText ? (
-            <div className="textbox-urdu text-foreground">{finalText}</div>
+        <div className="flex max-h-36 min-h-16 flex-col gap-2 overflow-y-auto rounded-md border p-3 text-[13px] leading-relaxed">
+          {finalEnglish ? (
+            <div className="text-foreground">{finalEnglish}</div>
           ) : (
             <div className="text-xs text-muted-foreground">
-              {listening ? "Listening for Urdu speech…" : "No speech yet."}
-            </div>
-          )}
-          {partialText && (
-            <div className="textbox-urdu italic text-muted-foreground">
-              {partialText}
+              {active
+                ? sttListening
+                  ? "Translation active — waiting for speech…"
+                  : "Start listening to see translations"
+                : "Enable translation to see English output"}
             </div>
           )}
         </div>
@@ -91,28 +83,29 @@ export default function SttPanel({
         <Separator className="my-1" />
 
         <div className="flex items-center gap-2">
-          {listening ? (
+          {active ? (
             <Button
               variant="outline"
               size="sm"
               onClick={onStop}
-              disabled={status === "stopping"}
+              disabled={status === "starting"}
             >
-              Stop Listening
+              Stop Translation
             </Button>
           ) : (
             <Button
               variant="secondary"
               size="sm"
               onClick={onStart}
-              disabled={startDisabled}
+              disabled={!canToggle}
+              title={!canToggle ? "Start listening first" : undefined}
             >
-              Start Listening
+              Start Translation
             </Button>
           )}
         </div>
 
-        {error && <p className="m-0 text-xs text-destructive">{error}</p>}
+        {error && <Alert variant="destructive">{error}</Alert>}
       </CardContent>
     </Card>
   );

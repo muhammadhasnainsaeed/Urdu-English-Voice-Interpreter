@@ -8,7 +8,6 @@ import { useAudioOutput } from "./services/useAudioOutput";
 import { useSession } from "./services/useSession";
 import { useSetup } from "./setup/useSetup";
 import { RENDERER_OPEN_EXTERNAL_LINKS } from "@shared/index";
-import "./styles/App.css";
 
 export default function App() {
   const microphone = useMicrophone();

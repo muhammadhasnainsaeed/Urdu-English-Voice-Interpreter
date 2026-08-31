@@ -14,16 +14,16 @@ import type {
 import MicrophonePanel from "../components/MicrophonePanel";
 import SetupPanel from "../components/SetupPanel";
 import SttPanel from "../components/SttPanel";
+import TranslationPanel from "../components/TranslationPanel";
+import TtsPanel from "../components/TtsPanel";
+import AudioOutputPanel from "../components/AudioOutputPanel";
 import PipelinePanel from "../components/PipelinePanel";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
+import { Separator } from "../components/ui/separator";
+import { ThemeSelector } from "../components/theme-selector";
 import type { SetupState } from "../setup/setupState";
-
-const SESSION_STATUS_LABELS: Record<SessionStatus, string> = {
-  idle: "Ready",
-  starting: "Starting…",
-  active: "Active",
-  stopping: "Stopping…",
-  error: "Error",
-};
 
 interface HomeScreenProps {
   setup: SetupState;
@@ -69,11 +69,18 @@ interface HomeScreenProps {
   onMeetingStop: () => void;
 }
 
-function stageIcon(s: string): string {
-  if (s === "active" || s === "listening") return "\u25cf";
-  if (s === "starting" || s === "stopping") return "\u25cb";
-  if (s === "error") return "\u2716";
-  return "\u25cb";
+const SESSION_BADGE: Record<SessionStatus, { variant: "success" | "warning" | "destructive" | "muted"; label: string }> = {
+  idle: { variant: "muted", label: "Ready" },
+  starting: { variant: "warning", label: "Starting…" },
+  active: { variant: "success", label: "Active" },
+  stopping: { variant: "warning", label: "Stopping…" },
+  error: { variant: "destructive", label: "Error" },
+};
+
+function stageBadge(s: string): "success" | "warning" | "muted" {
+  if (s === "active" || s === "listening") return "success";
+  if (s === "starting" || s === "stopping") return "warning";
+  return "muted";
 }
 
 export default function HomeScreen(props: HomeScreenProps) {
@@ -82,7 +89,6 @@ export default function HomeScreen(props: HomeScreenProps) {
   const meetingStopping = props.sessionStatus === "stopping";
   const meetingBusy = meetingStarting || meetingStopping;
 
-  // Live pipeline stage for the dev performance panel.
   const currentStage = !meetingActive
     ? "Idle"
     : props.ttsCurrentText
@@ -91,9 +97,33 @@ export default function HomeScreen(props: HomeScreenProps) {
         ? "Recognizing"
         : "Listening";
 
+  const sessionBadge = SESSION_BADGE[props.sessionStatus];
+
+  const stages: { key: keyof PipelineStageStatus; label: string }[] = [
+    { key: "stt", label: "STT" },
+    { key: "translation", label: "Translate" },
+    { key: "tts", label: "TTS" },
+    { key: "audioOutput", label: "Audio" },
+  ];
+
   return (
-    <div className="screen home-screen">
-      <h1>Urdu → English Interpreter</h1>
+    <div className="home-screen flex h-full flex-col gap-3 overflow-y-auto p-4">
+      <header className="flex items-start justify-between gap-3 pb-1">
+        <div>
+          <h1 className="m-0 text-[15px] font-semibold tracking-tight">
+            Urdu → English Interpreter
+          </h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Real-time meeting interpreter
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <ThemeSelector />
+          <Badge variant={sessionBadge.variant} dot>
+            {sessionBadge.label}
+          </Badge>
+        </div>
+      </header>
 
       <SetupPanel
         state={props.setup}
@@ -105,57 +135,56 @@ export default function HomeScreen(props: HomeScreenProps) {
         onOpenBlackHoleSite={props.onOpenBlackHoleSite}
       />
 
-      <div className="meeting-section">
-        <div className="meeting-header">
-          <span className="meeting-title">Meeting Mode</span>
-          <span className={`status-pill status-${props.sessionStatus}`}>
-            {SESSION_STATUS_LABELS[props.sessionStatus]}
-          </span>
-        </div>
-
-        <div className="meeting-stages">
-          <div className="pipeline-stage">
-            <span className="stage-icon">{stageIcon(props.sessionStages.stt)}</span>
-            <span className="stage-label">STT</span>
+      <Card>
+        <CardHeader className="flex-row items-center justify-between p-4 pb-2">
+          <CardTitle className="text-[13px]">Meeting Mode</CardTitle>
+          <div className="flex items-center gap-2">
+            {stages.map((s) => (
+              <Badge key={s.key} variant={stageBadge(props.sessionStages[s.key])} dot>
+                {s.label}
+              </Badge>
+            ))}
           </div>
-          <div className="pipeline-stage">
-            <span className="stage-icon">{stageIcon(props.sessionStages.translation)}</span>
-            <span className="stage-label">Translation</span>
-          </div>
-          <div className="pipeline-stage">
-            <span className="stage-icon">{stageIcon(props.sessionStages.tts)}</span>
-            <span className="stage-label">TTS</span>
-          </div>
-          <div className="pipeline-stage">
-            <span className="stage-icon">{stageIcon(props.sessionStages.audioOutput)}</span>
-            <span className="stage-label">Audio</span>
-          </div>
-        </div>
-
-        <div className="mic-actions">
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 p-4 pt-1">
           {meetingActive ? (
-            <button
-              className="stop-meeting-btn"
+            <Button
+              variant="destructive"
+              size="lg"
               onClick={props.onMeetingStop}
               disabled={meetingBusy}
+              className="w-full"
             >
               Stop Meeting
-            </button>
+            </Button>
           ) : (
-            <button
-              className="start-meeting-btn"
+            <Button
+              variant="secondary"
+              size="lg"
               onClick={props.onMeetingStart}
               disabled={meetingBusy}
+              className="w-full"
             >
               Start Meeting
-            </button>
+            </Button>
           )}
-        </div>
+          {props.sessionError && (
+            <p className="m-0 text-xs text-destructive">{props.sessionError}</p>
+          )}
+        </CardContent>
+      </Card>
 
-        {props.sessionError && (
-          <p className="error-text">{props.sessionError}</p>
-        )}
-      </div>
+      <Separator className="my-1" />
+
+      <TranslationPanel
+        status={props.translationStatus}
+        finalEnglish={props.finalEnglish}
+        error={props.translationError}
+        provider={props.translationProvider}
+        sttListening={props.sttStatus === "listening" || props.sttStatus === "processing"}
+        onStart={props.onTranslationStart}
+        onStop={props.onTranslationStop}
+      />
 
       <MicrophonePanel
         permission={props.permission}
@@ -169,6 +198,25 @@ export default function HomeScreen(props: HomeScreenProps) {
         onStop={props.onStop}
       />
 
+      <TtsPanel
+        status={props.ttsStatus}
+        error={props.ttsError}
+        provider={props.ttsProvider}
+        currentText={props.ttsCurrentText}
+        translationActive={
+          props.translationStatus === "active" || props.translationStatus === "starting"
+        }
+        onStart={props.onTtsStart}
+        onStop={props.onTtsStop}
+      />
+
+      <AudioOutputPanel
+        status={props.audioOutputStatus}
+        devices={props.audioOutputDevices}
+        selectedDeviceId={props.audioOutputSelectedId}
+        onSelect={props.onSelectAudioOutput}
+      />
+
       <SttPanel
         status={props.sttStatus}
         partialText={props.sttPartialText}
@@ -177,35 +225,9 @@ export default function HomeScreen(props: HomeScreenProps) {
         provider={props.sttProvider}
         onStart={props.onSttStart}
         onStop={props.onSttStop}
-        translationStatus={props.translationStatus}
-        finalEnglish={props.finalEnglish}
-        translationError={props.translationError}
-        translationProvider={props.translationProvider}
-        onTranslationStart={props.onTranslationStart}
-        onTranslationStop={props.onTranslationStop}
-        ttsStatus={props.ttsStatus}
-        ttsError={props.ttsError}
-        ttsProvider={props.ttsProvider}
-        ttsCurrentText={props.ttsCurrentText}
-        onTtsStart={props.onTtsStart}
-        onTtsStop={props.onTtsStop}
-        audioOutputStatus={props.audioOutputStatus}
-        audioOutputDevices={props.audioOutputDevices}
-        audioOutputSelectedId={props.audioOutputSelectedId}
-        onSelectAudioOutput={props.onSelectAudioOutput}
       />
 
       <PipelinePanel currentStage={currentStage} />
-
-      <div className="field">
-        <label>Input Language</label>
-        <div className="pill">Urdu</div>
-      </div>
-
-      <div className="field">
-        <label>Output Language</label>
-        <div className="pill">English</div>
-      </div>
     </div>
   );
 }

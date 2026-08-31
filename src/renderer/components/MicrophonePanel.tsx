@@ -5,6 +5,18 @@ import type {
   PermissionStatus,
 } from "@shared/index";
 import AudioLevelMeter from "./AudioLevelMeter";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import { Label } from "./ui/label";
+import { Alert } from "./ui/alert";
 
 interface MicrophonePanelProps {
   permission: PermissionStatus;
@@ -20,7 +32,7 @@ interface MicrophonePanelProps {
 
 const STATUS_LABELS: Record<ApplicationStatus, string> = {
   idle: "Idle",
-  "requesting-permission": "Requesting permission…",
+  "requesting-permission": "Requesting…",
   ready: "Ready",
   listening: "Listening",
   processing: "Processing",
@@ -28,13 +40,21 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = {
   error: "Error",
 };
 
-const PERMISSION_LABELS: Record<PermissionStatus, string> = {
-  granted: "Granted",
-  denied: "Denied",
-  "not-determined": "Not requested",
-  restricted: "Restricted",
-  unknown: "Unknown",
-};
+function statusBadge(status: ApplicationStatus) {
+  const variant =
+    status === "listening"
+      ? "success"
+      : status === "error"
+        ? "destructive"
+        : status === "requesting-permission"
+          ? "warning"
+          : "muted";
+  return (
+    <Badge variant={variant} dot>
+      {STATUS_LABELS[status]}
+    </Badge>
+  );
+}
 
 export default function MicrophonePanel({
   permission,
@@ -48,71 +68,78 @@ export default function MicrophonePanel({
   onStop,
 }: MicrophonePanelProps) {
   const listening = status === "listening";
-  const requesting = status === "requesting-permission";
-  const startDisabled = requesting;
+  const startDisabled = status === "requesting-permission";
 
   return (
-    <div className="mic-panel">
-      <div className="device-field">
-        <label>Microphone</label>
-        <select
-          className="device-select"
-          value={selectedDeviceId ?? ""}
-          onChange={(e) => onSelectDevice(e.target.value)}
-          disabled={listening}
-        >
-          {devices.length === 0 && <option value="">No microphone found</option>}
-          {devices.map((d) => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label}
-            </option>
-          ))}
-        </select>
-      </div>
+    <Card>
+      <CardHeader className="flex-row items-center justify-between p-4 pb-2">
+        <CardTitle className="text-[13px]">Microphone</CardTitle>
+        {statusBadge(status)}
+      </CardHeader>
 
-      <div className="mic-status-row">
-        <span className="status-label">Status:</span>{" "}
-        <span className={`status-value status-${status}`}>
-          {STATUS_LABELS[status]}
-        </span>
-      </div>
+      <CardContent className="flex flex-col gap-2 p-4 pt-0">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="mic-device" className="text-xs">
+            Device
+          </Label>
+          <div className="grow">
+            <Select
+              value={selectedDeviceId ?? "none"}
+              onValueChange={onSelectDevice}
+              disabled={listening}
+            >
+              <SelectTrigger id="mic-device" aria-label="Microphone device">
+                <SelectValue placeholder="No microphone found" />
+              </SelectTrigger>
+              <SelectContent>
+                {devices.length === 0 && (
+                  <SelectItem value="none" disabled>
+                    No microphone found
+                  </SelectItem>
+                )}
+                {devices.map((d) => (
+                  <SelectItem key={d.deviceId} value={d.deviceId}>
+                    {d.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
-      <div className="mic-status-row">
-        <span className="status-label">Permission:</span>{" "}
-        <span className={`status-value permission-${permission}`}>
-          {PERMISSION_LABELS[permission]}
-        </span>
-      </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-xs">Input Level</Label>
+          <div className="grow">
+            <AudioLevelMeter level={level} />
+          </div>
+        </div>
 
-      <div className="field">
-        <label>Audio Level</label>
-        <AudioLevelMeter level={level} />
-      </div>
+        <div className="flex items-center gap-2 pt-1">
+          {listening ? (
+            <Button variant="outline" size="sm" onClick={onStop}>
+              Stop
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onStart}
+              disabled={startDisabled}
+            >
+              Start
+            </Button>
+          )}
+        </div>
 
-      <div className="mic-actions">
-        {listening ? (
-          <button className="secondary-btn" onClick={onStop}>
-            Stop
-          </button>
-        ) : (
-          <button
-            className="primary-btn"
-            onClick={onStart}
-            disabled={startDisabled}
-          >
-            Start
-          </button>
+        {error && <Alert variant="destructive">{error}</Alert>}
+
+        {permission === "denied" && (
+          <Alert variant="warning">
+            Enable microphone access in System Settings → Privacy &amp; Security →
+            Microphone, then restart the app.
+          </Alert>
         )}
-      </div>
-
-      {error && <p className="error-text">{error}</p>}
-
-      {permission === "denied" && (
-        <p className="hint">
-          Enable microphone access in System Settings → Privacy &amp; Security →
-          Microphone, then restart the app.
-        </p>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }

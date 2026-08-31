@@ -4,7 +4,7 @@
   "description": "Real-time Urdu-to-English voice interpreter for macOS meetings",
   "main": "dist/main/index.js",
   "private": true,
-  "license": "GPL-3.0",
+  "license": "GPL-3.0-only",
   "scripts": {
     "build": "node esbuild.config.js",
     "watch": "node esbuild.config.js --watch",

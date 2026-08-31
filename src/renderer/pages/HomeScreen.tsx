@@ -1,3 +1,21 @@
+/*
+ * Urdu English Interpreter
+ * Copyright (C) 2026 Muhammad Hasnain Saeed
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import React from "react";
 import type {
   ApplicationStatus,
@@ -18,7 +36,12 @@ import TranslationPanel from "../components/TranslationPanel";
 import TtsPanel from "../components/TtsPanel";
 import AudioOutputPanel from "../components/AudioOutputPanel";
 import PipelinePanel from "../components/PipelinePanel";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Separator } from "../components/ui/separator";
@@ -69,7 +92,10 @@ interface HomeScreenProps {
   onMeetingStop: () => void;
 }
 
-const SESSION_BADGE: Record<SessionStatus, { variant: "success" | "warning" | "destructive" | "muted"; label: string }> = {
+const SESSION_BADGE: Record<
+  SessionStatus,
+  { variant: "success" | "warning" | "destructive" | "muted"; label: string }
+> = {
   idle: { variant: "muted", label: "Ready" },
   starting: { variant: "warning", label: "Starting…" },
   active: { variant: "success", label: "Active" },
@@ -118,10 +144,10 @@ export default function HomeScreen(props: HomeScreenProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <ThemeSelector />
           <Badge variant={sessionBadge.variant} dot>
             {sessionBadge.label}
           </Badge>
+          <ThemeSelector />
         </div>
       </header>
 
@@ -140,7 +166,11 @@ export default function HomeScreen(props: HomeScreenProps) {
           <CardTitle className="text-[13px]">Meeting Mode</CardTitle>
           <div className="flex items-center gap-2">
             {stages.map((s) => (
-              <Badge key={s.key} variant={stageBadge(props.sessionStages[s.key])} dot>
+              <Badge
+                key={s.key}
+                variant={stageBadge(props.sessionStages[s.key])}
+                dot
+              >
                 {s.label}
               </Badge>
             ))}
@@ -181,7 +211,9 @@ export default function HomeScreen(props: HomeScreenProps) {
         finalEnglish={props.finalEnglish}
         error={props.translationError}
         provider={props.translationProvider}
-        sttListening={props.sttStatus === "listening" || props.sttStatus === "processing"}
+        sttListening={
+          props.sttStatus === "listening" || props.sttStatus === "processing"
+        }
         onStart={props.onTranslationStart}
         onStop={props.onTranslationStop}
       />
@@ -204,7 +236,8 @@ export default function HomeScreen(props: HomeScreenProps) {
         provider={props.ttsProvider}
         currentText={props.ttsCurrentText}
         translationActive={
-          props.translationStatus === "active" || props.translationStatus === "starting"
+          props.translationStatus === "active" ||
+          props.translationStatus === "starting"
         }
         onStart={props.onTtsStart}
         onStop={props.onTtsStop}

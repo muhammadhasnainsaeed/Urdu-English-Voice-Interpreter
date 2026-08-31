@@ -1452,8 +1452,14 @@ component split, and functional wiring (UI/design-system migration only).
   copyright notice (© 2026 Muhammad Hasnain Saeed). The full standard
   worldwide GPL-3.0 text (FSF) is used verbatim, including the terms and
   conditions (sections 0–17) and the "How to Apply These Terms" appendix.
-- Added `"license": "GPL-3.0"` (SPDX) to `package.json` (it previously had no
-  license field).
+- Added `"license": "GPL-3.0-only"` (non-deprecated SPDX identifier) to
+  `package.json` (it previously had no license field).
+- Added the standard FSF GPL-3.0 boilerplate notice (program name, copyright,
+  and the "free software" header per the license's "How to Apply These Terms"
+  section) to the top of every authored source file (main, preload, renderer,
+  shared types, configs, and tests). Excluded the third-party-derived shadcn/ui
+  components (`src/renderer/components/ui/*`) and `src/renderer/lib/utils.ts`,
+  which are MIT-licensed shadcn source and keep their own origin.
 - Updated README: license line in the docs/footer from "MIT License" to
   "GNU General Public License v3.0", and added a GPLv3 license badge under the
   title.

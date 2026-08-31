@@ -591,6 +591,122 @@ Comparison vs Phase 1 (legacy) and Phase 2 (streaming) digital averages:
 - **Signing/notarization**: still NOT done (no Apple Developer identity).
   Same BLOCKED status as M10 Phase 3.
 
+### M11 UI — shadcn-style design-system revamp (2026-08-31, complete)
+
+- **Scope**: UI/design-system only. STT, Translation, TTS, Audio Output,
+  SessionManager, IPC, telemetry, provider logic, audio routing, BlackHole
+  detection, and meeting functionality are **unchanged**. `App.tsx` and
+  `packages/shared/index.ts` were not modified — every panel's prop contract
+  is preserved, so no data-flow wiring changed.
+- **Design tokens** (`src/renderer/styles/App.css`, file replaced): `:root`
+  CSS-variable tokens — `--bg`, `--panel`, `--surface`, `--border`, `--fg*`,
+  semantic colors (`--success/warning/destructive/info/brand`), `--radius-*`
+  (4/6/8/10), spacing scale `--sp-*` (4/6/8/12/16), `--font-sans`,
+  `--font-urdu`, type scale `--text-xs/sm/base/lg`. Layout helpers
+  (`.stack/.row/.split/.grow`), ui primitive classes (`.btn*/.card*/.badge*`
+  `.label/.separator*/.select*/.alert*/.progress*/.textbox*`), and
+  screen-specific classes (`.setup-*/.meeting-stage/.error-text`). Removed all
+  hard-coded hex colors and the 8/10/12px radius inconsistency.
+- **Hand-rolled shadcn-style primitives** (`src/renderer/components/ui/`):
+  `button.tsx` (variants `default/primary/success/destructive/outline/ghost`,
+  sizes `sm/md/lg`), `card.tsx`, `badge.tsx` (+`dot`), `label.tsx`,
+  `select.tsx` (`Select/SelectItem`), `separator.tsx` (h/v),
+  `alert.tsx` (variants + optional `title`), `progress.tsx`
+  (`role=progressbar` + `aria-*`). **Zero new runtime dependencies** — no
+  Tailwind/Radix/shadcn-CLI per the minimal-dependency constraint; the
+  primitives share the shadcn component API/variants but are plain CSS + TSX
+  with CSS-variable tokens.
+- **Onboarding redesigned** (`SetupPanel.tsx`): compact "Get Ready" card —
+  three rows (Microphone, Audio Output, BlackHole), each with a step icon,
+  status Badge (`Ready`/`Action required`/`Checking…`), detail text, and
+  inline actions; Separators between rows; a "Ready — Press Start Meeting
+  below." banner (success) when all three pass, or a pending banner
+  ("Complete the required setup") otherwise. Same `setupState.ts` logic, no
+  data changes.
+- **Existing panels rebuilt** into compact shadcn-style cards:
+  - `HomeScreen.tsx` (rewritten): header (app title + session status Badge
+    dot), Get Ready card, Meeting Mode card (4 stage Badges STT/Translate/
+    TTS/Audio + large Start/Stop Meeting button), Separator, then Translation,
+    Microphone, Text-to-Speech, Audio Output, Speech Recognition cards, then
+    Pipeline Performance (dev-gated by `PIPELINE_DEBUG`).
+  - `MicrophonePanel.tsx`: device Select, Input Level (Progress bar),
+    Start/Stop, warning/destructive Alerts for no-device/denied permission.
+  - `SttPanel.tsx` (now Speech Recognition only): Urdu RTL transcript textbox,
+    provider + status Badges, Start/Stop Listening — monolith split.
+  - `TranslationPanel.tsx`, `TtsPanel.tsx`, `AudioOutputPanel.tsx` (new):
+    single-purpose compact cards split out of the old `SttPanel`/home.
+  - `AudioLevelMeter.tsx`: uses Progress.
+  - `PipelinePanel.tsx`: Card/Badge + inline token styles.
+  - Dead-but-consistent legacy kept up to date: `StatusBar.tsx`,
+    `SubtitleDisplay.tsx` (fixed missing Card import),
+    `LiveTranslationScreen.tsx`.
+- **Accessibility**: `role=progressbar`, `role=alert`, `aria-*` on controls,
+  keyboard focus states, semantic labels/contrast.
+- **Functional regression verified** (CDP against dev + packaged app): all
+  selects (setup output, mic, output) populated; Get Ready → "Ready — Press
+  Start Meeting below."; Start Meeting → session Active, button → Stop
+  Meeting, header Badge → Active; ×3 start/stop cycles all return to Ready.
+  Zero console errors/exceptions on reload. App renders from `app.asar`
+  identically.
+
+### M11 follow-up — Migrate to real shadcn/ui + Tailwind CSS (2026-09-01, complete)
+
+- **Scope**: UI/design-system migration only. Replaced the previous hand-rolled
+  plain-CSS shadcn-style implementation with the actual shadcn/ui + Tailwind
+  CSS foundation. The M11 UX structure, component split, compact layout, and
+  functional wiring are all preserved — no redesign, no business-logic change
+  (STT/Translation/TTS/audio-output providers, SessionManager, IPC, mic
+  permission, BlackHole detection, telemetry, meeting start/stop, audio
+  routing, `PIPELINE_DEBUG` all untouched; `src/main/*`, `src/preload/*`,
+  `packages/shared/index.ts` unchanged).
+- **Tailwind integration**: `tailwind.config.js` added (Tailwind v3, class dark
+  mode, zinc/neutral theme tokens, `@/` content scan). `esbuild.config.js` adds
+  a Tailwind CLI pre-build that compiles `styles/globals.css` →
+  `dist/renderer/tailwind.css`, plus a `@/` alias. `index.html` now links
+  `tailwind.css` (removed `bundle.css`; App.tsx no longer imports CSS). Main/
+  preload/renderer esbuild bundling unchanged — no Vite, no new framework.
+- **Real shadcn/ui components** (`src/renderer/components/ui/`): `button.tsx`
+  (cva + Radix Slot), `card.tsx`, `badge.tsx` (cva + semantic variants
+  success/warning/info/muted + `dot`), `select.tsx` (Radix Select), `label.tsx`
+  (Radix Label), `separator.tsx` (Radix Separator), `alert.tsx` (cva +
+  AlertTitle/AlertDescription + warning/success), `progress.tsx` (Radix
+  Progress), `dropdown-menu.tsx` (Radix DropdownMenu); `lib/utils.ts` `cn()`
+  (clsx + tailwind-merge). `@/` alias → `src/renderer` in `tsconfig.json` +
+  esbuild.
+- **Theme system** (`components/theme-provider.tsx`, `theme-selector.tsx`):
+  shadcn CSS-variable token model in `globals.css` (`:root` light + `.dark`
+  zinc/neutral palette; semantic background/foreground/card/popover/primary/
+  secondary/muted/accent/destructive/border/input/ring; `--radius`). No
+  hard-coded colors scattered in components. Theme toggle is the standard shadcn
+  mode-toggle: icon Button (Sun/Moon) + DropdownMenu → Light/Dark/System.
+  Persists via `localStorage["ui-theme"]`; System follows
+  `prefers-color-scheme` reactively via `matchMedia`.
+- **Components migrated** to Tailwind utilities (zero custom CSS classes):
+  HomeScreen, SetupPanel, MicrophonePanel, SttPanel, TranslationPanel,
+  TtsPanel, AudioOutputPanel, PipelinePanel, AudioLevelMeter. Panels now use
+  Radix Select (was native `<select>`). Compact/neutral/technical aesthetic
+  preserved (h-8 controls, 13px titles, no gradients/glass/excess shadows).
+- **Obsolete implementation removed**: deleted `styles/App.css` and the dead
+  legacy stubs `StatusBar.tsx`, `SubtitleDisplay.tsx`, `LiveTranslationScreen
+  .tsx`; removed `import "./styles/App.css"` from App.tsx. Only app-specific
+  CSS remains in `globals.css` (Urdu RTL/Nastaliq transcript `.textbox-urdu`,
+  thin scrollbars). One UI system remains.
+- **Dependencies added**: Tailwind v3 (dev); `class-variance-authority`,
+  `clsx`, `tailwind-merge`, `tailwindcss-animate`, `@radix-ui/react-slot/select/
+  label/separator/progress/dropdown-menu`, `lucide-react`. Removed redundant
+  root `postcss`/`autoprefixer`. No UI framework, no animation/state libs, no
+  build-tooling migration.
+- **Accessibility** kept: `role=progressbar`/`role=alert`/`aria-*`,
+  focus-visible rings, Radix-managed keyboard/interaction for menus & selects.
+- **Validation**: `npm run type-check` clean; `npm test` 60/60; `npm run build`
+  OK (outputs `bundle.js` + `tailwind.css` + `index.html`); `npm run
+  package:dir` OK and `app.asar` contains all three renderer assets. Packaged
+  app CDP-verified (from `app.asar`): all 7 panels render; theme toggle opens
+  menu; Light (white) / Dark (zinc-950) / System (follows OS) all switch and
+  persist (`ui-theme`) across app restart; mic & output Radix selects enumerate
+  devices (incl. BlackHole) and fire onSelect; Start/Stop Meeting 2-cycle
+  returns Ready; zero console errors on reload + interaction.
+
 ## What is NOT implemented (intentionally)
 
 Meeting-app integration, authentication, database, backend server, Python.
@@ -600,9 +716,10 @@ cross-platform ready; not exercised in M10 Phase 3).
 
 ## Next task
 
-M10 Phase 3 (production packaging & macOS distribution) and M10 Phase 4
-(non-technical install + first-launch onboarding) are complete and documented
-above. M10 is fully complete — do not start M11.
+M10 Phase 3/4 (production packaging & macOS distribution + non-technical
+onboarding), M11 (UI design-system revamp), and the M11 follow-up (real
+shadcn/ui + Tailwind migration) are complete and documented. M10, M11, and the
+M11 follow-up are fully complete — do not start M12.
 Remaining (manual, outside repo code):
 1. **upload `docs/demo/demo-v1.0.0.mp4` as a v1.0.0 Release asset**,
 2. **sign/notarize + release the built app** when Apple Developer credentials
@@ -630,12 +747,15 @@ src/main/ipc/{audio,audio-output,session,stt,translation,tts,system}.ts
 src/preload/index.ts
 src/renderer/{App.tsx,index.tsx,index.html}
 src/renderer/pages/HomeScreen.tsx
-src/renderer/components/{MicrophonePanel,AudioLevelMeter,SttPanel,SetupPanel}.tsx
-src/renderer/components/{SubtitleDisplay,StatusBar}.tsx
-src/renderer/pages/LiveTranslationScreen.tsx
+src/renderer/lib/utils.ts
+src/renderer/components/ui/{button,card,badge,label,select,separator,alert,progress,dropdown-menu}.tsx
+src/renderer/components/{theme-provider,theme-selector}.tsx
+src/renderer/components/{MicrophonePanel,AudioLevelMeter,SetupPanel}.tsx
+src/renderer/components/{TranslationPanel,TtsPanel,AudioOutputPanel}.tsx
+src/renderer/components/{SttPanel,PipelinePanel}.tsx
 src/renderer/setup/{setupState,useSetup}.ts
 src/renderer/services/{useMicrophone,useSession,useStt,useTranslation,useTts,useAudioOutput}.ts
-src/renderer/styles/App.css
+src/renderer/styles/globals.css
 src/renderer/types/electron.d.ts
 packages/shared/index.ts
 tests/tts-dedup.test.ts
@@ -644,6 +764,7 @@ tests/session.test.ts
 tests/setup-onboarding.test.ts
 scripts/setup-whisper.sh
 esbuild.config.js
+tailwind.config.js
 packaging/entitlements.mac.plist
 package.json   (includes electron-builder "build" config + package scripts)
 tsconfig.json

@@ -8,6 +8,9 @@ Thanks for helping improve Urdu-English Voice Interpreter.
 - Check existing issues before opening a new one.
 - Never include API keys, recordings, meeting content, or personal data in a
   commit or issue.
+- This project is **[GPL-3.0](LICENSE)**. By submitting a contribution you agree
+  that it is licensed under GPL-3.0 so it stays free and open like the rest of
+  the project.
 
 ## Development
 

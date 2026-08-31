@@ -1471,3 +1471,14 @@ component split, and functional wiring (UI/design-system migration only).
   disclosure and attribution — the original copyright notice is preserved).
 - Validation: `npm run type-check` and `npm test` pass; only metadata/doc
   files changed, so build tooling and runtime behavior are unaffected.
+
+## 2026-09-01 — Document GPL-3.0 commercial-use terms
+
+- Added a "License and commercial use" section to `README.md` clarifying the
+  GPL-3.0 terms for this project: commercial use is allowed; redistributing a
+  modified/copy version requires releasing source under GPL-3.0 and keeping
+  license/copyright notices; rebranding or shipping a closed proprietary
+  derivative is not permitted; copyright is held by Muhammad Hasnain Saeed and
+  contributions are granted under GPL-3.0.
+- Added a brief contribution-license note to `CONTRIBUTING.md` stating that
+  submitting a contribution grants it under GPL-3.0.

@@ -314,3 +314,18 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design.
 
 The MVP does not include authentication, a backend, a database, or native
 meeting-app integrations. Python is not part of the target architecture.
+
+## License and commercial use
+
+Licensed under the [GNU General Public License v3.0](LICENSE).
+
+- **Use it commercially:** yes. You may use this software in a business, run
+  it, charge for it, and redistribute it — as long as you comply with the
+  GPL-3.0 terms below.
+- **Modify and redistribute:** if you distribute a modified/copied version to
+  others (including as part of a product), you must make the source code
+  available under GPL-3.0 and keep the license and copyright notices intact.
+- **Do not:** close it up, rebrand it, or ship a proprietary derivative without
+  releasing the source under GPL-3.0.
+- The original copyright is owned by Muhammad Hasnain Saeed. Contributors grant
+  their contributions under the same GPL-3.0 terms.

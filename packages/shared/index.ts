@@ -302,10 +302,32 @@ export function isAllowedOpenExternalUrl(url: string): boolean {
   return ALLOWED_OPEN_EXTERNAL_LINKS.some((allowed) => url === allowed);
 }
 
+/* ---- Onboarding persistence (first-launch → Home) ---- */
+
+/** The single persisted UI/app-state flag that drives first-launch onboarding. */
+export interface AppPreferences {
+  /** True once the user has completed (or dismissed) first-launch onboarding. */
+  onboardingCompleted: boolean;
+}
+
+export interface GetPreferencesResult {
+  ok: boolean;
+  preferences?: AppPreferences;
+  message?: string;
+}
+
+export interface SetPreferencesResult {
+  ok: boolean;
+  preferences?: AppPreferences;
+  message?: string;
+}
+
 /* ---- Electron API bridge ---- */
 
 export interface ElectronAPI {
   getAppStatus: () => Promise<ApplicationStatus>;
+  getPreferences: () => Promise<GetPreferencesResult>;
+  setPreferences: (preferences: Partial<AppPreferences>) => Promise<SetPreferencesResult>;
   openExternal: (url: string) => Promise<OpenExternalResult>;
   getMicPermission: () => Promise<PermissionStatus>;
   requestMicPermission: () => Promise<PermissionStatus>;

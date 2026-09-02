@@ -29,6 +29,7 @@ import { registerTranslationIpc, translationManager } from './ipc/translation';
 import { registerTtsIpc, ttsManager } from './ipc/tts';
 import { registerSessionIpc, sessionManager } from './ipc/session';
 import { registerSystemIpc } from './ipc/system';
+import { registerPreferencesIpc } from './ipc/preferences';
 import { pipelineTelemetry } from './services/telemetry/pipeline-telemetry';
 
 // Configuration loading.
@@ -138,6 +139,7 @@ app.whenReady().then(() => {
   registerTtsIpc(() => mainWindow, audioOutputManager);
   registerSessionIpc(() => mainWindow);
   registerSystemIpc();
+  registerPreferencesIpc();
 
   // Pipeline telemetry (development-only): forward events to the renderer
   // and accept playback lifecycle reports for output latency timing.

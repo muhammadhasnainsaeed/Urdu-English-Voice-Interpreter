@@ -53,7 +53,7 @@ export default function AudioOutputPanel({
           <Label htmlFor="output-device" className="text-xs">
             Device
           </Label>
-          <div className="grow">
+          <div className="min-w-0 grow">
             <Select value={selectedDeviceId} onValueChange={onSelect} disabled={devices.length === 0}>
               <SelectTrigger id="output-device" aria-label="Output device">
                 <SelectValue placeholder="No output device" />

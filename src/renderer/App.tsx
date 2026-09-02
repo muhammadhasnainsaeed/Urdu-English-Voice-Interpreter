@@ -16,8 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import HomeScreen from './pages/HomeScreen';
+import SettingsScreen from './pages/SettingsScreen';
+import OnboardingScreen from './pages/OnboardingScreen';
 import { useMicrophone } from './services/useMicrophone';
 import { useStt } from './services/useStt';
 import { useTranslation } from './services/useTranslation';
@@ -25,7 +27,11 @@ import { useTts } from './services/useTts';
 import { useAudioOutput } from './services/useAudioOutput';
 import { useSession } from './services/useSession';
 import { useSetup } from './setup/useSetup';
+import { usePreferences } from './services/usePreferences';
+import { useReportedErrors } from './errors/useReportedErrors';
 import { RENDERER_OPEN_EXTERNAL_LINKS } from '@shared/index';
+
+type View = 'loading' | 'onboarding' | 'home' | 'settings';
 
 export default function App() {
   const microphone = useMicrophone();
@@ -34,6 +40,9 @@ export default function App() {
   const tts = useTts();
   const audioOutput = useAudioOutput();
   const session = useSession();
+  const preferences = usePreferences();
+
+  const [view, setView] = useState<View>('loading');
 
   const setup = useSetup({
     micPermission: microphone.permission,
@@ -43,6 +52,55 @@ export default function App() {
     refreshOutputDevices: audioOutput.refreshDevices,
     checkBlackHole: () => window.electron.detectBlackHole(),
   });
+
+  // Route every pipeline error through the centralized error flow (toast +
+  // Diagnostics registry). Persistent inline recovery UI in the panels stays.
+  useReportedErrors([
+    {
+      category: 'permission',
+      error: microphone.permission === 'granted' ? null : microphone.error,
+      message: 'Microphone access is needed. Enable it in System Settings.',
+      options: { severity: 'warning' },
+    },
+    {
+      category: 'device',
+      error: microphone.permission === 'granted' ? microphone.error : null,
+      message: 'Microphone unavailable. Check your microphone or select another in Settings.',
+      options: { toast: false },
+    },
+    {
+      category: 'stt',
+      error: stt.error,
+      message: 'Speech recognition failed. Please try again.',
+    },
+    {
+      category: 'translation',
+      error: translation.error,
+      message: 'Translation is temporarily unavailable. Please try again.',
+    },
+    {
+      category: 'tts',
+      error: tts.error,
+      message: 'Speech playback failed. Please try again.',
+    },
+    {
+      category: 'audio-output',
+      error: audioOutput.error,
+      message: 'Audio output failed. Check your output device in Settings.',
+      options: { severity: 'warning' },
+    },
+    {
+      category: 'session',
+      error: session.error,
+      message: 'Could not start the meeting. Please try again.',
+    },
+  ]);
+
+  // Decide the initial screen once preferences have loaded.
+  useEffect(() => {
+    if (!preferences.loaded) return;
+    setView(preferences.onboardingCompleted ? 'home' : 'onboarding');
+  }, [preferences.loaded, preferences.onboardingCompleted]);
 
   const handleSttStart = async () => {
     const capture = await microphone.start();
@@ -81,11 +139,9 @@ export default function App() {
 
   /** Unified meeting start: session + mic + STT */
   const handleMeetingStart = async () => {
-    // Start session (audio output + TTS + translation)
     const result = await session.start();
     if (!result.ok) return;
 
-    // Start mic + STT
     const capture = await microphone.start();
     if (!capture.ok) return;
     if (capture.stream && capture.audioContext) {
@@ -106,6 +162,21 @@ export default function App() {
     }
   };
 
+  const handleCompleteOnboarding = async () => {
+    await preferences.completeOnboarding();
+    setView('home');
+  };
+
+  const handleRunSetupAgain = async () => {
+    await preferences.resetOnboarding();
+    setView('onboarding');
+  };
+
+  const handleResetConfiguration = async () => {
+    await preferences.resetOnboarding();
+    setView('onboarding');
+  };
+
   useEffect(() => {
     if (microphone.status !== 'listening' && stt.isActive) {
       stt.stop();
@@ -120,8 +191,73 @@ export default function App() {
     }
   }, [session.status, stt.isActive, stt.stop, microphone.status, microphone.stop]);
 
+  if (!preferences.loaded || view === 'loading') {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
+
+  const currentStage = !(session.status === 'active')
+    ? 'Idle'
+    : tts.currentText
+      ? 'Speaking'
+      : stt.partialText
+        ? 'Recognizing'
+        : 'Listening';
+
+  if (view === 'onboarding') {
+    return (
+      <OnboardingScreen
+        setup={setup.state}
+        outputDevices={audioOutput.devices}
+        selectedOutputDeviceId={audioOutput.selectedDeviceId}
+        onSelectOutputDevice={audioOutput.selectDevice}
+        onRequestMicPermission={async () => {
+          const granted = await microphone.requestPermission();
+          if (granted) {
+            audioOutput.refreshDevices();
+            setup.recheck();
+          }
+        }}
+        onOpenMicSettings={() =>
+          window.electron.openExternal(RENDERER_OPEN_EXTERNAL_LINKS.micPrivacySettings)
+        }
+        onOpenBlackHoleSite={() =>
+          window.electron.openExternal(RENDERER_OPEN_EXTERNAL_LINKS.blackholeDownload)
+        }
+        onComplete={handleCompleteOnboarding}
+      />
+    );
+  }
+
+  if (view === 'home') {
+    return (
+      <HomeScreen
+        userName={undefined}
+        sessionStatus={session.status}
+        sessionError={session.error}
+        onMeetingStart={handleMeetingStart}
+        onMeetingStop={handleMeetingStop}
+        sttStatus={stt.status}
+        sttPartialText={stt.partialText}
+        sttFinalText={stt.finalText}
+        sttError={stt.error}
+        translationStatus={translation.status}
+        finalEnglish={translation.finalEnglish}
+        translationError={translation.error}
+        onOpenSettings={() => setView('settings')}
+      />
+    );
+  }
+
+  // settings view
   return (
-    <HomeScreen
+    <SettingsScreen
+      onBack={() => setView('home')}
+      onRunSetupAgain={handleRunSetupAgain}
+      onResetConfiguration={handleResetConfiguration}
       setup={setup.state}
       onRequestMicPermission={async () => {
         const granted = await microphone.requestPermission();
@@ -133,42 +269,39 @@ export default function App() {
       onOpenMicSettings={() => window.electron.openExternal(RENDERER_OPEN_EXTERNAL_LINKS.micPrivacySettings)}
       onOpenBlackHoleSite={() => window.electron.openExternal(RENDERER_OPEN_EXTERNAL_LINKS.blackholeDownload)}
       permission={microphone.permission}
-      status={microphone.status}
-      devices={microphone.devices}
+      micStatus={microphone.status}
+      micDevices={microphone.devices}
       selectedDeviceId={microphone.selectedDeviceId}
       level={microphone.level}
-      error={microphone.error}
-      onSelectDevice={microphone.selectDevice}
-      onStart={microphone.start}
-      onStop={microphone.stop}
+      micError={microphone.error}
+      onSelectMicrophone={microphone.selectDevice}
+      onMicStart={microphone.start}
+      onMicStop={microphone.stop}
+      audioOutputStatus={audioOutput.status}
+      audioOutputDevices={audioOutput.devices}
+      audioOutputSelectedId={audioOutput.selectedDeviceId}
+      onSelectAudioOutput={audioOutput.selectDevice}
+      onSttStart={handleSttStart}
+      onSttStop={handleSttStop}
       sttStatus={stt.status}
       sttPartialText={stt.partialText}
       sttFinalText={stt.finalText}
       sttError={stt.error}
       sttProvider={stt.provider}
-      onSttStart={handleSttStart}
-      onSttStop={handleSttStop}
+      onTranslationStart={translation.start}
+      onTranslationStop={translation.stop}
       translationStatus={translation.status}
       finalEnglish={translation.finalEnglish}
       translationError={translation.error}
       translationProvider={translation.provider}
-      onTranslationStart={translation.start}
-      onTranslationStop={translation.stop}
+      onTtsStart={handleTtsStart}
+      onTtsStop={tts.stop}
       ttsStatus={tts.status}
       ttsError={tts.error}
       ttsProvider={tts.provider}
       ttsCurrentText={tts.currentText}
-      onTtsStart={handleTtsStart}
-      onTtsStop={tts.stop}
-      audioOutputStatus={audioOutput.status}
-      audioOutputDevices={audioOutput.devices}
-      audioOutputSelectedId={audioOutput.selectedDeviceId}
-      onSelectAudioOutput={audioOutput.selectDevice}
-      sessionStatus={session.status}
-      sessionStages={session.stages}
-      sessionError={session.error}
-      onMeetingStart={handleMeetingStart}
-      onMeetingStop={handleMeetingStop}
+      currentStage={currentStage}
+      onDeviceTest={microphone.start}
     />
   );
 }

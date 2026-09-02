@@ -90,7 +90,7 @@ export default function MicrophonePanel({
           <Label htmlFor="mic-device" className="text-xs">
             Device
           </Label>
-          <div className="grow">
+          <div className="min-w-0 grow">
             <Select value={selectedDeviceId ?? 'none'} onValueChange={onSelectDevice} disabled={listening}>
               <SelectTrigger id="mic-device" aria-label="Microphone device">
                 <SelectValue placeholder="No microphone found" />
@@ -113,7 +113,7 @@ export default function MicrophonePanel({
 
         <div className="flex items-center gap-2">
           <Label className="text-xs">Input Level</Label>
-          <div className="grow">
+          <div className="min-w-0 grow">
             <AudioLevelMeter level={level} />
           </div>
         </div>

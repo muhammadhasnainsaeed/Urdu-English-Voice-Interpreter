@@ -23,13 +23,16 @@ import type {
   AudioOutputDevice,
   AudioOutputEvent,
   AudioOutputStartResult,
+  AppPreferences,
   ElectronAPI,
+  GetPreferencesResult,
   OpenExternalResult,
   PermissionStatus,
   PipelineEvent,
   PlaybackTelemetryEvent,
   SessionEvent,
   SessionStartResult,
+  SetPreferencesResult,
   SttEvent,
   SttStartResult,
   TranslationEvent,
@@ -40,6 +43,9 @@ import type {
 
 const api: ElectronAPI = {
   getAppStatus: () => ipcRenderer.invoke('get-app-status') as Promise<ApplicationStatus>,
+  getPreferences: () => ipcRenderer.invoke('preferences:get') as Promise<GetPreferencesResult>,
+  setPreferences: (preferences: Partial<AppPreferences>) =>
+    ipcRenderer.invoke('preferences:set', preferences) as Promise<SetPreferencesResult>,
   openExternal: (url: string) =>
     ipcRenderer.invoke('system:open-external', url) as Promise<OpenExternalResult>,
   getMicPermission: () => ipcRenderer.invoke('mic:get-permission') as Promise<PermissionStatus>,

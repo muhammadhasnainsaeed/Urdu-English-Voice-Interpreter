@@ -28,7 +28,7 @@ export default function AudioLevelMeter({ level }: AudioLevelMeterProps) {
 
   return (
     <div className="flex items-center gap-2">
-      <div className="grow">
+      <div className="min-w-0 grow">
         <Progress value={normalized * 100} aria-label={`Audio level ${Math.round(normalized * 100)}%`} />
       </div>
       <span className="min-w-8 text-right text-xs text-muted-foreground">

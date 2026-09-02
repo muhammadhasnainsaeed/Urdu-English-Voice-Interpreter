@@ -35,7 +35,11 @@ interface SetupPanelProps {
   onRequestMicPermission: () => void;
   onOpenMicSettings: () => void;
   onOpenBlackHoleSite: () => void;
+  /** Where this panel is rendered, so the footer hint matches the context. */
+  context?: 'home' | 'onboarding' | 'settings';
 }
+
+type SetupPanelContext = NonNullable<SetupPanelProps['context']>;
 
 const STEP_GLYPH: Record<SetupStepState, string> = {
   checking: '\u2026',
@@ -173,11 +177,11 @@ function OutputStep({
   return (
     <StepRow state={state.state} name="Audio Output" detail={detail}>
       {state.state === 'ready' && (
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-2 flex min-w-0 items-center gap-2">
           <Label htmlFor="setup-output" className="text-xs">
             Device
           </Label>
-          <div className="grow">
+          <div className="min-w-0 grow">
             <Select value={selectedId} onValueChange={onSelect} disabled={devices.length === 0}>
               <SelectTrigger id="setup-output" aria-label="Audio output device">
                 <SelectValue placeholder="No output device" />
@@ -225,11 +229,23 @@ export default function SetupPanel({
   onRequestMicPermission,
   onOpenMicSettings,
   onOpenBlackHoleSite,
+  context = 'home',
 }: SetupPanelProps) {
   const everythingChecking =
     state.mic.state === 'checking' &&
     state.output.state === 'checking' &&
     state.blackhole.state === 'checking';
+
+  const readyHint: Record<SetupPanelContext, string> = {
+    home: 'Press Start Meeting below.',
+    onboarding: 'You can continue to the meeting screen.',
+    settings: 'Your setup is ready.',
+  };
+  const pendingHint: Record<SetupPanelContext, string> = {
+    home: 'Complete the required setup above, then press Start Meeting.',
+    onboarding: 'Finish the checks above to enable live interpretation.',
+    settings: 'Complete the required setup above to enable live interpretation.',
+  };
 
   return (
     <Card>
@@ -264,13 +280,11 @@ export default function SetupPanel({
             <Badge variant="success" dot>
               Ready
             </Badge>
-            Press Start Meeting below.
+            {readyHint[context]}
           </div>
         ) : (
           <div className="text-[13px] text-muted-foreground">
-            {everythingChecking
-              ? 'Checking your setup…'
-              : 'Complete the required setup above, then press Start Meeting.'}
+            {everythingChecking ? 'Checking your setup…' : pendingHint[context]}
           </div>
         )}
       </div>

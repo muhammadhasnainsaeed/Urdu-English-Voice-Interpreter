@@ -63,8 +63,140 @@ macOS.
   feedback-isolated run; see CURRENT_STATE for the latency tables).
 - Full real Google Meet / Zoom / Microsoft Teams validation is pending/manual.
 
-## 2026-08-29 — M10 Phase 3: production packaging & macOS distribution (COMPLETE)
+## 2026-09-03 — UX/UI infra: Settings overflow fix + centralized error handling & toasts
 
+Two-part UX/UI infrastructure task (functional safety preserved — no audio /
+provider / meeting logic changed; no new runtime dependencies).
+
+### Settings page horizontal overflow fix
+- Root cause: `whitespace-nowrap` Radix `SelectTrigger`s holding long device
+  labels forced flex `grow` rows (lacking `min-w-0`) to exceed the Settings
+  content-pane width internally; `overflow-y-auto` does not clip horizontal
+  overflow, so content spilled under the sidebar.
+- Fixes: `min-w-0` on the `grow` wrappers around Selects/meters in
+  `MicrophonePanel.tsx` (93, 116), `AudioOutputPanel.tsx` (56),
+  `AudioLevelMeter.tsx` (31), and `SetupPanel.tsx` (180/184); plus
+  `overflow-x-hidden` on the Settings `<main>` (`min-w-0 flex-1 overflow-x-hidden
+  overflow-y-auto p-4`).
+- CDP-verified at 480×648 and emulated 420×660: all sections `scrollW ==
+  clientW`, no viewport or internal horizontal overflow, vertical scroll intact.
+
+### Centralized application error handling + toast notifications
+- Added `src/renderer/errors/errorModel.ts` — pure `classifyInputError(category,
+  raw, opts)` normalizer producing a stable, user-safe `AppError` (`code`,
+  `category`, `message`, `detail`, `severity`, `timestamp`). Raw/technical
+  detail goes only to `detail` (Diagnostics/logging); user-facing `message` is
+  curated, non-technical category copy (no leak of stack/provider/codes).
+  Categories: device / permission / stt / translation / tts / audio-output /
+  session / ipc / config / runtime; severities info / warning / error.
+- Added `src/renderer/errors/toast.tsx` — dependency-free shadcn-compatible
+  `ToastProvider` + `useToast()` + auto-dismissing viewport (variants
+  default/success/error/warning/info) built on the existing shadcn tokens. No
+  new UI library.
+- Added `src/renderer/errors/ErrorProvider.tsx` — single
+  `error source → normalize/classify → log/diagnostics → user notification`
+  flow via `reportError()`; bounded in-memory history for Diagnostics.
+- Added `src/renderer/errors/useReportedErrors.ts` — maps each pipeline hook's
+  `error` stream into a category, reporting once per active occurrence (dedup,
+  re-armed when the error clears); hooks/panels untouched.
+- `App.tsx`: mic permission (warning toast), mic device (inline recovery, no
+  toast), STT, translation, TTS, audio-output (warning), and session errors all
+  routed through the centralized flow. Persistent inline recovery UI preserved.
+- `SettingsScreen.tsx`: Diagnostics section now lists the most recent normalized
+  errors (code + detail).
+- `index.tsx`: mounted `ErrorProvider` at the renderer root (outside
+  `ThemeProvider` so toasts appear above all screens).
+- Added `tests/error-model.test.ts` (8 tests: normalization, no-technical-leak,
+  category/severity defaults and overrides, curated defaults for every category).
+
+### Validation
+- `npm run type-check` clean; `npm test` **68/68** (8 new); `npm run build` OK;
+  ESLint 0 errors (pre-existing warnings only); Prettier clean; Electron
+  smoke-launch clean (renderer mounts, toaster viewport present, zero console
+  errors/exceptions).
+
+## 2026-09-03 — M11 UX revamp: onboarding gateway, Home focus, dedicated Settings
+
+UX + information-architecture refinement with functional safety (no audio /
+provider / meeting logic changes; no new runtime dependencies).
+
+### Onboarding persistence (first-launch → Home)
+- Added a minimal main-process preferences store
+  (`src/main/ipc/preferences.ts`) writing `preferences.json` under
+  `app.getPath('userData')`, with IPC `preferences:get` / `preferences:set`.
+- Persisted `onboardingCompleted` flag now drives a one-time first-launch
+  experience: onboarding shows once, completing it stores the flag, and
+  subsequent launches open straight to Home. `Run Setup Again` reopens
+  onboarding.
+- Preload bridge + shared `ElectronAPI` extended with `getPreferences()` /
+  `setPreferences()` (context-isolated, atomic writes, never exposes Node).
+- New renderer hook `usePreferences()` surfaces `onboardingCompleted`, `loaded`,
+  `update`, `completeOnboarding`, `resetOnboarding`.
+
+### Home (simplified)
+- `HomeScreen` reduced to a minimal header (app title + subtitle/identity on
+  the left; theme toggle + Settings icon on the right) and exactly three
+  sections in the required order: **Meeting Mode**, **Speech to Text**, and
+  **Translation** — focused on the "open → start meeting → speak → see/hear
+  English" flow.
+- Removed the technical configuration panels (mic, output, TTS, setup,
+  pipeline) from Home; they moved into Settings.
+
+### Settings (dedicated page + sidebar)
+- New `SettingsScreen` with a left sidebar of categories: **Audio**, **Voice**,
+  **Speech & Translation**, **Appearance**, **Performance**, **Diagnostics**,
+  **Setup**, each rendering a focused content pane.
+- Reused existing shadcn components (Button, Card, Badge, Select, Separator,
+  Alert) and existing panels (MicrophonePanel, AudioOutputPanel, TtsPanel,
+  SttPanel, TranslationPanel, PipelinePanel, SetupPanel). No new UI library, no
+  new runtime dependencies; Settings nav built from the existing shadcn Button
+  primitive.
+- Setup category groups setup status, **Run Setup Again**, and
+  **Reset configuration** together.
+
+### Navigation & routing
+- `App.tsx` now owns a `view` state (`loading | onboarding | home | settings`)
+  and gates the initial screen on the persisted onboarding flag.
+
+### Docs
+- Updated `docs/CURRENT_STATE.md` and this changelog; README untouched.
+
+### Validation
+- `npm run type-check` clean; `npm test` 60/60; `npm run build` OK; ESLint 0
+  errors (warnings pre-existing); Prettier clean on all touched files; Electron
+  smoke-launch clean (no console errors).
+
+## 2026-09-03 — M11 UX polish: context-aware setup, idle Meeting state, status noise
+
+Small, localized UX/UI polish fixes from the visual review. No business logic,
+audio/STT/translation/TTS, or architecture changed.
+
+- **SetupPanel context copy**: added an optional `context` prop
+  (`'home' | 'onboarding' | 'settings'`) making the footer hint match its host
+  screen. Onboarding now says "You can continue to the meeting screen.",
+  Settings → Setup confirms "Your setup is ready.", and Home keeps "Press Start
+  Meeting below." (`src/renderer/components/SetupPanel.tsx`; callers in
+  `OnboardingScreen` and `SettingsScreen` updated; SetupPanel not duplicated).
+- **Idle Meeting Mode**: when a meeting is not active, Home now shows a compact
+  "Ready to interpret · Start meeting to begin" placeholder instead of a tall
+  inactive waveform; the live waveform renders unchanged while a meeting is
+  active. (`src/renderer/pages/HomeScreen.tsx`)
+- **Removed Home orphan Separator**: the full-width divider between Speech to
+  Text and Translation was dropped (cards provide the grouping).
+- **Unified Settings selected-state**: the Appearance theme options now use the
+  same `bg-accent text-accent-foreground` selected treatment as the Settings
+  sidebar active item. (`src/renderer/pages/SettingsScreen.tsx`)
+- **Reduced Home status noise**: the "Off" status pills on the Speech to Text
+  and Translation cards are hidden while idle; status labels only appear when
+  there is meaningful state (listening/processing/active/error). Meeting Mode
+  badge unchanged.
+
+### Validation
+- `npm run type-check` clean; `npm test` 60/60; `npm run build` OK;
+  `npm run format:check` clean; `npx eslint .` 0 errors (13 pre-existing
+  warnings, none in touched files); Electron smoke-launch clean.
+
+## 2026-08-29 — M10 Phase 3: production packaging & macOS distribution (COMPLETE)
 - Added `electron-builder` `^26.15.3` as the single packaging system
   (devDependency). New scripts: `npm run package` (.app + DMG, arm64) and
   `npm run package:dir` (.app only); output goes to `dist_electron/` (already

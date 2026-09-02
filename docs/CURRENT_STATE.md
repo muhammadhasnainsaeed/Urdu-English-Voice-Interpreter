@@ -1,6 +1,98 @@
 # Current State
 
-_Last updated: 2026-09-02_
+_Last updated: 2026-09-03_
+
+## UX/UI infrastructure: Settings layout overflow fix + centralized error handling & toasts
+
+Completed (2026-09-03). Two-part task, both verified end-to-end.
+
+### Settings page horizontal overflow fix (complete)
+- **Root cause**: `whitespace-nowrap` `SelectTrigger`s carrying long device
+  labels forced flex rows (`grow` without `min-w-0`) to exceed the 304px
+  Settings content pane internally; `overflow-y-auto` does not clip horizontal
+  overflow, so content spilled under the sidebar.
+- **Fixes**: added `min-w-0` to the `grow` wrappers around Selects/meters in
+  `MicrophonePanel.tsx` (93, 116), `AudioOutputPanel.tsx` (56),
+  `AudioLevelMeter.tsx` (31), and `SetupPanel.tsx` (180/184); added
+  `overflow-x-hidden` to the Settings `<main>` (`min-w-0 flex-1 overflow-x-hidden
+  overflow-y-auto p-4`).
+- **Verified via CDP** at 480×648: every section now `scrollW == clientW`
+  (Setup 304=304), `bodyScrollW == winW`, and at emulated 420×660 there is no
+  viewport or internal horizontal overflow while vertical scroll still works.
+
+### Centralized application error handling + toast notifications (complete)
+- **Error model** (`src/renderer/errors/errorModel.ts`, pure, unit-tested):
+  `classifyInputError(category, raw, opts)` normalizes any error into a stable
+  `AppError` (`code`, `category`, user-safe `message`, technical `detail`,
+  `severity`, `timestamp`). Raw stack/provider/code detail always lands in
+  `detail` (Diagnostics/logging) and the user-facing `message` is the curated
+  non-technical category copy — nothing raw leaks to a normal user. Categories:
+  device / permission / stt / translation / tts / audio-output / session / ipc /
+  config / runtime. Severities: info / warning / error.
+- **Toasts** (`src/renderer/errors/toast.tsx`): a dependency-free
+  shadcn-compatible `ToastProvider` + `useToast()` + auto-dismissing viewport
+  using the existing shadcn tokens and variants
+  (default/success/error/warning/info, title/description/optional duration).
+  No new UI library or runtime dependency — consistent with the app's shadcn/ui
+  + Tailwind design system.
+- **Central flow** (`ErrorProvider.tsx` + `useReportedErrors.ts`): single
+  `error source → normalize/classify → log/diagnostics → user notification`
+  pipeline. `reportError()` normalizes, logs to the dev console, records into a
+  bounded in-memory history (for Diagnostics), and shows a toast. `useReportedErrors`
+  maps each pipeline hook's `error` stream into a category once per active
+  occurrence (dedup, re-armed when the error clears) — business logic in the
+  hooks/panels is untouched.
+- **Wiring** (`App.tsx`): mic permission (warning toast), mic device (inline
+  recovery, no toast), STT, translation, TTS, audio-output (warning), session
+  errors all routed through the centralized flow. Persistent inline recovery UI
+  in the setup/panels is preserved.
+- **Diagnostics integration** (`SettingsScreen.tsx`): the existing Diagnostics
+  section now also lists the most recent normalized errors (code + detail).
+- **Provider** mounted at the renderer root (`index.tsx`), _outside_ ThemeProvider
+  so toasts render above all screens.
+- **Validation**: `npm run type-check` clean; `npm test` **68/68** (8 new in
+  `tests/error-model.test.ts` covering normalization, no-leak of technical
+  detail, category/severity defaults and overrides); `npm run build` OK;
+  ESLint 0 errors (pre-existing warnings only); Prettier clean; Electron
+  smoke-launch clean — renderer mounts, toaster viewport present, zero console
+  errors/exceptions.
+
+## UX revamp: onboarding gateway, focused Home, dedicated Settings
+
+Completed the M11 UX + information-architecture refinement. Functional safety
+preserved: no audio/provider/meeting logic changed, no new runtime dependencies.
+
+- **Onboarding persistence** — new `src/main/ipc/preferences.ts` persists a
+  JSON store (`userData/preferences.json`) with an `onboardingCompleted` flag.
+  New IPC `preferences:get` / `preferences:set`, bridged through the preload
+  `ElectronAPI` as `getPreferences()` / `setPreferences()`. First launch shows a
+  one-time onboarding; completing it returns to Home on every subsequent launch.
+- **Home** (`HomeScreen`) — minimal header (title + subtitle left; theme toggle
+  + Settings icon right). Content is exactly three sections in order: Meeting
+  Mode, Speech to Text, Translation. All configuration panels (mic, output,
+  TTS, pipeline, setup) were moved out of Home into Settings.
+- **Settings** (`SettingsScreen`) — dedicated page with a left sidebar: Audio,
+  Voice, Speech & Translation, Appearance, Performance, Diagnostics, Setup.
+  Reuses existing shadcn components and existing panels; nav built from the
+  shadcn `Button` primitive (no new library/dependency). Setup category holds
+  setup status + "Run Setup Again" + "Reset configuration".
+- **Routing** — `App.tsx` owns `view` state (`loading | onboarding | home |
+  settings`), gated on the persisted onboarding flag; new `usePreferences()`
+  hook in `src/renderer/services/`.
+- **Validation** — `npm run type-check` clean; `npm test` 60/60; `npm run
+  build` OK; ESLint 0 errors (warnings pre-existing); Prettier clean on touched
+  files; Electron smoke-launch clean.
+
+### UX polish follow-up (2026-09-03)
+Localized, non-functional polish from the visual review: **SetupPanel copy is
+now context-aware** (opt-in `context` prop → onboarding/settings/home hints);
+**idle Meeting Mode** shows a compact "Ready to interpret · Start meeting to
+begin" placeholder instead of a tall inactive waveform (live waveform unchanged
+while active); the **orphan Separator** between Speech to Text and Translation
+was removed; **Settings selected-state is unified** (sidebar + Appearance both
+use `bg-accent text-accent-foreground`); and **Home status noise reduced**
+("Off" pills hidden while idle, meaningful status still shown while running).
+No audio/STT/translation logic, dependencies, or architecture changed.
 
 ## Open-source readiness
 
@@ -828,6 +920,7 @@ Remaining (manual, outside repo code):
 
 ```text
 src/main/index.ts
+src/main/ipc/preferences.ts            (onboarding flag persistence)
 src/main/services/audio.ts
 src/main/services/session.ts
 src/main/services/stt/{provider,manager}.ts
@@ -841,7 +934,7 @@ src/main/services/audio-output/providers/speaker.ts
 src/main/ipc/{audio,audio-output,session,stt,translation,tts,system}.ts
 src/preload/index.ts
 src/renderer/{App.tsx,index.tsx,index.html}
-src/renderer/pages/HomeScreen.tsx
+src/renderer/pages/{HomeScreen,SettingsScreen,OnboardingScreen}.tsx
 src/renderer/lib/utils.ts
 src/renderer/components/ui/{button,card,badge,label,select,separator,alert,progress,dropdown-menu,live-waveform}.tsx
 src/renderer/components/{theme-provider,theme-selector}.tsx
@@ -850,6 +943,7 @@ src/renderer/components/{TranslationPanel,TtsPanel,AudioOutputPanel}.tsx
 src/renderer/components/{SttPanel,PipelinePanel}.tsx
 src/renderer/setup/{setupState,useSetup}.ts
 src/renderer/services/{useMicrophone,useSession,useStt,useTranslation,useTts,useAudioOutput}.ts
+src/renderer/services/usePreferences.ts
 src/renderer/styles/globals.css
 src/renderer/types/electron.d.ts
 packages/shared/index.ts

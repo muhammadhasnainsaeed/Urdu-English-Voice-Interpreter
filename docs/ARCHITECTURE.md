@@ -532,6 +532,19 @@ Zoom / Google Meet / Microsoft Teams
 - **esbuild over heavier bundlers**: keeps the build simple for a local
   desktop MVP.
 - **One source of truth**: no parallel implementations of the same feature.
+- **Centralized error handling (added 2026-09-03)**: every application error
+  flows through a single path —
+  `source → normalize/classify → log/diagnostics → user notification`
+  implemented entirely in the renderer (`src/renderer/errors/`). Raw/technical
+  detail is always kept on `detail` for the Diagnostics/log trail, while the
+  user-facing toast `message` is curated, non-technical category copy — provider
+  names, stack traces, and raw error codes never reach a normal user. The
+  existing pipeline hooks (`useMicrophone/useStt/useTranslation/useTts/
+  useAudioOutput/useSession`) are untouched and remain the source of truth for
+  pipeline state; `useReportedErrors` observes their `error` streams and feeds
+  them into the central flow without rewriting business logic. Persistent
+  recoverable state (missing device/config/permission) keeps its inline
+  setup/panel UI, while transient failures surface as toasts.
 - **Microphone capture in the renderer, permission in the main process**
   (see "Microphone pipeline" above): zero native dependencies, exact
   deviceId matching, and macOS TCC handled via `systemPreferences`.

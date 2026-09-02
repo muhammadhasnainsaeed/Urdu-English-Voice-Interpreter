@@ -720,29 +720,32 @@ Comparison vs Phase 1 (legacy) and Phase 2 (streaming) digital averages:
   rate-limited (HTTP 429), so the source of record
   `github.com/elevenlabs/examples` was used verbatim). An official source
   header notes the origin.
-- **Optional renderer-side adapter (available, not wired)**: the component
-  normally owns its own `getUserMedia()` + `AnalyserNode` when `active=true`.
-  It therefore accepts an optional `audioLevel?: number` (0..1) prop — when
-  provided, the mic-setup effect skips capture entirely and the animation loop
-  feeds bars from the supplied level (scaled by `sensitivity`, clamped
-  0.05..1). Currently HomeScreen does not pass `audioLevel`, so the component
-  uses its own microphone capture for frequency visualization during an active
-  meeting (a second capture alongside the app's `useMicrophone` capture; this
-  is fine on macOS, and the adapter remains available for a single-capture
-  setup if desired).
+- **Optional renderer-side adapter (available, wired)**: `useMicrophone` now
+  derives a 32-band normalized frequency spectrum from its **existing**
+  `AnalyserNode` (same capture, no second `getUserMedia`, no second analyser)
+  and exposes it as `spectrum`. `App.tsx` passes this to `HomeScreen`, which
+  feeds it to the waveform via `audioLevels={meetingActive ? spectrum : []}`.
+  In the component, when `audioLevels` is non-empty the animation loop builds
+  mirrored static-mode bars from the bands — reproducing the native frequency
+  visualization from a single capture. When `audioLevels` is empty (meeting
+  stopped) the component falls back to its processing animation. The optional
+  `audioLevel?: number` scalar prop remains for a uniform-bars fallback.
 - **State mapping** (derived, no duplicate meeting state): `activeListening =
   meetingActive`, `processing = !meetingActive`.
   - Meeting stopped/idle: `active=false`, `processing=true` (animated idle).
   - Meeting started: `active=true`, `processing=false`.
   - Meeting stopped: back to `active=false`, `processing=true`.
-- **Audio reactivity**: the waveform reacts to the user's voice via its own
-  mic capture while a meeting is active. No changes to the app's existing
-  `useMicrophone` capture / `AudioLevelMeter` signal.
+- **Audio reactivity**: the waveform is driven by the existing single-capture
+  analyser's frequency spectrum (`spectrum` from `useMicrophone`) during an
+  active meeting — no second `getUserMedia()`, no second analyser. Idle
+  (meeting stopped) shows the animated processing wave.
 - **Presentation**: `mode="static"`, `height={80}`, `barWidth={3}`, `barGap={2}`,
   `fadeEdges`, neutral theme-adaptive bar color (inherits computed text color,
   so Light/Dark/System all render correctly), no gradients/glass/excess motion.
 - **Files changed**: `src/renderer/components/ui/live-waveform.tsx` (new),
-  `src/renderer/pages/HomeScreen.tsx` (card integration). No config/dep changes.
+  `src/renderer/pages/HomeScreen.tsx` (card integration),
+  `src/renderer/services/useMicrophone.ts` (adds derived `spectrum`),
+  `src/renderer/App.tsx` (passes `spectrum`). No config/dep changes.
 - **Validation**: `npm run type-check` clean; `npm test` 60/60; `npm run build`
   OK (`dist/renderer/bundle.js` contains the component). Runtime CDP smoke test
   of the built app: zero console errors; Meeting Mode card renders; waveform

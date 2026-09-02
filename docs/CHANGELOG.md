@@ -1518,3 +1518,28 @@ component split, and functional wiring (UI/design-system migration only).
   (component present in `dist/renderer/bundle.js`). Runtime CDP smoke test of
   the built app: zero console errors; Meeting Mode card renders; waveform
   renders "Processing audio" in idle; badges/theme toggle intact.
+
+## 2026-09-02 — LiveWaveform single-capture spectrum drive (fix flattening)
+
+- Problem: driving the waveform from the flattened `useMicrophone.level` signal
+  (`Math.min(1, rms * 5)`, which saturates at 1.0 while speaking) produced
+  uniform bars at full height — ugly and uninformative; the component's own mic
+  looked good because it uses real frequency data, but that meant a second
+  `getUserMedia()` during an active meeting.
+- Solution: `useMicrophone` now derives a **32-band normalized (0..1) frequency
+  spectrum** from its existing `AnalyserNode` in the same rAF tick as `level`
+  (bands over 5%–40% of `frequencyBinCount`, per-band max / 255) and exposes it
+  as `spectrum`. Zero extra captures/analysers — same analyser, same tick.
+- Wired end to end: `App.tsx` passes `spectrum` to `HomeScreen`, which feeds
+  `<LiveWaveform audioLevels={meetingActive ? props.spectrum : []} ... />`.
+- Component adapter: added optional `audioLevels?: number[]` to
+  `live-waveform.tsx`. External mode (`useExternalLevels`) is now active when
+  either `audioLevel` is a number **or** `audioLevels` is non-empty. Static mode
+  mirrors the bands into symmetric bars (edges = low bands, center = high
+  bands), matching upstream's native frequency layout; scrolling mode averages
+  the bands into history. The single-`audioLevel` scalar path is preserved as a
+  uniform-bars fallback.
+- The waveform still gracefully degrades to the processing animation when
+  `audioLevels` is empty (meeting stopped). App is now effectively single-mic
+  again: no second capture is opened by the waveform during a meeting.
+- Validation: `npm run type-check` clean; `npm test` 60/60; `npm run build` OK.

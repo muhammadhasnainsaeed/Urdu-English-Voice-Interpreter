@@ -53,6 +53,7 @@ export function useMicrophone() {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [status, setStatus] = useState<ApplicationStatus>("idle");
   const [level, setLevel] = useState(0);
+  const [spectrum, setSpectrum] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
@@ -185,6 +186,8 @@ export function useMicrophone() {
       source.connect(analyser);
 
       const data = new Uint8Array(analyser.fftSize);
+      const freqData = new Uint8Array(analyser.frequencyBinCount);
+      const FREQ_BANDS = 32;
       const tick = () => {
         analyser.getByteTimeDomainData(data);
         let sum = 0;
@@ -194,6 +197,23 @@ export function useMicrophone() {
         }
         const rms = Math.sqrt(sum / data.length);
         setLevel(Math.min(1, rms * 5));
+
+        analyser.getByteFrequencyData(freqData);
+        const startBin = Math.floor(freqData.length * 0.05);
+        const endBin = Math.floor(freqData.length * 0.4);
+        const span = Math.max(1, endBin - startBin);
+        const out = new Array<number>(FREQ_BANDS);
+        for (let b = 0; b < FREQ_BANDS; b++) {
+          const s = startBin + Math.floor((span * b) / FREQ_BANDS);
+          const e = startBin + Math.floor((span * (b + 1)) / FREQ_BANDS);
+          let m = 0;
+          for (let i = s; i < e; i++) {
+            if (freqData[i] > m) m = freqData[i];
+          }
+          out[b] = m / 255;
+        }
+        setSpectrum(out);
+
         rafRef.current = requestAnimationFrame(tick);
       };
       tick();
@@ -219,6 +239,7 @@ export function useMicrophone() {
       audioContextRef.current = null;
     }
     setLevel(0);
+    setSpectrum([]);
     setStatus(permissionRef.current === "granted" ? "ready" : "idle");
   }, []);
 
@@ -259,6 +280,7 @@ export function useMicrophone() {
     selectedDeviceId,
     status,
     level,
+    spectrum,
     error,
     selectDevice: setSelectedDeviceId,
     refreshDevices,

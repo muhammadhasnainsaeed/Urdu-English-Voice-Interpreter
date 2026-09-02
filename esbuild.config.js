@@ -19,7 +19,7 @@
 const esbuild = require('esbuild');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 
 const watch = process.argv.includes('--watch');
 
@@ -32,16 +32,39 @@ function copyIndexHtml() {
   fs.copyFileSync(src, path.join(destDir, 'index.html'));
 }
 
-/** Compile Tailwind CSS (globals.css -> dist/renderer/tailwind.css). */
-function buildTailwind() {
-  const input = path.join(root, 'src/renderer/styles/globals.css');
-  const outDir = path.join(root, 'dist/renderer');
-  fs.mkdirSync(outDir, { recursive: true });
-  const output = path.join(outDir, 'tailwind.css');
-  const binary = path.join(root, 'node_modules/.bin/tailwindcss');
-  execSync(`"${binary}" -c "${path.join(root, 'tailwind.config.js')}" -i "${input}" -o "${output}" ${watch ? '--watch' : '--minify'}`, {
-    stdio: 'inherit',
+const tailwindBinary = path.join(root, 'node_modules/.bin/tailwindcss');
+const tailwindCssInput = path.join(root, 'src/renderer/styles/globals.css');
+const tailwindCssOutput = path.join(root, 'dist/renderer/tailwind.css');
+const tailwindConfig = path.join(root, 'tailwind.config.js');
+
+/** One-shot Tailwind compile. `minify` controls --minify; never passes --watch. */
+function compileTailwind(minify) {
+  fs.mkdirSync(path.dirname(tailwindCssOutput), { recursive: true });
+  execSync(
+    `"${tailwindBinary}" -c "${tailwindConfig}" -i "${tailwindCssInput}" -o "${tailwindCssOutput}" ${minify ? '--minify' : ''}`,
+    { stdio: 'inherit' },
+  );
+}
+
+/**
+ * Background Tailwind watcher for dev. Spawned (not execSync) so it keeps
+ * running, and `--watch=always` keeps it alive after stdin closes — Tailwind
+ * v3.4 aborts `--watch` on stdin EOF (zombie prevention), which is why the
+ * old `execSync(... --watch)` silently never rebuilt CSS.
+ */
+function startTailwindWatcher() {
+  const child = spawn(
+    tailwindBinary,
+    ['-c', tailwindConfig, '-i', tailwindCssInput, '-o', tailwindCssOutput, '--watch=always'],
+    { stdio: 'inherit' },
+  );
+  child.on('exit', (code) => {
+    if (code !== 0) {
+      console.error(`[esbuild] Tailwind watcher exited unexpectedly (code ${code})`);
+      process.exit(1);
+    }
   });
+  return child;
 }
 
 /** @type {import('esbuild').BuildOptions} */
@@ -60,6 +83,9 @@ async function build() {
     outfile: 'dist/main/index.js',
     platform: 'node',
     external: ['electron', 'microsoft-cognitiveservices-speech-sdk'],
+    define: {
+      'process.env.NODE_ENV': watch ? '"development"' : '"production"',
+    },
   });
 
   // Preload Script
@@ -91,24 +117,13 @@ async function build() {
   copyIndexHtml();
 
   if (watch) {
-    buildTailwind();
-    await Promise.all([
-      mainCtx.watch(),
-      preloadCtx.watch(),
-      rendererCtx.watch(),
-    ]);
+    compileTailwind(false);
+    startTailwindWatcher();
+    await Promise.all([mainCtx.watch(), preloadCtx.watch(), rendererCtx.watch()]);
   } else {
-    buildTailwind();
-    await Promise.all([
-      mainCtx.rebuild(),
-      preloadCtx.rebuild(),
-      rendererCtx.rebuild(),
-    ]);
-    await Promise.all([
-      mainCtx.dispose(),
-      preloadCtx.dispose(),
-      rendererCtx.dispose(),
-    ]);
+    compileTailwind(true);
+    await Promise.all([mainCtx.rebuild(), preloadCtx.rebuild(), rendererCtx.rebuild()]);
+    await Promise.all([mainCtx.dispose(), preloadCtx.dispose(), rendererCtx.dispose()]);
   }
 }
 

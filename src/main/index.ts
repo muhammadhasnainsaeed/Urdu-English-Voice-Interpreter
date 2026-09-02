@@ -16,10 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import * as dotenv from "dotenv";
-import { app, BrowserWindow, ipcMain } from "electron";
-import * as os from "os";
-import * as path from "path";
+import * as dotenv from 'dotenv';
+import { app, BrowserWindow, ipcMain } from 'electron';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import type { ApplicationStatus, PipelineEvent, PlaybackTelemetryEvent } from '@shared/index';
 import { registerAudioIpc } from './ipc/audio';
 import { registerAudioOutputIpc, audioOutputManager } from './ipc/audio-output';
@@ -38,9 +39,63 @@ import { pipelineTelemetry } from './services/telemetry/pipeline-telemetry';
 // `~/.urdu-english-interpreter/.env` (documented). Shell environment
 // variables always take precedence and are never overridden by dotenv.
 dotenv.config();
-dotenv.config({ path: path.join(os.homedir(), ".urdu-english-interpreter", ".env"), quiet: true });
+dotenv.config({ path: path.join(os.homedir(), '.urdu-english-interpreter', '.env'), quiet: true });
 
 let mainWindow: BrowserWindow | null = null;
+
+/**
+ * Development-only renderer hot reload. Polls the renderer output files
+ * (index.html, bundle.js, tailwind.css) and reloads the window when esbuild /
+ * Tailwind write new contents — so renderer-only edits appear without a full
+ * app restart. Polling is used instead of fs.watch because macOS FSEvents can
+ * silently drop rapid in-place rewrites, and esbuild only rewrites a bundle
+ * when its content actually changed.
+ */
+function watchRendererSources(window: BrowserWindow) {
+  const rendererDir = path.join(__dirname, '../renderer');
+  const targets = [
+    path.join(rendererDir, 'index.html'),
+    path.join(rendererDir, 'bundle.js'),
+    path.join(rendererDir, 'tailwind.css'),
+  ];
+  const mtimes = new Map<string, number>();
+  let reloadTimer: NodeJS.Timeout | null = null;
+
+  for (const file of targets) {
+    try {
+      mtimes.set(file, fs.statSync(file).mtimeMs);
+    } catch {
+      mtimes.set(file, 0);
+    }
+  }
+
+  const poll = () => {
+    if (reloadTimer || window.isDestroyed()) return;
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      let changed = false;
+      for (const file of targets) {
+        let mtime = 0;
+        try {
+          mtime = fs.statSync(file).mtimeMs;
+        } catch {
+          mtime = 0;
+        }
+        if (mtime !== mtimes.get(file)) {
+          mtimes.set(file, mtime);
+          if (mtime > 0) changed = true;
+        }
+      }
+      if (changed && !window.isDestroyed()) {
+        console.log('[dev] renderer bundle/CSS changed — reloading window');
+        window.webContents.reload();
+      }
+    }, 150);
+  };
+
+  const interval = setInterval(poll, 350);
+  window.on('closed', () => clearInterval(interval));
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -65,6 +120,7 @@ function createWindow() {
   // Open DevTools in development
   if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
+    watchRendererSources(mainWindow);
   }
 }
 
@@ -73,11 +129,11 @@ app.whenReady().then(() => {
   registerAudioOutputIpc(() => mainWindow);
   registerSttIpc(
     () => mainWindow,
-    (text, isFinal) => translationManager.onSttText(text, isFinal)
+    (text, isFinal) => translationManager.onSttText(text, isFinal),
   );
   registerTranslationIpc(
     () => mainWindow,
-    (english, interim) => ttsManager.onTranslationText(english, interim)
+    (english, interim) => ttsManager.onTranslationText(english, interim),
   );
   registerTtsIpc(() => mainWindow, audioOutputManager);
   registerSessionIpc(() => mainWindow);

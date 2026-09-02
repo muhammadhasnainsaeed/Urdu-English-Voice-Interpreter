@@ -16,10 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { SttHandlers, SttProvider } from "../provider";
+import type { SttHandlers, SttProvider } from '../provider';
 
-const SENTENCE = "آپ کی آواز سنائی دے رہی ہے";
-const WORDS = SENTENCE.split(" ");
+const SENTENCE = 'آپ کی آواز سنائی دے رہی ہے';
+const WORDS = SENTENCE.split(' ');
 // Deterministic cadence: first partial immediately, then one word every
 // STEP_MS. The full cycle (5 words) completes in ~1 s.
 const STEP_MS = 250;
@@ -38,7 +38,7 @@ export function createMockSttProvider(): SttProvider {
   };
 
   return {
-    name: "mock",
+    name: 'mock',
 
     async start(active: SttHandlers) {
       handlers = active;
@@ -64,7 +64,7 @@ export function createMockSttProvider(): SttProvider {
           return;
         }
         step += 1;
-        const text = WORDS.slice(0, step).join(" ");
+        const text = WORDS.slice(0, step).join(' ');
         if (step >= WORDS.length) {
           handlers.onFinal(text);
           cycleRunning = false;

@@ -16,18 +16,14 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { PermissionStatus } from "@shared/index";
+import type { PermissionStatus } from '@shared/index';
 
 /**
  * Pure derivation of first-launch onboarding state. Kept side-effect free so
  * the states are deterministic and unit-testable without a browser or React.
  */
 
-export type SetupStepState =
-  | "checking"
-  | "ready"
-  | "action-required"
-  | "error";
+export type SetupStepState = 'checking' | 'ready' | 'action-required' | 'error';
 
 export interface OutputDeviceInfo {
   id: string;
@@ -40,7 +36,7 @@ export interface SetupMicResult {
   permission: PermissionStatus;
   hasDevice: boolean;
   /** Which handler the UI should offer. */
-  action: "none" | "request-permission" | "open-settings" | "no-mic";
+  action: 'none' | 'request-permission' | 'open-settings' | 'no-mic';
 }
 
 export interface SetupOutputResult {
@@ -82,93 +78,89 @@ export function blackholeFromDeviceLabels(labels: string[]): boolean {
 
 export function deriveSetupState(inputs: SetupInputs): SetupState {
   const blackholeFromCandidates: boolean =
-    inputs.blackholeDetected ||
-    blackholeFromDeviceLabels(
-      inputs.outputDevices.map((d) => d.label)
-    );
+    inputs.blackholeDetected || blackholeFromDeviceLabels(inputs.outputDevices.map((d) => d.label));
 
   if (!inputs.probed) {
     return {
       mic: {
-        state: "checking",
+        state: 'checking',
         permission: inputs.micPermission,
         hasDevice: inputs.hasMicDevice,
-        action: "none",
+        action: 'none',
       },
-      output: { state: "checking", hasDevice: false, selectedDeviceLabel: null },
-      blackhole: { state: "checking", installed: false },
+      output: { state: 'checking', hasDevice: false, selectedDeviceLabel: null },
+      blackhole: { state: 'checking', installed: false },
       ready: false,
     };
   }
 
   let mic: SetupMicResult;
   switch (inputs.micPermission) {
-    case "granted":
+    case 'granted':
       if (inputs.hasMicDevice) {
         mic = {
-          state: "ready",
-          permission: "granted",
+          state: 'ready',
+          permission: 'granted',
           hasDevice: true,
-          action: "none",
+          action: 'none',
         };
       } else {
         mic = {
-          state: "error",
-          permission: "granted",
+          state: 'error',
+          permission: 'granted',
           hasDevice: false,
-          action: "no-mic",
+          action: 'no-mic',
         };
       }
       break;
-    case "not-determined":
+    case 'not-determined':
       mic = {
-        state: "action-required",
-        permission: "not-determined",
+        state: 'action-required',
+        permission: 'not-determined',
         hasDevice: inputs.hasMicDevice,
-        action: "request-permission",
+        action: 'request-permission',
       };
       break;
-    case "denied":
-    case "restricted":
+    case 'denied':
+    case 'restricted':
       mic = {
-        state: "error",
+        state: 'error',
         permission: inputs.micPermission,
         hasDevice: inputs.hasMicDevice,
-        action: "open-settings",
+        action: 'open-settings',
       };
       break;
-    case "unknown":
+    case 'unknown':
     default:
       mic = {
-        state: "checking",
-        permission: "unknown",
+        state: 'checking',
+        permission: 'unknown',
         hasDevice: inputs.hasMicDevice,
-        action: "none",
+        action: 'none',
       };
       break;
   }
 
   let output: SetupOutputResult;
   if (inputs.outputDevices.length === 0) {
-    output = { state: "error", hasDevice: false, selectedDeviceLabel: null };
+    output = { state: 'error', hasDevice: false, selectedDeviceLabel: null };
   } else {
     const selected =
       inputs.outputDevices.find((d) => d.id === inputs.selectedOutputDeviceId) ??
       inputs.outputDevices.find((d) => d.isDefault) ??
       inputs.outputDevices[0];
     output = {
-      state: "ready",
+      state: 'ready',
       hasDevice: true,
       selectedDeviceLabel: selected?.label ?? null,
     };
   }
 
   const blackhole: SetupBlackHoleResult = blackholeFromCandidates
-    ? { state: "ready", installed: true }
-    : { state: "action-required", installed: false };
+    ? { state: 'ready', installed: true }
+    : { state: 'action-required', installed: false };
 
-  const ready =
-    mic.state === "ready" && output.state === "ready" && blackhole.installed;
+  const ready = mic.state === 'ready' && output.state === 'ready' && blackhole.installed;
 
   return { mic, output, blackhole, ready };
 }

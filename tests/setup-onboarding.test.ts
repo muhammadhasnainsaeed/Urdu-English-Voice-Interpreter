@@ -26,29 +26,26 @@
  * open-external allow-list. No audio, no network, no Electron.
  */
 
-import test from "node:test";
-import assert from "node:assert/strict";
-import {
-  isAllowedOpenExternalUrl,
-  RENDERER_OPEN_EXTERNAL_LINKS,
-} from "../packages/shared/index";
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { isAllowedOpenExternalUrl, RENDERER_OPEN_EXTERNAL_LINKS } from '../packages/shared/index';
 import {
   blackholeFromDeviceLabels,
   deriveSetupState,
   isBlackHoleLabel,
   type SetupInputs,
-} from "../src/renderer/setup/setupState";
+} from '../src/renderer/setup/setupState';
 
 function baseInputs(overrides: Partial<SetupInputs> = {}): SetupInputs {
   return {
     probed: true,
-    micPermission: "granted",
+    micPermission: 'granted',
     hasMicDevice: true,
     outputDevices: [
-      { id: "default", label: "System Default", isDefault: true },
-      { id: "blackhole", label: "BlackHole 2ch", isDefault: false },
+      { id: 'default', label: 'System Default', isDefault: true },
+      { id: 'blackhole', label: 'BlackHole 2ch', isDefault: false },
     ],
-    selectedOutputDeviceId: "default",
+    selectedOutputDeviceId: 'default',
     blackholeDetected: true,
     ...overrides,
   };
@@ -58,22 +55,16 @@ function baseInputs(overrides: Partial<SetupInputs> = {}): SetupInputs {
 /*  BlackHole label helpers                                            */
 /* ------------------------------------------------------------------ */
 
-test("isBlackHoleLabel matches common BlackHole device names", () => {
-  assert.equal(isBlackHoleLabel("BlackHole 2ch"), true);
-  assert.equal(isBlackHoleLabel("BlackHole 16ch"), true);
-  assert.equal(isBlackHoleLabel("MacBook Pro Microphone"), false);
-  assert.equal(isBlackHoleLabel(""), false);
+test('isBlackHoleLabel matches common BlackHole device names', () => {
+  assert.equal(isBlackHoleLabel('BlackHole 2ch'), true);
+  assert.equal(isBlackHoleLabel('BlackHole 16ch'), true);
+  assert.equal(isBlackHoleLabel('MacBook Pro Microphone'), false);
+  assert.equal(isBlackHoleLabel(''), false);
 });
 
-test("blackholeFromDeviceLabels is true when any label is a BlackHole", () => {
-  assert.equal(
-    blackholeFromDeviceLabels(["System Default", "BlackHole 2ch"]),
-    true
-  );
-  assert.equal(
-    blackholeFromDeviceLabels(["System Default", "Speakers"]),
-    false
-  );
+test('blackholeFromDeviceLabels is true when any label is a BlackHole', () => {
+  assert.equal(blackholeFromDeviceLabels(['System Default', 'BlackHole 2ch']), true);
+  assert.equal(blackholeFromDeviceLabels(['System Default', 'Speakers']), false);
   assert.equal(blackholeFromDeviceLabels([]), false);
 });
 
@@ -81,32 +72,22 @@ test("blackholeFromDeviceLabels is true when any label is a BlackHole", () => {
 /*  Open-external allow-list (main-process security gate)              */
 /* ------------------------------------------------------------------ */
 
-test("only the two onboarding links are allowed open-external", () => {
-  assert.equal(
-    isAllowedOpenExternalUrl(RENDERER_OPEN_EXTERNAL_LINKS.micPrivacySettings),
-    true
-  );
-  assert.equal(
-    isAllowedOpenExternalUrl(RENDERER_OPEN_EXTERNAL_LINKS.blackholeDownload),
-    true
-  );
+test('only the two onboarding links are allowed open-external', () => {
+  assert.equal(isAllowedOpenExternalUrl(RENDERER_OPEN_EXTERNAL_LINKS.micPrivacySettings), true);
+  assert.equal(isAllowedOpenExternalUrl(RENDERER_OPEN_EXTERNAL_LINKS.blackholeDownload), true);
 });
 
-test("arbitrary or prefixed-tampered URLs are blocked", () => {
-  assert.equal(isAllowedOpenExternalUrl("https://evil.example.com/"), false);
-  assert.equal(isAllowedOpenExternalUrl("file:///etc/passwd"), false);
-  assert.equal(isAllowedOpenExternalUrl("javascript:alert(1)"), false);
+test('arbitrary or prefixed-tampered URLs are blocked', () => {
+  assert.equal(isAllowedOpenExternalUrl('https://evil.example.com/'), false);
+  assert.equal(isAllowedOpenExternalUrl('file:///etc/passwd'), false);
+  assert.equal(isAllowedOpenExternalUrl('javascript:alert(1)'), false);
   assert.equal(
-    isAllowedOpenExternalUrl(
-      RENDERER_OPEN_EXTERNAL_LINKS.blackholeDownload + "/../../../evil"
-    ),
-    false
+    isAllowedOpenExternalUrl(RENDERER_OPEN_EXTERNAL_LINKS.blackholeDownload + '/../../../evil'),
+    false,
   );
   assert.equal(
-    isAllowedOpenExternalUrl(
-      RENDERER_OPEN_EXTERNAL_LINKS.micPrivacySettings + "&extra=true"
-    ),
-    false
+    isAllowedOpenExternalUrl(RENDERER_OPEN_EXTERNAL_LINKS.micPrivacySettings + '&extra=true'),
+    false,
   );
 });
 
@@ -114,63 +95,57 @@ test("arbitrary or prefixed-tampered URLs are blocked", () => {
 /*  deriveSetupState: probe lifecycle                                  */
 /* ------------------------------------------------------------------ */
 
-test("before the probe is finished, every step is checking", () => {
+test('before the probe is finished, every step is checking', () => {
   const state = deriveSetupState(baseInputs({ probed: false }));
-  assert.equal(state.mic.state, "checking");
-  assert.equal(state.output.state, "checking");
-  assert.equal(state.blackhole.state, "checking");
+  assert.equal(state.mic.state, 'checking');
+  assert.equal(state.output.state, 'checking');
+  assert.equal(state.blackhole.state, 'checking');
   assert.equal(state.ready, false);
 });
 
-test("full happy path: everything ready", () => {
+test('full happy path: everything ready', () => {
   const state = deriveSetupState(baseInputs());
-  assert.equal(state.mic.state, "ready");
-  assert.equal(state.output.state, "ready");
-  assert.equal(state.blackhole.state, "ready");
+  assert.equal(state.mic.state, 'ready');
+  assert.equal(state.output.state, 'ready');
+  assert.equal(state.blackhole.state, 'ready');
   assert.equal(state.ready, true);
-  assert.equal(state.output.selectedDeviceLabel, "System Default");
+  assert.equal(state.output.selectedDeviceLabel, 'System Default');
 });
 
 /* ------------------------------------------------------------------ */
 /*  Microphone permission states                                       */
 /* ------------------------------------------------------------------ */
 
-test("permission not determined: action-required with permission request", () => {
-  const state = deriveSetupState(
-    baseInputs({ micPermission: "not-determined", blackholeDetected: true })
-  );
-  assert.equal(state.mic.state, "action-required");
-  assert.equal(state.mic.action, "request-permission");
+test('permission not determined: action-required with permission request', () => {
+  const state = deriveSetupState(baseInputs({ micPermission: 'not-determined', blackholeDetected: true }));
+  assert.equal(state.mic.state, 'action-required');
+  assert.equal(state.mic.action, 'request-permission');
   assert.equal(state.ready, false);
 });
 
-test("permission denied: error and opens settings", () => {
-  const state = deriveSetupState(
-    baseInputs({ micPermission: "denied", blackholeDetected: true })
-  );
-  assert.equal(state.mic.state, "error");
-  assert.equal(state.mic.action, "open-settings");
+test('permission denied: error and opens settings', () => {
+  const state = deriveSetupState(baseInputs({ micPermission: 'denied', blackholeDetected: true }));
+  assert.equal(state.mic.state, 'error');
+  assert.equal(state.mic.action, 'open-settings');
   assert.equal(state.ready, false);
 });
 
-test("permission restricted is treated like denied", () => {
-  const state = deriveSetupState(baseInputs({ micPermission: "restricted" }));
-  assert.equal(state.mic.state, "error");
-  assert.equal(state.mic.action, "open-settings");
+test('permission restricted is treated like denied', () => {
+  const state = deriveSetupState(baseInputs({ micPermission: 'restricted' }));
+  assert.equal(state.mic.state, 'error');
+  assert.equal(state.mic.action, 'open-settings');
 });
 
-test("permission granted but no mic device: error state", () => {
-  const state = deriveSetupState(
-    baseInputs({ hasMicDevice: false, blackholeDetected: true })
-  );
-  assert.equal(state.mic.state, "error");
-  assert.equal(state.mic.action, "no-mic");
+test('permission granted but no mic device: error state', () => {
+  const state = deriveSetupState(baseInputs({ hasMicDevice: false, blackholeDetected: true }));
+  assert.equal(state.mic.state, 'error');
+  assert.equal(state.mic.action, 'no-mic');
   assert.equal(state.ready, false);
 });
 
-test("permission still unknown after probe: stays on checking", () => {
-  const state = deriveSetupState(baseInputs({ micPermission: "unknown" }));
-  assert.equal(state.mic.state, "checking");
+test('permission still unknown after probe: stays on checking', () => {
+  const state = deriveSetupState(baseInputs({ micPermission: 'unknown' }));
+  assert.equal(state.mic.state, 'checking');
   assert.equal(state.ready, false);
 });
 
@@ -178,17 +153,15 @@ test("permission still unknown after probe: stays on checking", () => {
 /*  Audio output selection                                             */
 /* ------------------------------------------------------------------ */
 
-test("output honours the selected device label", () => {
-  const state = deriveSetupState(
-    baseInputs({ selectedOutputDeviceId: "blackhole" })
-  );
-  assert.equal(state.output.state, "ready");
-  assert.equal(state.output.selectedDeviceLabel, "BlackHole 2ch");
+test('output honours the selected device label', () => {
+  const state = deriveSetupState(baseInputs({ selectedOutputDeviceId: 'blackhole' }));
+  assert.equal(state.output.state, 'ready');
+  assert.equal(state.output.selectedDeviceLabel, 'BlackHole 2ch');
 });
 
-test("missing output devices map to the no-output error state", () => {
+test('missing output devices map to the no-output error state', () => {
   const state = deriveSetupState(baseInputs({ outputDevices: [] }));
-  assert.equal(state.output.state, "error");
+  assert.equal(state.output.state, 'error');
   assert.equal(state.output.hasDevice, false);
   assert.equal(state.ready, false);
 });
@@ -197,50 +170,53 @@ test("missing output devices map to the no-output error state", () => {
 /*  BlackHole detection                                                */
 /* ------------------------------------------------------------------ */
 
-test("BlackHole missing: action-required and setup not ready", () => {
+test('BlackHole missing: action-required and setup not ready', () => {
   const state = deriveSetupState(
-    baseInputs({ outputDevices: [{ id: "default", label: "System Default", isDefault: true }], blackholeDetected: false })
+    baseInputs({
+      outputDevices: [{ id: 'default', label: 'System Default', isDefault: true }],
+      blackholeDetected: false,
+    }),
   );
-  assert.equal(state.blackhole.state, "action-required");
+  assert.equal(state.blackhole.state, 'action-required');
   assert.equal(state.blackhole.installed, false);
   assert.equal(state.ready, false);
 });
 
-test("BlackHole detected from a device label alone", () => {
+test('BlackHole detected from a device label alone', () => {
   const state = deriveSetupState(
     baseInputs({
       blackholeDetected: false,
       outputDevices: [
-        { id: "default", label: "System Default", isDefault: true },
-        { id: "bh", label: "BlackHole 16ch", isDefault: false },
+        { id: 'default', label: 'System Default', isDefault: true },
+        { id: 'bh', label: 'BlackHole 16ch', isDefault: false },
       ],
-    })
+    }),
   );
-  assert.equal(state.blackhole.state, "ready");
+  assert.equal(state.blackhole.state, 'ready');
   assert.equal(state.blackhole.installed, true);
 });
 
-test("BlackHole detected via main-process HAL check alone", () => {
+test('BlackHole detected via main-process HAL check alone', () => {
   const state = deriveSetupState(
     baseInputs({
       blackholeDetected: true,
-      outputDevices: [{ id: "default", label: "System Default", isDefault: true }],
-    })
+      outputDevices: [{ id: 'default', label: 'System Default', isDefault: true }],
+    }),
   );
-  assert.equal(state.blackhole.state, "ready");
+  assert.equal(state.blackhole.state, 'ready');
   assert.equal(state.blackhole.installed, true);
   assert.equal(state.ready, true);
 });
 
-test("setup failure: denied mic, no BlackHole", () => {
+test('setup failure: denied mic, no BlackHole', () => {
   const state = deriveSetupState(
     baseInputs({
-      micPermission: "denied",
+      micPermission: 'denied',
       blackholeDetected: false,
-      outputDevices: [{ id: "default", label: "System Default", isDefault: true }],
-    })
+      outputDevices: [{ id: 'default', label: 'System Default', isDefault: true }],
+    }),
   );
-  assert.equal(state.mic.state, "error");
-  assert.equal(state.blackhole.state, "action-required");
+  assert.equal(state.mic.state, 'error');
+  assert.equal(state.blackhole.state, 'action-required');
   assert.equal(state.ready, false);
 });

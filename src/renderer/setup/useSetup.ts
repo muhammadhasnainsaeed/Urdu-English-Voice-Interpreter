@@ -16,13 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useCallback, useEffect, useState } from "react";
-import type { AudioOutputDevice, PermissionStatus } from "@shared/index";
-import {
-  deriveSetupState,
-  type OutputDeviceInfo,
-  type SetupState,
-} from "./setupState";
+import { useCallback, useEffect, useState } from 'react';
+import type { AudioOutputDevice, PermissionStatus } from '@shared/index';
+import { deriveSetupState, type OutputDeviceInfo, type SetupState } from './setupState';
 
 export interface UseSetupDeps {
   micPermission: PermissionStatus;
@@ -70,10 +66,10 @@ export function useSetup(deps: UseSetupDeps): {
       if (cancelled) return;
       void probe();
     };
-    navigator.mediaDevices.addEventListener("devicechange", onChange);
+    navigator.mediaDevices.addEventListener('devicechange', onChange);
     return () => {
       cancelled = true;
-      navigator.mediaDevices.removeEventListener("devicechange", onChange);
+      navigator.mediaDevices.removeEventListener('devicechange', onChange);
     };
   }, [probe]);
 

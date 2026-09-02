@@ -16,15 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type {
-  PlaybackTelemetryEvent,
-  TtsEvent,
-  TtsStartResult,
-} from "@shared/index";
-import type { TtsProvider } from "./provider";
-import { createTtsProvider } from "./provider";
-import type { AudioOutputManager } from "../audio-output/manager";
-import { pipelineTelemetry } from "../telemetry/pipeline-telemetry";
+import type { PlaybackTelemetryEvent, TtsEvent, TtsStartResult } from '@shared/index';
+import type { TtsProvider } from './provider';
+import { createTtsProvider } from './provider';
+import type { AudioOutputManager } from '../audio-output/manager';
+import { pipelineTelemetry } from '../telemetry/pipeline-telemetry';
 
 const DEFAULT_DEDUPE_WINDOW_MS = 2000;
 const MAX_TTS_QUEUE = 5;
@@ -41,23 +37,17 @@ function errMessage(err: unknown): string {
  * Absent/empty → fallback. Non-numeric or negative → warn + fallback.
  * 0 is valid and disables the window.
  */
-function parseWindowMs(
-  raw: string | undefined,
-  envName: string,
-  fallback: number
-): number {
-  if (raw === undefined || raw.trim() === "") return fallback;
+function parseWindowMs(raw: string | undefined, envName: string, fallback: number): number {
+  if (raw === undefined || raw.trim() === '') return fallback;
   const trimmed = raw.trim();
   if (!/^\d+$/.test(trimmed)) {
-    console.warn(
-      `[CONFIG] ${envName}="${raw}" is not a non-negative integer — using ${fallback}ms`
-    );
+    console.warn(`[CONFIG] ${envName}="${raw}" is not a non-negative integer — using ${fallback}ms`);
     return fallback;
   }
   return parseInt(trimmed, 10);
 }
 
-const DEBUG = process.env.PIPELINE_DEBUG === "1";
+const DEBUG = process.env.PIPELINE_DEBUG === '1';
 const debugT0 = Date.now();
 function log(...args: unknown[]): void {
   if (DEBUG) {
@@ -84,15 +74,14 @@ export class TtsManager {
    * preemption even though synthesis already finished.
    */
   private playingInterimAt: number | null = null;
-  private onPlaybackLifecycle: ((payload: PlaybackTelemetryEvent) => void) | null =
-    null;
+  private onPlaybackLifecycle: ((payload: PlaybackTelemetryEvent) => void) | null = null;
   /** Aborts the in-flight synthesis (interruption / stop). */
   private currentSynthesis: AbortController | null = null;
-  private currentSynthesisText: string = "";
+  private currentSynthesisText: string = '';
   /** Correlation ids for final-path chunks (interim chunks use 0). */
   private nextPlaybackId: number = 1;
 
-  private lastSpokenText: string = "";
+  private lastSpokenText: string = '';
   private lastSpokenTime: number = 0;
   private dedupeWindowMs: number;
 
@@ -102,8 +91,8 @@ export class TtsManager {
     } else {
       this.dedupeWindowMs = parseWindowMs(
         process.env.TTS_DEDUPE_WINDOW_MS,
-        "TTS_DEDUPE_WINDOW_MS",
-        DEFAULT_DEDUPE_WINDOW_MS
+        'TTS_DEDUPE_WINDOW_MS',
+        DEFAULT_DEDUPE_WINDOW_MS,
       );
     }
   }
@@ -123,18 +112,17 @@ export class TtsManager {
   async start(
     emit: (event: TtsEvent) => void,
     audioOutput: AudioOutputManager,
-    providerOverride?: TtsProvider
+    providerOverride?: TtsProvider,
   ): Promise<TtsStartResult> {
     if (this.active) {
-      return { ok: false, message: "TTS is already running." };
+      return { ok: false, message: 'TTS is already running.' };
     }
 
     const provider = providerOverride ?? (await createTtsProvider());
     if (!provider) {
       return {
         ok: false,
-        message:
-          "No TTS provider configured. Set TTS_PROVIDER=azure, say, or mock in .env.",
+        message: 'No TTS provider configured. Set TTS_PROVIDER=azure, say, or mock in .env.',
       };
     }
 
@@ -143,7 +131,7 @@ export class TtsManager {
     this.emit = emit;
     this.active = true;
 
-    emit({ type: "tts:started", provider: provider.name });
+    emit({ type: 'tts:started', provider: provider.name });
     return { ok: true, provider: provider.name };
   }
 
@@ -155,26 +143,23 @@ export class TtsManager {
    */
   handlePlaybackLifecycle(payload: PlaybackTelemetryEvent): void {
     if (!payload || payload.playbackId !== 0) return;
-    if (payload.event === "start") {
+    if (payload.event === 'start') {
       this.playingInterimAt = Date.now();
-    } else if (payload.event === "complete") {
+    } else if (payload.event === 'complete') {
       this.playingInterimAt = null;
     }
   }
 
   onTranslationText(text: string, interim: boolean = false): void {
     if (!this.active) {
-      log("onTranslationText IGNORED — not active:", text);
+      log('onTranslationText IGNORED — not active:', text);
       return;
     }
     const trimmed = text.trim();
     if (!trimmed) return;
 
     const now = Date.now();
-    if (
-      trimmed === this.lastSpokenText &&
-      now - this.lastSpokenTime < this.dedupeWindowMs
-    ) {
+    if (trimmed === this.lastSpokenText && now - this.lastSpokenTime < this.dedupeWindowMs) {
       log(`DEDUPED (within ${this.dedupeWindowMs}ms):`, trimmed);
       // Interim items have no FIFO trace — never drain telemetry for them.
       if (!interim) pipelineTelemetry.markTtsSuppressed();
@@ -216,16 +201,14 @@ export class TtsManager {
   interruptForNewUtterance(toInterim: boolean): void {
     if (!this.active) return;
     const interimAudible =
-      this.playingInterimAt !== null &&
-      Date.now() - this.playingInterimAt < INTERIM_STALE_MS;
+      this.playingInterimAt !== null && Date.now() - this.playingInterimAt < INTERIM_STALE_MS;
     const hadWork = this.speaking || this.queue.length > 0 || interimAudible;
     if (!hadWork) return;
-    const interruptedText = this.currentSynthesisText || "";
+    const interruptedText = this.currentSynthesisText || '';
     // When an in-flight interim is promoted to this utterance's final, keep
     // its FIFO trace alive so the final can adopt and attribute it. Real
     // preemption (or interim→interim replacement) still drains as usual.
-    const preserveInterimTrace =
-      this.speaking && this.speakingInterim && !toInterim;
+    const preserveInterimTrace = this.speaking && this.speakingInterim && !toInterim;
     // Only drain FIFO traces for stale synthesis/queue work (unless the
     // trace belongs to an in-flight interim that the final should adopt).
     if (!preserveInterimTrace && (this.speaking || this.queue.length > 0)) {
@@ -236,14 +219,14 @@ export class TtsManager {
     }
     this.queue = [];
     if (this.speaking && this.currentSynthesis) {
-      log("interrupt: aborting in-flight synthesis");
-      this.currentSynthesis.abort(new Error("interrupted by new utterance"));
+      log('interrupt: aborting in-flight synthesis');
+      this.currentSynthesis.abort(new Error('interrupted by new utterance'));
     }
-    log("interrupt: clearing playback + queue");
+    log('interrupt: clearing playback + queue');
     this.playingInterimAt = null;
     this.audioOutput?.cancelPlayback();
     if (this.emit) {
-      this.emit({ type: "tts:interrupted", text: interruptedText });
+      this.emit({ type: 'tts:interrupted', text: interruptedText });
     }
   }
 
@@ -258,14 +241,14 @@ export class TtsManager {
     this.speakingInterim = false;
     this.queue = [];
     this.playingInterimAt = null;
-    this.lastSpokenText = "";
+    this.lastSpokenText = '';
     this.lastSpokenTime = 0;
     this.currentSynthesis = null;
-    this.currentSynthesisText = "";
+    this.currentSynthesisText = '';
     // Cancel any in-flight synthesis so a stopped session never forwards
     // stale streamed chunks or keeps consuming provider resources.
     if (synthesis) {
-      synthesis.abort(new Error("TTS stopped"));
+      synthesis.abort(new Error('TTS stopped'));
     }
     pipelineTelemetry.resetPipeline();
     if (provider) {
@@ -274,13 +257,7 @@ export class TtsManager {
   }
 
   private async processQueue(): Promise<void> {
-    if (
-      this.speaking ||
-      this.queue.length === 0 ||
-      !this.provider ||
-      !this.emit ||
-      !this.audioOutput
-    ) {
+    if (this.speaking || this.queue.length === 0 || !this.provider || !this.emit || !this.audioOutput) {
       return;
     }
 
@@ -291,54 +268,58 @@ export class TtsManager {
     const synthesis = new AbortController();
     this.currentSynthesis = synthesis;
     this.currentSynthesisText = text;
-    this.emit({ type: "tts:speaking", text });
+    this.emit({ type: 'tts:speaking', text });
 
     try {
-      log(`synthesize${item.interim ? " (interim)" : ""}:`, text);
+      log(`synthesize${item.interim ? ' (interim)' : ''}:`, text);
       if (!item.interim) pipelineTelemetry.beginTts();
       const playbackId = item.interim ? 0 : this.nextPlaybackId++;
       if (this.provider.synthesizeStream) {
         let first = true;
-        await this.provider.synthesizeStream(text, async (audioChunk, isFinal) => {
-          if (synthesis.signal.aborted) return;
-          if (!item.interim && first) pipelineTelemetry.markTtsFirstChunk();
-          const chunk = {
-            ...audioChunk,
-            playbackId,
-            streamStart: first,
-            streamEnd: isFinal,
-          };
-          first = false;
-          log("writeAudio stream bytes:", chunk.data.byteLength);
-          await this.audioOutput!.writeAudio(chunk);
-        }, synthesis.signal);
+        await this.provider.synthesizeStream(
+          text,
+          async (audioChunk, isFinal) => {
+            if (synthesis.signal.aborted) return;
+            if (!item.interim && first) pipelineTelemetry.markTtsFirstChunk();
+            const chunk = {
+              ...audioChunk,
+              playbackId,
+              streamStart: first,
+              streamEnd: isFinal,
+            };
+            first = false;
+            log('writeAudio stream bytes:', chunk.data.byteLength);
+            await this.audioOutput!.writeAudio(chunk);
+          },
+          synthesis.signal,
+        );
         if (!item.interim) pipelineTelemetry.endTtsSuccess();
       } else {
         const audioChunk = await this.provider.synthesize(text, synthesis.signal);
         const chunk = { ...audioChunk, playbackId, streamStart: true, streamEnd: true };
         if (!item.interim) pipelineTelemetry.endTtsSuccess();
-        log("writeAudio bytes:", chunk.data.byteLength);
+        log('writeAudio bytes:', chunk.data.byteLength);
         await this.audioOutput.writeAudio(chunk);
       }
       if (item.interim) this.playingInterimAt = Date.now();
       if (this.emit) {
-        this.emit({ type: "tts:spoken", text });
+        this.emit({ type: 'tts:spoken', text });
       }
     } catch (err) {
       if (synthesis.signal.aborted) {
         // Interruption is intentional — not a user-facing error. The
         // trace was already finalized by markTtsInterrupted().
-        log("synthesize aborted:", errMessage(err));
+        log('synthesize aborted:', errMessage(err));
       } else {
         if (!item.interim) pipelineTelemetry.endTtsError();
         if (this.emit) {
-          this.emit({ type: "tts:error", message: errMessage(err) });
+          this.emit({ type: 'tts:error', message: errMessage(err) });
         }
       }
     } finally {
       if (this.currentSynthesis === synthesis) {
         this.currentSynthesis = null;
-        this.currentSynthesisText = "";
+        this.currentSynthesisText = '';
       }
       this.speaking = false;
       this.speakingInterim = false;

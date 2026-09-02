@@ -26,24 +26,13 @@ export interface TranslationResult {
 export interface AudioDevice {
   deviceId: string;
   label: string;
-  type: "input" | "output";
+  type: 'input' | 'output';
 }
 
 export type ApplicationStatus =
-  | "idle"
-  | "requesting-permission"
-  | "ready"
-  | "listening"
-  | "processing"
-  | "speaking"
-  | "error";
+  'idle' | 'requesting-permission' | 'ready' | 'listening' | 'processing' | 'speaking' | 'error';
 
-export type PermissionStatus =
-  | "granted"
-  | "denied"
-  | "not-determined"
-  | "restricted"
-  | "unknown";
+export type PermissionStatus = 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
 
 export interface TranslationState {
   status: ApplicationStatus;
@@ -53,22 +42,16 @@ export interface TranslationState {
   error?: string;
 }
 
-export type AIProviderState = "uninitialized" | "ready" | "connecting" | "active" | "error";
+export type AIProviderState = 'uninitialized' | 'ready' | 'connecting' | 'active' | 'error';
 
-export type SttStatus =
-  | "idle"
-  | "starting"
-  | "listening"
-  | "processing"
-  | "stopping"
-  | "error";
+export type SttStatus = 'idle' | 'starting' | 'listening' | 'processing' | 'stopping' | 'error';
 
 export type SttEvent =
-  | { type: "started"; message?: string }
-  | { type: "partial"; text: string }
-  | { type: "final"; text: string }
-  | { type: "error"; message: string }
-  | { type: "stopped"; message?: string };
+  | { type: 'started'; message?: string }
+  | { type: 'partial'; text: string }
+  | { type: 'final'; text: string }
+  | { type: 'error'; message: string }
+  | { type: 'stopped'; message?: string };
 
 export interface SttStartResult {
   ok: boolean;
@@ -77,24 +60,19 @@ export interface SttStartResult {
 }
 
 export type TranslationEvent =
-  | { type: "translation:started"; provider?: string }
+  | { type: 'translation:started'; provider?: string }
   | {
-      type: "translation:text";
+      type: 'translation:text';
       urdu: string;
       english: string;
       /** True when produced from a stabilized STT partial, not a final. */
       interim?: boolean;
     }
-  | { type: "translation:rate-limited"; message: string }
-  | { type: "translation:error"; message: string }
-  | { type: "translation:stopped" };
+  | { type: 'translation:rate-limited'; message: string }
+  | { type: 'translation:error'; message: string }
+  | { type: 'translation:stopped' };
 
-export type TranslationStatus =
-  | "idle"
-  | "starting"
-  | "active"
-  | "rate-limited"
-  | "error";
+export type TranslationStatus = 'idle' | 'starting' | 'active' | 'rate-limited' | 'error';
 
 export interface TranslationStartResult {
   ok: boolean;
@@ -102,15 +80,15 @@ export interface TranslationStartResult {
   provider?: string;
 }
 
-export type TtsStatus = "idle" | "starting" | "active" | "error";
+export type TtsStatus = 'idle' | 'starting' | 'active' | 'error';
 
 export type TtsEvent =
-  | { type: "tts:started"; provider?: string }
-  | { type: "tts:speaking"; text: string }
-  | { type: "tts:spoken"; text: string }
-  | { type: "tts:interrupted"; text: string }
-  | { type: "tts:error"; message: string }
-  | { type: "tts:stopped" };
+  | { type: 'tts:started'; provider?: string }
+  | { type: 'tts:speaking'; text: string }
+  | { type: 'tts:spoken'; text: string }
+  | { type: 'tts:interrupted'; text: string }
+  | { type: 'tts:error'; message: string }
+  | { type: 'tts:stopped' };
 
 export interface TtsStartResult {
   ok: boolean;
@@ -147,13 +125,13 @@ export interface AudioOutputDevice {
   isDefault: boolean;
 }
 
-export type AudioOutputStatus = "idle" | "active" | "error";
+export type AudioOutputStatus = 'idle' | 'active' | 'error';
 
 export type AudioOutputEvent =
-  | { type: "audio-output:started"; provider?: string }
-  | { type: "audio-output:devices"; devices: AudioOutputDevice[] }
-  | { type: "audio-output:error"; message: string }
-  | { type: "audio-output:stopped" };
+  | { type: 'audio-output:started'; provider?: string }
+  | { type: 'audio-output:devices'; devices: AudioOutputDevice[] }
+  | { type: 'audio-output:error'; message: string }
+  | { type: 'audio-output:stopped' };
 
 export interface AudioOutputStartResult {
   ok: boolean;
@@ -163,7 +141,7 @@ export interface AudioOutputStartResult {
 
 /* ---- Session (Milestone 7) ---- */
 
-export type SessionStatus = "idle" | "starting" | "active" | "stopping" | "error";
+export type SessionStatus = 'idle' | 'starting' | 'active' | 'stopping' | 'error';
 
 export interface PipelineStageStatus {
   stt: SttStatus;
@@ -173,11 +151,11 @@ export interface PipelineStageStatus {
 }
 
 export type SessionEvent =
-  | { type: "session:started" }
-  | { type: "session:stopped" }
-  | { type: "session:error"; message: string }
-  | { type: "session:stage"; stage: string; status: string }
-  | { type: "session:status"; stages: PipelineStageStatus };
+  | { type: 'session:started' }
+  | { type: 'session:stopped' }
+  | { type: 'session:error'; message: string }
+  | { type: 'session:stage'; stage: string; status: string }
+  | { type: 'session:status'; stages: PipelineStageStatus };
 
 export interface SessionStartResult {
   ok: boolean;
@@ -191,15 +169,15 @@ export interface SessionStartResult {
 
 /** How an instrumented utterance left the pipeline. */
 export type UtteranceOutcome =
-  | "completed"
-  | "stt-deduped"
-  | "backpressure-dropped"
-  | "translation-failed"
-  | "rate-limited"
-  | "tts-suppressed"
-  | "tts-failed"
-  | "tts-interrupted"
-  | "incomplete";
+  | 'completed'
+  | 'stt-deduped'
+  | 'backpressure-dropped'
+  | 'translation-failed'
+  | 'rate-limited'
+  | 'tts-suppressed'
+  | 'tts-failed'
+  | 'tts-interrupted'
+  | 'incomplete';
 
 /** Per-phase latency breakdown for one utterance (all values are ms). */
 export interface UtteranceLatencyBreakdown {
@@ -293,13 +271,13 @@ export interface PipelineSummary {
 }
 
 export type PipelineEvent =
-  | { type: "pipeline:utterance"; utterance: UtteranceTraceReport }
-  | { type: "pipeline:summary"; summary: PipelineSummary };
+  | { type: 'pipeline:utterance'; utterance: UtteranceTraceReport }
+  | { type: 'pipeline:summary'; summary: PipelineSummary };
 
 /** Renderer → main playback lifecycle report for output latency timing. */
 export type PlaybackTelemetryEvent =
-  | { event: "start"; bytes: number; playbackId?: number | null }
-  | { event: "complete"; bytes: number; playbackId?: number | null };
+  | { event: 'start'; bytes: number; playbackId?: number | null }
+  | { event: 'complete'; bytes: number; playbackId?: number | null };
 
 /* ---- Open-external (productization: first-launch onboarding) ---- */
 
@@ -312,18 +290,12 @@ export interface OpenExternalResult {
  * Links the renderer may ask the OS to open. Living in shared keeps the
  * renderer-facing link set and the main-process allowlist in lock-step.
  */
-export const RENDERER_OPEN_EXTERNAL_LINKS: Record<
-  "micPrivacySettings" | "blackholeDownload",
-  string
-> = {
-  micPrivacySettings:
-    "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
-  blackholeDownload: "https://existential.audio/blackhole/",
+export const RENDERER_OPEN_EXTERNAL_LINKS: Record<'micPrivacySettings' | 'blackholeDownload', string> = {
+  micPrivacySettings: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
+  blackholeDownload: 'https://existential.audio/blackhole/',
 };
 
-export const ALLOWED_OPEN_EXTERNAL_LINKS: readonly string[] = Object.values(
-  RENDERER_OPEN_EXTERNAL_LINKS
-);
+export const ALLOWED_OPEN_EXTERNAL_LINKS: readonly string[] = Object.values(RENDERER_OPEN_EXTERNAL_LINKS);
 
 /** True only for exact allow-listed external links (no sub-paths, no tampering). */
 export function isAllowedOpenExternalUrl(url: string): boolean {
@@ -352,7 +324,15 @@ export interface ElectronAPI {
   startAudioOutput: () => Promise<AudioOutputStartResult>;
   stopAudioOutput: () => Promise<void>;
   onAudioOutputEvent: (handler: (event: AudioOutputEvent) => void) => () => void;
-  onAudioData: (handler: (chunk: { data: ArrayBuffer; format: AudioFormat; playbackId?: number | null; streamStart?: boolean; streamEnd?: boolean }) => void) => () => void;
+  onAudioData: (
+    handler: (chunk: {
+      data: ArrayBuffer;
+      format: AudioFormat;
+      playbackId?: number | null;
+      streamStart?: boolean;
+      streamEnd?: boolean;
+    }) => void,
+  ) => () => void;
   onAudioCancel: (handler: () => void) => () => void;
   detectBlackHole: () => Promise<boolean>;
   startSession: () => Promise<SessionStartResult>;

@@ -26,9 +26,9 @@
  * deterministic — no real timers, no network, no audio.
  */
 
-import { TtsManager } from "../src/main/services/tts/manager";
-import type { TtsEvent, TtsStartResult, AudioChunk } from "../packages/shared/index";
-import type { TtsProvider } from "../src/main/services/tts/provider";
+import { TtsManager } from '../src/main/services/tts/manager';
+import type { TtsEvent, TtsStartResult, AudioChunk } from '../packages/shared/index';
+import type { TtsProvider } from '../src/main/services/tts/provider';
 
 /* ------------------------------------------------------------------ */
 /*  Mock TTS provider — synthesize() resolves immediately               */
@@ -37,7 +37,7 @@ import type { TtsProvider } from "../src/main/services/tts/provider";
 function createInstantMockProvider(): TtsProvider & { spoken: string[] } {
   const spoken: string[] = [];
   return {
-    name: "mock-test",
+    name: 'mock-test',
     spoken,
     async synthesize(text: string): Promise<AudioChunk> {
       spoken.push(text);
@@ -58,7 +58,9 @@ function createMockAudioOutput() {
   const written: AudioChunk[] = [];
   return {
     written,
-    get isActive() { return true; },
+    get isActive() {
+      return true;
+    },
     async writeAudio(chunk: AudioChunk): Promise<void> {
       written.push(chunk);
     },
@@ -88,7 +90,7 @@ function uninstallFakeClock() {
 async function startManager(
   mgr: TtsManager,
   events: TtsEvent[],
-  provider: TtsProvider
+  provider: TtsProvider,
 ): Promise<TtsStartResult> {
   return mgr.start((e) => events.push(e), createMockAudioOutput(), provider);
 }
@@ -132,12 +134,12 @@ async function runTests(cases: TestCase[]) {
     }
   }
 
-  console.log("\n--- Summary ---");
+  console.log('\n--- Summary ---');
   const passed = results.filter((r) => r.pass).length;
   const failed = results.length - passed;
   console.log(`${passed} passed, ${failed} failed, ${results.length} total`);
   if (failed > 0) {
-    console.log("\nFailed:");
+    console.log('\nFailed:');
     for (const r of results.filter((r) => !r.pass)) {
       console.log(`  ✗ ${r.name}: ${r.reason}`);
     }
@@ -153,7 +155,7 @@ async function runTests(cases: TestCase[]) {
 const tests: TestCase[] = [
   // --- A ---
   {
-    name: "A: Same text repeated immediately → only one TTS event",
+    name: 'A: Same text repeated immediately → only one TTS event',
     fn: async () => {
       installFakeClock(0);
       const mgr = new TtsManager(2000);
@@ -161,28 +163,22 @@ const tests: TestCase[] = [
       const provider = createInstantMockProvider();
       await startManager(mgr, events, provider);
 
-      mgr.onTranslationText("Hello");
+      mgr.onTranslationText('Hello');
       await drainQueue();
-      mgr.onTranslationText("Hello");
+      mgr.onTranslationText('Hello');
       await drainQueue();
-      mgr.onTranslationText("Hello");
+      mgr.onTranslationText('Hello');
       await drainQueue();
 
-      const spokenEvents = events.filter((e) => e.type === "tts:spoken");
+      const spokenEvents = events.filter((e) => e.type === 'tts:spoken');
       if (spokenEvents.length !== 1) {
-        throw new Error(
-          `Expected 1 tts:spoken event, got ${spokenEvents.length}`
-        );
+        throw new Error(`Expected 1 tts:spoken event, got ${spokenEvents.length}`);
       }
       if (provider.spoken.length !== 1) {
-        throw new Error(
-          `Expected provider.synthesize called once, got ${provider.spoken.length}`
-        );
+        throw new Error(`Expected provider.synthesize called once, got ${provider.spoken.length}`);
       }
-      if (provider.spoken[0] !== "Hello") {
-        throw new Error(
-          `Expected provider to synthesize "Hello", got "${provider.spoken[0]}"`
-        );
+      if (provider.spoken[0] !== 'Hello') {
+        throw new Error(`Expected provider to synthesize "Hello", got "${provider.spoken[0]}"`);
       }
       uninstallFakeClock();
     },
@@ -190,7 +186,7 @@ const tests: TestCase[] = [
 
   // --- B ---
   {
-    name: "B: Same text repeated after >2s → spoken again",
+    name: 'B: Same text repeated after >2s → spoken again',
     fn: async () => {
       installFakeClock(0);
       const mgr = new TtsManager(2000);
@@ -198,24 +194,20 @@ const tests: TestCase[] = [
       const provider = createInstantMockProvider();
       await startManager(mgr, events, provider);
 
-      mgr.onTranslationText("Hello");
+      mgr.onTranslationText('Hello');
       await drainQueue();
 
       advanceMs(2500); // past the 2s window
 
-      mgr.onTranslationText("Hello");
+      mgr.onTranslationText('Hello');
       await drainQueue();
 
-      const spokenEvents = events.filter((e) => e.type === "tts:spoken");
+      const spokenEvents = events.filter((e) => e.type === 'tts:spoken');
       if (spokenEvents.length !== 2) {
-        throw new Error(
-          `Expected 2 tts:spoken events, got ${spokenEvents.length}`
-        );
+        throw new Error(`Expected 2 tts:spoken events, got ${spokenEvents.length}`);
       }
       if (provider.spoken.length !== 2) {
-        throw new Error(
-          `Expected provider.synthesize called twice, got ${provider.spoken.length}`
-        );
+        throw new Error(`Expected provider.synthesize called twice, got ${provider.spoken.length}`);
       }
       uninstallFakeClock();
     },
@@ -223,7 +215,7 @@ const tests: TestCase[] = [
 
   // --- C ---
   {
-    name: "C: Different texts → all spoken",
+    name: 'C: Different texts → all spoken',
     fn: async () => {
       installFakeClock(0);
       const mgr = new TtsManager(2000);
@@ -231,24 +223,22 @@ const tests: TestCase[] = [
       const provider = createInstantMockProvider();
       await startManager(mgr, events, provider);
 
-      mgr.onTranslationText("How are you?");
+      mgr.onTranslationText('How are you?');
       await drainQueue();
-      mgr.onTranslationText("I am fine.");
+      mgr.onTranslationText('I am fine.');
       await drainQueue();
-      mgr.onTranslationText("Where are you going?");
+      mgr.onTranslationText('Where are you going?');
       await drainQueue();
 
       if (provider.spoken.length !== 3) {
         throw new Error(
-          `Expected 3 spoken, got ${provider.spoken.length}: ${JSON.stringify(provider.spoken)}`
+          `Expected 3 spoken, got ${provider.spoken.length}: ${JSON.stringify(provider.spoken)}`,
         );
       }
-      const expected = ["How are you?", "I am fine.", "Where are you going?"];
+      const expected = ['How are you?', 'I am fine.', 'Where are you going?'];
       for (let i = 0; i < expected.length; i++) {
         if (provider.spoken[i] !== expected[i]) {
-          throw new Error(
-            `Expected spoken[${i}]="${expected[i]}", got "${provider.spoken[i]}"`
-          );
+          throw new Error(`Expected spoken[${i}]="${expected[i]}", got "${provider.spoken[i]}"`);
         }
       }
       uninstallFakeClock();
@@ -257,7 +247,7 @@ const tests: TestCase[] = [
 
   // --- D ---
   {
-    name: "D: A → B → A → all three spoken",
+    name: 'D: A → B → A → all three spoken',
     fn: async () => {
       installFakeClock(0);
       const mgr = new TtsManager(2000);
@@ -265,28 +255,28 @@ const tests: TestCase[] = [
       const provider = createInstantMockProvider();
       await startManager(mgr, events, provider);
 
-      mgr.onTranslationText("A");
+      mgr.onTranslationText('A');
       await drainQueue();
-      mgr.onTranslationText("B");
+      mgr.onTranslationText('B');
       await drainQueue();
-      mgr.onTranslationText("A");
+      mgr.onTranslationText('A');
       await drainQueue();
 
       if (provider.spoken.length !== 3) {
         throw new Error(
-          `Expected 3 spoken, got ${provider.spoken.length}: ${JSON.stringify(provider.spoken)}`
+          `Expected 3 spoken, got ${provider.spoken.length}: ${JSON.stringify(provider.spoken)}`,
         );
       }
-      if (provider.spoken[0] !== "A") throw new Error(`spoken[0]="${provider.spoken[0]}"`);
-      if (provider.spoken[1] !== "B") throw new Error(`spoken[1]="${provider.spoken[1]}"`);
-      if (provider.spoken[2] !== "A") throw new Error(`spoken[2]="${provider.spoken[2]}"`);
+      if (provider.spoken[0] !== 'A') throw new Error(`spoken[0]="${provider.spoken[0]}"`);
+      if (provider.spoken[1] !== 'B') throw new Error(`spoken[1]="${provider.spoken[1]}"`);
+      if (provider.spoken[2] !== 'A') throw new Error(`spoken[2]="${provider.spoken[2]}"`);
       uninstallFakeClock();
     },
   },
 
   // --- E ---
   {
-    name: "E: Queue remains active after becoming empty",
+    name: 'E: Queue remains active after becoming empty',
     fn: async () => {
       installFakeClock(0);
       const mgr = new TtsManager(2000);
@@ -294,26 +284,24 @@ const tests: TestCase[] = [
       const provider = createInstantMockProvider();
       await startManager(mgr, events, provider);
 
-      mgr.onTranslationText("First");
+      mgr.onTranslationText('First');
       await drainQueue();
       // Queue is now empty.
-      mgr.onTranslationText("Second");
+      mgr.onTranslationText('Second');
       await drainQueue();
 
       if (provider.spoken.length !== 2) {
-        throw new Error(
-          `Expected 2 spoken after re-queue, got ${provider.spoken.length}`
-        );
+        throw new Error(`Expected 2 spoken after re-queue, got ${provider.spoken.length}`);
       }
-      if (provider.spoken[0] !== "First") throw new Error(`spoken[0]="${provider.spoken[0]}"`);
-      if (provider.spoken[1] !== "Second") throw new Error(`spoken[1]="${provider.spoken[1]}"`);
+      if (provider.spoken[0] !== 'First') throw new Error(`spoken[0]="${provider.spoken[0]}"`);
+      if (provider.spoken[1] !== 'Second') throw new Error(`spoken[1]="${provider.spoken[1]}"`);
       uninstallFakeClock();
     },
   },
 
   // --- F ---
   {
-    name: "F: New translation after idle → automatically spoken",
+    name: 'F: New translation after idle → automatically spoken',
     fn: async () => {
       installFakeClock(0);
       const mgr = new TtsManager(2000);
@@ -321,21 +309,19 @@ const tests: TestCase[] = [
       const provider = createInstantMockProvider();
       await startManager(mgr, events, provider);
 
-      mgr.onTranslationText("First");
+      mgr.onTranslationText('First');
       await drainQueue();
 
       // Idle for a long time.
       advanceMs(10000);
 
-      mgr.onTranslationText("After idle");
+      mgr.onTranslationText('After idle');
       await drainQueue();
 
       if (provider.spoken.length !== 2) {
-        throw new Error(
-          `Expected 2 spoken after idle, got ${provider.spoken.length}`
-        );
+        throw new Error(`Expected 2 spoken after idle, got ${provider.spoken.length}`);
       }
-      if (provider.spoken[1] !== "After idle") {
+      if (provider.spoken[1] !== 'After idle') {
         throw new Error(`spoken[1]="${provider.spoken[1]}"`);
       }
       uninstallFakeClock();
@@ -344,7 +330,7 @@ const tests: TestCase[] = [
 
   // --- Extra: dedup at exactly window boundary ---
   {
-    name: "Extra: Same text at exactly window boundary → spoken",
+    name: 'Extra: Same text at exactly window boundary → spoken',
     fn: async () => {
       installFakeClock(0);
       const mgr = new TtsManager(2000);
@@ -352,18 +338,16 @@ const tests: TestCase[] = [
       const provider = createInstantMockProvider();
       await startManager(mgr, events, provider);
 
-      mgr.onTranslationText("Test");
+      mgr.onTranslationText('Test');
       await drainQueue();
 
       advanceMs(2000); // exactly at boundary
 
-      mgr.onTranslationText("Test");
+      mgr.onTranslationText('Test');
       await drainQueue();
 
       if (provider.spoken.length !== 2) {
-        throw new Error(
-          `Expected 2 spoken at boundary, got ${provider.spoken.length}`
-        );
+        throw new Error(`Expected 2 spoken at boundary, got ${provider.spoken.length}`);
       }
       uninstallFakeClock();
     },
@@ -371,7 +355,7 @@ const tests: TestCase[] = [
 
   // --- Extra: dedup window = 0 disables dedup ---
   {
-    name: "Extra: dedupeWindowMs=0 disables dedup entirely",
+    name: 'Extra: dedupeWindowMs=0 disables dedup entirely',
     fn: async () => {
       installFakeClock(0);
       const mgr = new TtsManager(0);
@@ -379,17 +363,15 @@ const tests: TestCase[] = [
       const provider = createInstantMockProvider();
       await startManager(mgr, events, provider);
 
-      mgr.onTranslationText("A");
+      mgr.onTranslationText('A');
       await drainQueue();
-      mgr.onTranslationText("A");
+      mgr.onTranslationText('A');
       await drainQueue();
-      mgr.onTranslationText("A");
+      mgr.onTranslationText('A');
       await drainQueue();
 
       if (provider.spoken.length !== 3) {
-        throw new Error(
-          `Expected 3 spoken with dedup disabled, got ${provider.spoken.length}`
-        );
+        throw new Error(`Expected 3 spoken with dedup disabled, got ${provider.spoken.length}`);
       }
       uninstallFakeClock();
     },
@@ -397,7 +379,7 @@ const tests: TestCase[] = [
 
   // --- Extra: empty/whitespace text is ignored ---
   {
-    name: "Extra: empty and whitespace-only text is ignored",
+    name: 'Extra: empty and whitespace-only text is ignored',
     fn: async () => {
       installFakeClock(0);
       const mgr = new TtsManager(2000);
@@ -405,15 +387,13 @@ const tests: TestCase[] = [
       const provider = createInstantMockProvider();
       await startManager(mgr, events, provider);
 
-      mgr.onTranslationText("");
-      mgr.onTranslationText("   ");
-      mgr.onTranslationText("\t\n");
+      mgr.onTranslationText('');
+      mgr.onTranslationText('   ');
+      mgr.onTranslationText('\t\n');
       await drainQueue();
 
       if (provider.spoken.length !== 0) {
-        throw new Error(
-          `Expected 0 spoken for empty/whitespace, got ${provider.spoken.length}`
-        );
+        throw new Error(`Expected 0 spoken for empty/whitespace, got ${provider.spoken.length}`);
       }
       uninstallFakeClock();
     },
@@ -421,7 +401,7 @@ const tests: TestCase[] = [
 
   // --- Extra: inactive manager ignores text ---
   {
-    name: "Extra: inactive manager ignores text",
+    name: 'Extra: inactive manager ignores text',
     fn: async () => {
       installFakeClock(0);
       const mgr = new TtsManager(2000);
@@ -429,13 +409,11 @@ const tests: TestCase[] = [
       const provider = createInstantMockProvider();
 
       // Don't start the manager.
-      mgr.onTranslationText("Hello");
+      mgr.onTranslationText('Hello');
       await drainQueue();
 
       if (provider.spoken.length !== 0) {
-        throw new Error(
-          `Expected 0 spoken when inactive, got ${provider.spoken.length}`
-        );
+        throw new Error(`Expected 0 spoken when inactive, got ${provider.spoken.length}`);
       }
       uninstallFakeClock();
     },
@@ -443,7 +421,7 @@ const tests: TestCase[] = [
 
   // --- Extra: stop resets dedup state ---
   {
-    name: "Extra: stop() resets dedup state so same text is spoken again after restart",
+    name: 'Extra: stop() resets dedup state so same text is spoken again after restart',
     fn: async () => {
       installFakeClock(0);
       const mgr = new TtsManager(2000);
@@ -451,7 +429,7 @@ const tests: TestCase[] = [
       const provider = createInstantMockProvider();
       await startManager(mgr, events, provider);
 
-      mgr.onTranslationText("Hello");
+      mgr.onTranslationText('Hello');
       await drainQueue();
 
       mgr.stop();
@@ -460,15 +438,13 @@ const tests: TestCase[] = [
       const provider2 = createInstantMockProvider();
       await startManager(mgr, events, provider2);
 
-      mgr.onTranslationText("Hello");
+      mgr.onTranslationText('Hello');
       await drainQueue();
 
       if (provider2.spoken.length !== 1) {
-        throw new Error(
-          `Expected 1 spoken after restart, got ${provider2.spoken.length}`
-        );
+        throw new Error(`Expected 1 spoken after restart, got ${provider2.spoken.length}`);
       }
-      if (provider2.spoken[0] !== "Hello") {
+      if (provider2.spoken[0] !== 'Hello') {
         throw new Error(`spoken[0]="${provider2.spoken[0]}"`);
       }
       uninstallFakeClock();

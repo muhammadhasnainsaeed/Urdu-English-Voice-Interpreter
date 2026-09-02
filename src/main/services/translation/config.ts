@@ -28,17 +28,11 @@
  * Absent/empty → fallback. Non-numeric or negative → warn + fallback.
  * 0 is valid and disables the window (matches TTS_DEDUPE_WINDOW_MS convention).
  */
-export function parseWindowMs(
-  raw: string | undefined,
-  envName: string,
-  fallback: number
-): number {
-  if (raw === undefined || raw.trim() === "") return fallback;
+export function parseWindowMs(raw: string | undefined, envName: string, fallback: number): number {
+  if (raw === undefined || raw.trim() === '') return fallback;
   const trimmed = raw.trim();
   if (!/^\d+$/.test(trimmed)) {
-    console.warn(
-      `[CONFIG] ${envName}="${raw}" is not a non-negative integer — using ${fallback}ms`
-    );
+    console.warn(`[CONFIG] ${envName}="${raw}" is not a non-negative integer — using ${fallback}ms`);
     return fallback;
   }
   return parseInt(trimmed, 10);

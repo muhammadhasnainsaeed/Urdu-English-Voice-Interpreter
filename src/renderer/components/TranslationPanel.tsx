@@ -16,13 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React from "react";
-import type { TranslationStatus } from "@shared/index";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
-import { Alert } from "./ui/alert";
-import { Separator } from "./ui/separator";
+import React from 'react';
+import type { TranslationStatus } from '@shared/index';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
+import { Alert } from './ui/alert';
+import { Separator } from './ui/separator';
 
 interface TranslationPanelProps {
   status: TranslationStatus;
@@ -35,17 +35,17 @@ interface TranslationPanelProps {
 }
 
 const STATUS_LABELS: Record<TranslationStatus, string> = {
-  idle: "Off",
-  starting: "Starting…",
-  active: "Active",
-  "rate-limited": "Rate-limited",
-  error: "Error",
+  idle: 'Off',
+  starting: 'Starting…',
+  active: 'Active',
+  'rate-limited': 'Rate-limited',
+  error: 'Error',
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
-  azure: "Azure",
-  mymemory: "MyMemory",
-  mock: "Mock (dev)",
+  azure: 'Azure',
+  mymemory: 'MyMemory',
+  mock: 'Mock (dev)',
 };
 
 export default function TranslationPanel({
@@ -57,26 +57,24 @@ export default function TranslationPanel({
   onStart,
   onStop,
 }: TranslationPanelProps) {
-  const active = status === "active" || status === "starting";
+  const active = status === 'active' || status === 'starting';
   const canToggle = sttListening;
 
   const variant =
-    status === "active"
-      ? "success"
-      : status === "error"
-        ? "destructive"
-        : status === "rate-limited" || status === "starting"
-          ? "warning"
-          : "muted";
+    status === 'active'
+      ? 'success'
+      : status === 'error'
+        ? 'destructive'
+        : status === 'rate-limited' || status === 'starting'
+          ? 'warning'
+          : 'muted';
 
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between p-4 pb-2">
         <CardTitle className="text-[13px]">Translation</CardTitle>
         <div className="flex items-center gap-2">
-          {provider && (
-            <Badge variant="outline">{PROVIDER_LABELS[provider] ?? provider}</Badge>
-          )}
+          {provider && <Badge variant="outline">{PROVIDER_LABELS[provider] ?? provider}</Badge>}
           <Badge variant={variant} dot>
             {STATUS_LABELS[status]}
           </Badge>
@@ -91,9 +89,9 @@ export default function TranslationPanel({
             <div className="text-xs text-muted-foreground">
               {active
                 ? sttListening
-                  ? "Translation active — waiting for speech…"
-                  : "Start listening to see translations"
-                : "Enable translation to see English output"}
+                  ? 'Translation active — waiting for speech…'
+                  : 'Start listening to see translations'
+                : 'Enable translation to see English output'}
             </div>
           )}
         </div>
@@ -102,12 +100,7 @@ export default function TranslationPanel({
 
         <div className="flex items-center gap-2">
           {active ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onStop}
-              disabled={status === "starting"}
-            >
+            <Button variant="outline" size="sm" onClick={onStop} disabled={status === 'starting'}>
               Stop Translation
             </Button>
           ) : (
@@ -116,7 +109,7 @@ export default function TranslationPanel({
               size="sm"
               onClick={onStart}
               disabled={!canToggle}
-              title={!canToggle ? "Start listening first" : undefined}
+              title={!canToggle ? 'Start listening first' : undefined}
             >
               Start Translation
             </Button>

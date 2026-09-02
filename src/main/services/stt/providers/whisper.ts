@@ -16,12 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import type { SttHandlers, SttProvider } from "../provider";
-import { STT_SAMPLE_RATE } from "../provider";
+import { execFile } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import type { SttHandlers, SttProvider } from '../provider';
+import { STT_SAMPLE_RATE } from '../provider';
 
 // Local Whisper provider.
 //
@@ -35,28 +35,17 @@ import { STT_SAMPLE_RATE } from "../provider";
 // context and the leading text that repeats from the running phrase is
 // stripped, which keeps transcripts readable and mostly free of duplicates.
 
-const DEFAULT_BASE_DIR = path.join(
-  os.homedir(),
-  ".cache",
-  "urdu-english-interpreter"
-);
-const DEFAULT_EXECUTABLE = path.join(
-  DEFAULT_BASE_DIR,
-  "whisper.cpp",
-  "build",
-  "bin",
-  "whisper-cli"
-);
-const DEFAULT_MODEL = path.join(DEFAULT_BASE_DIR, "models", "ggml-base.bin");
+const DEFAULT_BASE_DIR = path.join(os.homedir(), '.cache', 'urdu-english-interpreter');
+const DEFAULT_EXECUTABLE = path.join(DEFAULT_BASE_DIR, 'whisper.cpp', 'build', 'bin', 'whisper-cli');
+const DEFAULT_MODEL = path.join(DEFAULT_BASE_DIR, 'models', 'ggml-base.bin');
 
-const EXECUTABLE_PATH =
-  process.env.WHISPER_EXECUTABLE_PATH || DEFAULT_EXECUTABLE;
+const EXECUTABLE_PATH = process.env.WHISPER_EXECUTABLE_PATH || DEFAULT_EXECUTABLE;
 const MODEL_PATH = process.env.WHISPER_MODEL_PATH || DEFAULT_MODEL;
 // Explicit Urdu by default. Whisper's auto-detection is unreliable on the
 // short windows the chunked pipeline feeds it (a 2-3 s Urdu window is often
 // mis-detected), so Urdu mode always forces "ur". Language auto-detection is
 // still available via WHISPER_LANGUAGE=auto if ever needed.
-const LANGUAGE = process.env.WHISPER_LANGUAGE || "ur";
+const LANGUAGE = process.env.WHISPER_LANGUAGE || 'ur';
 const THREADS = Math.max(1, Math.min(8, Number(process.env.WHISPER_THREADS) || 4));
 
 // Tune windowing for near-real-time behavior on Apple Silicon (M1, 8 GB RAM):
@@ -67,7 +56,7 @@ const THREADS = Math.max(1, Math.min(8, Number(process.env.WHISPER_THREADS) || 4
 const CHUNK_MS = 2000;
 const OVERLAP_MS = 1000;
 const IDLE_MS = 1200;
-const MIN_SAMPLES = Math.floor((STT_SAMPLE_RATE * 0.5));
+const MIN_SAMPLES = Math.floor(STT_SAMPLE_RATE * 0.5);
 const OVERLAP_SAMPLES = Math.floor((STT_SAMPLE_RATE * OVERLAP_MS) / 1000);
 const MAX_SAMPLES = STT_SAMPLE_RATE * 30; // cap buffer to bound memory
 const RUN_TIMEOUT_MS = 12000;
@@ -103,20 +92,14 @@ interface Segment {
   text: string;
 }
 
-const SEGMENT_RE =
-  /^\[(\d{2}):(\d{2}):(\d{2})\.(\d{3}) --> (\d{2}):(\d{2}):(\d{2})\.(\d{3})\]\s*(.*)$/;
+const SEGMENT_RE = /^\[(\d{2}):(\d{2}):(\d{2})\.(\d{3}) --> (\d{2}):(\d{2}):(\d{2})\.(\d{3})\]\s*(.*)$/;
 
 function parseSegments(stdout: string): Segment[] {
   const segments: Segment[] = [];
-  for (const line of stdout.split("\n")) {
+  for (const line of stdout.split('\n')) {
     const match = SEGMENT_RE.exec(line.trim());
     if (!match) continue;
-    const toSeconds = (
-      h: string,
-      m: string,
-      s: string,
-      ms: string
-    ) =>
+    const toSeconds = (h: string, m: string, s: string, ms: string) =>
       Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000;
     const text = match[9].trim();
     if (!text) continue;
@@ -130,11 +113,11 @@ function parseSegments(stdout: string): Segment[] {
 }
 
 function normalize(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 function cleanWord(word: string): string {
-  return word.replace(/^[^\p{L}\p{N}\p{M}]+|[^\p{L}\p{N}\p{M}]+$/gu, "");
+  return word.replace(/^[^\p{L}\p{N}\p{M}]+|[^\p{L}\p{N}\p{M}]+$/gu, '');
 }
 
 // Strip any leading words of `text` that repeat the tail of the running
@@ -145,23 +128,22 @@ function cleanWord(word: string): string {
 // same character — which is the common Urdu-verb-inflection pattern.
 function stripRepeated(text: string, phrase: string): string {
   const trimmed = normalize(text);
-  if (!trimmed) return "";
+  if (!trimmed) return '';
   if (!phrase) return trimmed;
-  const phraseWords = normalize(phrase).split(" ").map(cleanWord);
-  const words = trimmed.split(" ");
+  const phraseWords = normalize(phrase).split(' ').map(cleanWord);
+  const words = trimmed.split(' ');
   for (let i = Math.min(words.length, 6); i >= 1; i--) {
     const candidate = words.slice(0, i).map(cleanWord);
     if (candidate.length === 0) continue;
     const tail = phraseWords.slice(-candidate.length);
-    if (candidate.join(" ") === tail.join(" ")) {
-      return words.slice(i).join(" ");
+    if (candidate.join(' ') === tail.join(' ')) {
+      return words.slice(i).join(' ');
     }
     if (candidate.length >= 2) {
-      const allButLast =
-        candidate.slice(0, -1).join(" ") === tail.slice(0, -1).join(" ");
-      const lastFirstChar = [...(candidate[candidate.length - 1] || "")][0] ===
-        [...(tail[tail.length - 1] || "")][0];
-      if (allButLast && lastFirstChar) return words.slice(i).join(" ");
+      const allButLast = candidate.slice(0, -1).join(' ') === tail.slice(0, -1).join(' ');
+      const lastFirstChar =
+        [...(candidate[candidate.length - 1] || '')][0] === [...(tail[tail.length - 1] || '')][0];
+      if (allButLast && lastFirstChar) return words.slice(i).join(' ');
     }
   }
   return trimmed;
@@ -170,10 +152,10 @@ function stripRepeated(text: string, phrase: string): string {
 function encodeWav(samples: Int16Array): Buffer {
   const bytes = samples.length * 2;
   const buffer = Buffer.alloc(44 + bytes);
-  buffer.write("RIFF", 0);
+  buffer.write('RIFF', 0);
   buffer.writeUInt32LE(36 + bytes, 4);
-  buffer.write("WAVE", 8);
-  buffer.write("fmt ", 12);
+  buffer.write('WAVE', 8);
+  buffer.write('fmt ', 12);
   buffer.writeUInt32LE(16, 16);
   buffer.writeUInt16LE(1, 20);
   buffer.writeUInt16LE(1, 22);
@@ -181,7 +163,7 @@ function encodeWav(samples: Int16Array): Buffer {
   buffer.writeUInt32LE(STT_SAMPLE_RATE * 2, 28);
   buffer.writeUInt16LE(2, 32);
   buffer.writeUInt16LE(16, 34);
-  buffer.write("data", 36);
+  buffer.write('data', 36);
   buffer.writeUInt32LE(bytes, 40);
   for (let i = 0; i < samples.length; i++) {
     buffer.writeInt16LE(samples[i], 44 + i * 2);
@@ -217,31 +199,20 @@ function transcribeFile(wavPath: string): Promise<Segment[]> {
   return new Promise((resolve, reject) => {
     execFile(
       EXECUTABLE_PATH,
-      [
-        "-m",
-        MODEL_PATH,
-        "-f",
-        wavPath,
-        "-l",
-        LANGUAGE,
-        "-t",
-        String(THREADS),
-        "-np",
-      ],
+      ['-m', MODEL_PATH, '-f', wavPath, '-l', LANGUAGE, '-t', String(THREADS), '-np'],
       { timeout: RUN_TIMEOUT_MS, maxBuffer: 2 * 1024 * 1024 },
       (error, stdout) => {
         if (error) {
-          const stderr = String(error.message || "").split("\n").pop() ?? "";
-          const detail = error.killed ? "timed out" : stderr.trim();
-          reject(
-            new Error(
-              `Local Whisper transcription failed${detail ? `: ${detail}` : "."}`
-            )
-          );
+          const stderr =
+            String(error.message || '')
+              .split('\n')
+              .pop() ?? '';
+          const detail = error.killed ? 'timed out' : stderr.trim();
+          reject(new Error(`Local Whisper transcription failed${detail ? `: ${detail}` : '.'}`));
           return;
         }
         resolve(parseSegments(stdout));
-      }
+      },
     );
   });
 }
@@ -251,7 +222,7 @@ export function createWhisperSttProvider(): SttProvider {
   let pending: Int16Array[] = [];
   let pendingSamples = 0;
   let tail = new Int16Array(0);
-  let phrase = "";
+  let phrase = '';
   let busy = false;
   let lastAudioTime = 0;
   let lastSpeechTime = 0;
@@ -265,7 +236,7 @@ export function createWhisperSttProvider(): SttProvider {
     pending = [];
     pendingSamples = 0;
     tail = new Int16Array(0);
-    phrase = "";
+    phrase = '';
     busy = false;
   };
 
@@ -326,23 +297,17 @@ export function createWhisperSttProvider(): SttProvider {
     }
   };
 
-  const transcribeToText = async (
-    input: Int16Array,
-    overlapSec: number
-  ): Promise<string> => {
-    const tempFile = path.join(
-      os.tmpdir(),
-      `urdu-interpreter-whisper-${process.pid}-${++tempCounter}.wav`
-    );
+  const transcribeToText = async (input: Int16Array, overlapSec: number): Promise<string> => {
+    const tempFile = path.join(os.tmpdir(), `urdu-interpreter-whisper-${process.pid}-${++tempCounter}.wav`);
     try {
       await fs.writeFile(tempFile, encodeWav(normalizeSamples(input)));
       const segments = await transcribeFile(tempFile);
       const kept = segments
         .filter((segment) => segment.endSec > overlapSec)
         .map((segment) => segment.text)
-        .join(" ")
+        .join(' ')
         .trim()
-        .replace(/\[[A-Z_]+\]/g, "")
+        .replace(/\[[A-Z_]+\]/g, '')
         .trim();
       return kept;
     } finally {
@@ -359,7 +324,7 @@ export function createWhisperSttProvider(): SttProvider {
       if (idle) {
         if (phrase) {
           handlers.onFinal(phrase);
-          phrase = "";
+          phrase = '';
         }
         resetContext();
       }
@@ -371,14 +336,11 @@ export function createWhisperSttProvider(): SttProvider {
     if (pendingRms() < energySkipRms) {
       consecutiveSkips++;
       if (consecutiveSkips >= ENERGY_SKIP_RATCHET_AFTER) {
-        energySkipRms = Math.max(
-          ENERGY_FLOOR_RMS,
-          Math.floor(energySkipRms * ENERGY_SKIP_RATCHET_FACTOR)
-        );
+        energySkipRms = Math.max(ENERGY_FLOOR_RMS, Math.floor(energySkipRms * ENERGY_SKIP_RATCHET_FACTOR));
       }
       if ((idle || speechIdle) && phrase) {
         handlers.onFinal(phrase);
-        phrase = "";
+        phrase = '';
       }
       resetContext();
       return;
@@ -408,7 +370,7 @@ export function createWhisperSttProvider(): SttProvider {
       if (idle) {
         if (phrase) {
           handlers.onFinal(phrase);
-          phrase = "";
+          phrase = '';
         }
         tail = new Int16Array(0);
       } else if (extra) {
@@ -424,9 +386,7 @@ export function createWhisperSttProvider(): SttProvider {
       resetContext();
       if (consecutiveFailures >= 3) {
         stopInternal();
-        handlers.onError(
-          err instanceof Error ? err.message : "Local Whisper transcription failed."
-        );
+        handlers.onError(err instanceof Error ? err.message : 'Local Whisper transcription failed.');
         handlers = null;
       }
     } finally {
@@ -435,17 +395,17 @@ export function createWhisperSttProvider(): SttProvider {
   };
 
   return {
-    name: "whisper",
+    name: 'whisper',
 
     async start(active: SttHandlers) {
       await fs.access(EXECUTABLE_PATH).catch(() => {
         throw new Error(
-          `whisper-cli not found at ${EXECUTABLE_PATH}. Run "npm run setup:whisper" to build the local Whisper engine, or set WHISPER_EXECUTABLE_PATH in .env.`
+          `whisper-cli not found at ${EXECUTABLE_PATH}. Run "npm run setup:whisper" to build the local Whisper engine, or set WHISPER_EXECUTABLE_PATH in .env.`,
         );
       });
       await fs.access(MODEL_PATH).catch(() => {
         throw new Error(
-          `Whisper model not found at ${MODEL_PATH}. Run "npm run setup:whisper" to download it, or set WHISPER_MODEL_PATH in .env.`
+          `Whisper model not found at ${MODEL_PATH}. Run "npm run setup:whisper" to download it, or set WHISPER_MODEL_PATH in .env.`,
         );
       });
 

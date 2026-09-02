@@ -16,12 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React from "react";
-import { createRoot } from "react-dom/client";
-import App from "./App";
-import { ThemeProvider } from "./components/theme-provider";
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App';
+import { ThemeProvider } from './components/theme-provider';
 
-const container = document.getElementById("root");
+const container = document.getElementById('root');
 if (container) {
   const root = createRoot(container);
   root.render(
@@ -29,6 +29,6 @@ if (container) {
       <ThemeProvider>
         <App />
       </ThemeProvider>
-    </React.StrictMode>
+    </React.StrictMode>,
   );
 }

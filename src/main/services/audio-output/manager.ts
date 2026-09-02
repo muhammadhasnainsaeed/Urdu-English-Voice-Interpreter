@@ -16,25 +16,20 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import * as fs from "fs";
-import type {
-  AudioChunk,
-  AudioOutputDevice,
-  AudioOutputEvent,
-  AudioOutputStartResult,
-} from "@shared/index";
-import type { AudioOutputProvider } from "./provider";
-import { createSystemSpeakerOutput } from "./providers/speaker";
-import { pipelineTelemetry } from "../telemetry/pipeline-telemetry";
+import * as fs from 'fs';
+import type { AudioChunk, AudioOutputDevice, AudioOutputEvent, AudioOutputStartResult } from '@shared/index';
+import type { AudioOutputProvider } from './provider';
+import { createSystemSpeakerOutput } from './providers/speaker';
+import { pipelineTelemetry } from '../telemetry/pipeline-telemetry';
 
 const BLACKHOLE_HAL_PATHS = [
-  "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver",
-  "/Library/Audio/Plug-Ins/HAL/BlackHole16ch.driver",
-  "/Library/Audio/Plug-Ins/HAL/BlackHole64ch.driver",
+  '/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver',
+  '/Library/Audio/Plug-Ins/HAL/BlackHole16ch.driver',
+  '/Library/Audio/Plug-Ins/HAL/BlackHole64ch.driver',
 ];
 
 export function detectBlackHole(): boolean {
-  if (process.platform !== "darwin") return false;
+  if (process.platform !== 'darwin') return false;
   try {
     return BLACKHOLE_HAL_PATHS.some((p) => fs.existsSync(p));
   } catch {
@@ -61,12 +56,10 @@ export class AudioOutputManager {
   }
 
   getAvailableDevices(): AudioOutputDevice[] {
-    const devices: AudioOutputDevice[] = [
-      { id: "default", label: "System Default", isDefault: true },
-    ];
+    const devices: AudioOutputDevice[] = [{ id: 'default', label: 'System Default', isDefault: true }];
 
     if (detectBlackHole()) {
-      devices.push({ id: "blackhole", label: "BlackHole", isDefault: false });
+      devices.push({ id: 'blackhole', label: 'BlackHole', isDefault: false });
     }
 
     return devices;
@@ -74,10 +67,10 @@ export class AudioOutputManager {
 
   async start(
     emit: (event: AudioOutputEvent) => void,
-    getWindow: () => import("electron").BrowserWindow | null
+    getWindow: () => import('electron').BrowserWindow | null,
   ): Promise<AudioOutputStartResult> {
     if (this.active) {
-      return { ok: false, message: "Audio output is already running." };
+      return { ok: false, message: 'Audio output is already running.' };
     }
 
     const provider = createSystemSpeakerOutput(getWindow);
@@ -86,7 +79,7 @@ export class AudioOutputManager {
     this.active = true;
 
     await provider.start();
-    emit({ type: "audio-output:started", provider: provider.name });
+    emit({ type: 'audio-output:started', provider: provider.name });
     return { ok: true, provider: provider.name };
   }
 

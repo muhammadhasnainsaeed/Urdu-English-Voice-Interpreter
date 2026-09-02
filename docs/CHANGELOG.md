@@ -1482,3 +1482,39 @@ component split, and functional wiring (UI/design-system migration only).
   contributions are granted under GPL-3.0.
 - Added a brief contribution-license note to `CONTRIBUTING.md` stating that
   submitting a contribution grants it under GPL-3.0.
+
+## 2026-09-02 — ElevenLabs LiveWaveform in Meeting Mode card (UI enhancement)
+
+- Added the ElevenLabs `live-waveform` component inside the existing Meeting
+  Mode card in `src/renderer/pages/HomeScreen.tsx` (header/badges → waveform →
+  Start/Stop button → error). Visual enhancement only; no business logic,
+  providers, SessionManager, IPC, or mic-capture changes.
+- Vendored the official ElevenLabs `live-waveform` source into
+  `src/renderer/components/ui/live-waveform.tsx`. The `@elevenlabs/cli` /
+  `shadcn` registry fetch from `ui.elevenlabs.io` was persistently rate-limited
+  (HTTP 429), so the component was taken verbatim from the official source of
+  record (`github.com/elevenlabs/examples`); the file header documents the
+  origin. No new dependency was added.
+- The component keeps an optional `audioLevel?: number` (0..1) renderer-side
+  adapter (available, not wired): when provided, the mic-setup effect skips
+  capture entirely and the animation loop drives the bars from the supplied
+  level (scaled by `sensitivity`, clamped 0.05..1). When omitted, the component
+  behaves exactly like upstream and opens its own `getUserMedia()` +
+  `AnalyserNode` whenever `active` is true — which is how it is currently used.
+- State mapping derived from the existing session source of truth
+  (`activeListening = meetingActive`, `processing = !meetingActive`): idle →
+  `active=false, processing=true` (animated idle wave); meeting started →
+  `active=true, processing=false`; stopped → back to `active=false,
+  processing=true`. No duplicate meeting state.
+- Audio reactivity uses the component's own microphone capture while a meeting
+  is active (upstream behaviour). Note: the app already captures the mic via
+  `useMicrophone`; during an active meeting a second capture is opened by the
+  waveform for its frequency visualization (acceptable on macOS; the existing
+  `audioLevel` adapter option remains for a single-capture setup).
+- Presentation: `mode="static"`, `height={80}`, `barWidth={3}`, `barGap={2}`,
+  `fadeEdges`; neutral theme-adaptive bar color (inherits computed text color)
+  so Light/Dark/System render correctly; no gradients/glass/excess animation.
+- Validation: `npm run type-check` clean; `npm test` 60/60; `npm run build` OK
+  (component present in `dist/renderer/bundle.js`). Runtime CDP smoke test of
+  the built app: zero console errors; Meeting Mode card renders; waveform
+  renders "Processing audio" in idle; badges/theme toggle intact.

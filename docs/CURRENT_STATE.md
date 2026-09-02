@@ -707,6 +707,48 @@ Comparison vs Phase 1 (legacy) and Phase 2 (streaming) digital averages:
   devices (incl. BlackHole) and fire onSelect; Start/Stop Meeting 2-cycle
   returns Ready; zero console errors on reload + interaction.
 
+### M11 UI follow-up — ElevenLabs LiveWaveform in Meeting Mode (2026-09-02, complete)
+
+- **Scope**: small UI enhancement only. Added the ElevenLabs `live-waveform`
+  component inside the existing Meeting Mode card (header/badges → waveform →
+  Start/Stop button → error). No redesign; no business-logic change (STT/
+  Translation/TTS/audio-output, SessionManager, IPC, mic capture, providers all
+  untouched; no new dependencies added).
+- **Component**: vendored the official ElevenLabs `live-waveform` source into
+  `src/renderer/components/ui/live-waveform.tsx` (the `@elevenlabs/cli` /
+  `shadcn` registry fetches at `ui.elevenlabs.io` were persistently
+  rate-limited (HTTP 429), so the source of record
+  `github.com/elevenlabs/examples` was used verbatim). An official source
+  header notes the origin.
+- **Optional renderer-side adapter (available, not wired)**: the component
+  normally owns its own `getUserMedia()` + `AnalyserNode` when `active=true`.
+  It therefore accepts an optional `audioLevel?: number` (0..1) prop — when
+  provided, the mic-setup effect skips capture entirely and the animation loop
+  feeds bars from the supplied level (scaled by `sensitivity`, clamped
+  0.05..1). Currently HomeScreen does not pass `audioLevel`, so the component
+  uses its own microphone capture for frequency visualization during an active
+  meeting (a second capture alongside the app's `useMicrophone` capture; this
+  is fine on macOS, and the adapter remains available for a single-capture
+  setup if desired).
+- **State mapping** (derived, no duplicate meeting state): `activeListening =
+  meetingActive`, `processing = !meetingActive`.
+  - Meeting stopped/idle: `active=false`, `processing=true` (animated idle).
+  - Meeting started: `active=true`, `processing=false`.
+  - Meeting stopped: back to `active=false`, `processing=true`.
+- **Audio reactivity**: the waveform reacts to the user's voice via its own
+  mic capture while a meeting is active. No changes to the app's existing
+  `useMicrophone` capture / `AudioLevelMeter` signal.
+- **Presentation**: `mode="static"`, `height={80}`, `barWidth={3}`, `barGap={2}`,
+  `fadeEdges`, neutral theme-adaptive bar color (inherits computed text color,
+  so Light/Dark/System all render correctly), no gradients/glass/excess motion.
+- **Files changed**: `src/renderer/components/ui/live-waveform.tsx` (new),
+  `src/renderer/pages/HomeScreen.tsx` (card integration). No config/dep changes.
+- **Validation**: `npm run type-check` clean; `npm test` 60/60; `npm run build`
+  OK (`dist/renderer/bundle.js` contains the component). Runtime CDP smoke test
+  of the built app: zero console errors; Meeting Mode card renders; waveform
+  renders with aria-label "Processing audio" (idle state: `active=false`,
+  `processing=true`); badges/theme toggle intact.
+
 ## What is NOT implemented (intentionally)
 
 Meeting-app integration, authentication, database, backend server, Python.
@@ -717,9 +759,10 @@ cross-platform ready; not exercised in M10 Phase 3).
 ## Next task
 
 M10 Phase 3/4 (production packaging & macOS distribution + non-technical
-onboarding), M11 (UI design-system revamp), and the M11 follow-up (real
-shadcn/ui + Tailwind migration) are complete and documented. M10, M11, and the
-M11 follow-up are fully complete — do not start M12.
+onboarding), M11 (UI design-system revamp), the M11 follow-up (real
+shadcn/ui + Tailwind migration), and the LiveWaveform enhancement are complete
+and documented. M10, M11, and the M11 follow-up are fully complete — do not
+start M12.
 Remaining (manual, outside repo code):
 1. **upload `docs/demo/demo-v1.0.0.mp4` as a v1.0.0 Release asset**,
 2. **sign/notarize + release the built app** when Apple Developer credentials
@@ -748,7 +791,7 @@ src/preload/index.ts
 src/renderer/{App.tsx,index.tsx,index.html}
 src/renderer/pages/HomeScreen.tsx
 src/renderer/lib/utils.ts
-src/renderer/components/ui/{button,card,badge,label,select,separator,alert,progress,dropdown-menu}.tsx
+src/renderer/components/ui/{button,card,badge,label,select,separator,alert,progress,dropdown-menu,live-waveform}.tsx
 src/renderer/components/{theme-provider,theme-selector}.tsx
 src/renderer/components/{MicrophonePanel,AudioLevelMeter,SetupPanel}.tsx
 src/renderer/components/{TranslationPanel,TtsPanel,AudioOutputPanel}.tsx

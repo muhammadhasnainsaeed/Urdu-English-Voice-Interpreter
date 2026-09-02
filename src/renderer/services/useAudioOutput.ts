@@ -16,15 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  AudioFormat,
-  AudioOutputDevice,
-  AudioOutputEvent,
-  AudioOutputStatus,
-} from "@shared/index";
-
-const BLACKHOLE_PATTERN = /blackhole/i;
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { AudioFormat, AudioOutputDevice, AudioOutputEvent, AudioOutputStatus } from '@shared/index';
 
 /**
  * Renderer-side audio output hook.
@@ -35,15 +28,17 @@ const BLACKHOLE_PATTERN = /blackhole/i;
  * renderer enumeration returns no output devices (e.g. before mic permission).
  */
 export function useAudioOutput() {
-  const [status, setStatus] = useState<AudioOutputStatus>("idle");
+  const [status, setStatus] = useState<AudioOutputStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<AudioOutputDevice[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("default");
-  const [setSinkIdSupported, setSetSinkIdSupported] = useState(true);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default');
+  const [setSinkIdSupported] = useState(true);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const currentSinkRef = useRef<string>("");
-  const queueRef = useRef<Array<{ data: ArrayBuffer; playbackId: number | null; streamStart?: boolean; streamEnd?: boolean }>>([]);
+  const currentSinkRef = useRef<string>('');
+  const queueRef = useRef<
+    Array<{ data: ArrayBuffer; playbackId: number | null; streamStart?: boolean; streamEnd?: boolean }>
+  >([]);
   const playingRef = useRef(false);
   const sampleRateRef = useRef(24000);
   /** Set while a source is playing so cancellation can stop it mid-flight. */
@@ -51,19 +46,18 @@ export function useAudioOutput() {
   const cancelPlaybackRef = useRef<() => void>(() => {});
 
   const supportsSetSinkId = useCallback(() => {
-    return typeof AudioContext !== "undefined" &&
-      "setSinkId" in AudioContext.prototype;
+    return typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype;
   }, []);
 
   const enumerateOutputDevices = useCallback(async (): Promise<AudioOutputDevice[]> => {
     try {
       const allDevices = await navigator.mediaDevices.enumerateDevices();
-      const outputs = allDevices.filter((d) => d.kind === "audiooutput");
+      const outputs = allDevices.filter((d) => d.kind === 'audiooutput');
       if (outputs.length > 0) {
         return outputs.map((d) => ({
           id: d.deviceId,
-          label: d.label || (d.deviceId === "default" ? "System Default" : d.deviceId),
-          isDefault: d.deviceId === "default" || d.deviceId === "",
+          label: d.label || (d.deviceId === 'default' ? 'System Default' : d.deviceId),
+          isDefault: d.deviceId === 'default' || d.deviceId === '',
         }));
       }
     } catch {
@@ -75,12 +69,12 @@ export function useAudioOutput() {
       if (staticList.length > 1) return staticList;
       // If static list only has "default", check BlackHole via main process
       const hasBlackHole = await window.electron.detectBlackHole();
-      if (hasBlackHole && !staticList.some((d) => d.id === "blackhole")) {
-        staticList.push({ id: "blackhole", label: "BlackHole", isDefault: false });
+      if (hasBlackHole && !staticList.some((d) => d.id === 'blackhole')) {
+        staticList.push({ id: 'blackhole', label: 'BlackHole', isDefault: false });
       }
       return staticList;
     } catch {
-      return [{ id: "default", label: "System Default", isDefault: true }];
+      return [{ id: 'default', label: 'System Default', isDefault: true }];
     }
   }, []);
 
@@ -94,27 +88,27 @@ export function useAudioOutput() {
         setDevices(devs);
         // Device failure recovery: if selected device is gone, fall back to default
         setSelectedDeviceId((current) => {
-          if (current === "default") return current;
+          if (current === 'default') return current;
           if (devs.some((d) => d.id === current)) return current;
           // Selected device disconnected — fall back to system default
-          return "default";
+          return 'default';
         });
       });
     };
-    navigator.mediaDevices.addEventListener("devicechange", onChange);
+    navigator.mediaDevices.addEventListener('devicechange', onChange);
     return () => {
-      navigator.mediaDevices.removeEventListener("devicechange", onChange);
+      navigator.mediaDevices.removeEventListener('devicechange', onChange);
     };
   }, [supportsSetSinkId, enumerateOutputDevices]);
 
   useEffect(() => {
     return window.electron.onAudioOutputEvent((event: AudioOutputEvent) => {
       switch (event.type) {
-        case "audio-output:started":
+        case 'audio-output:started':
           setError(null);
-          setStatus("active");
+          setStatus('active');
           break;
-        case "audio-output:devices":
+        case 'audio-output:devices':
           // Merge with renderer-side devices if renderer list is empty
           setDevices((prev) => {
             if (prev.length <= 1 && event.devices.length > prev.length) {
@@ -123,61 +117,64 @@ export function useAudioOutput() {
             return prev;
           });
           break;
-        case "audio-output:error":
+        case 'audio-output:error':
           setError(event.message);
           break;
-        case "audio-output:stopped":
-          setStatus("idle");
+        case 'audio-output:stopped':
+          setStatus('idle');
           break;
       }
     });
   }, []);
 
-  const applySinkId = useCallback(async (ctx: AudioContext, deviceId: string): Promise<void> => {
-    if (!supportsSetSinkId()) return;
+  const applySinkId = useCallback(
+    async (ctx: AudioContext, deviceId: string): Promise<void> => {
+      if (!supportsSetSinkId()) return;
 
-    const targetId = deviceId === "default" || deviceId === "" ? "" : deviceId;
-    if (targetId === currentSinkRef.current) return;
+      const targetId = deviceId === 'default' || deviceId === '' ? '' : deviceId;
+      if (targetId === currentSinkRef.current) return;
 
-    try {
-      await ctx.setSinkId(targetId);
-      currentSinkRef.current = targetId;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`setSinkId(${deviceId}) failed: ${msg}`);
-      // Non-fatal: audio still plays to system default
-    }
-  }, [supportsSetSinkId]);
-
-  const ensureContext = useCallback(async (
-    sampleRate: number,
-    deviceId?: string,
-  ): Promise<AudioContext> => {
-    const wantDevice = deviceId ?? selectedDeviceId;
-
-    // Recreate if closed or sample rate changed
-    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-      if (audioCtxRef.current.sampleRate !== sampleRate) {
-        audioCtxRef.current.close();
-        audioCtxRef.current = null;
+      try {
+        await ctx.setSinkId(targetId);
+        currentSinkRef.current = targetId;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`setSinkId(${deviceId}) failed: ${msg}`);
+        // Non-fatal: audio still plays to system default
       }
-    }
+    },
+    [supportsSetSinkId],
+  );
 
-    if (!audioCtxRef.current) {
-      if (supportsSetSinkId() && wantDevice && wantDevice !== "default") {
-        audioCtxRef.current = new AudioContext({ sampleRate });
-        await applySinkId(audioCtxRef.current, wantDevice);
-      } else {
-        audioCtxRef.current = new AudioContext({ sampleRate });
+  const ensureContext = useCallback(
+    async (sampleRate: number, deviceId?: string): Promise<AudioContext> => {
+      const wantDevice = deviceId ?? selectedDeviceId;
+
+      // Recreate if closed or sample rate changed
+      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+        if (audioCtxRef.current.sampleRate !== sampleRate) {
+          audioCtxRef.current.close();
+          audioCtxRef.current = null;
+        }
       }
-    }
 
-    if (audioCtxRef.current.state === "suspended") {
-      await audioCtxRef.current.resume();
-    }
+      if (!audioCtxRef.current) {
+        if (supportsSetSinkId() && wantDevice && wantDevice !== 'default') {
+          audioCtxRef.current = new AudioContext({ sampleRate });
+          await applySinkId(audioCtxRef.current, wantDevice);
+        } else {
+          audioCtxRef.current = new AudioContext({ sampleRate });
+        }
+      }
 
-    return audioCtxRef.current;
-  }, [selectedDeviceId, supportsSetSinkId, applySinkId]);
+      if (audioCtxRef.current.state === 'suspended') {
+        await audioCtxRef.current.resume();
+      }
+
+      return audioCtxRef.current;
+    },
+    [selectedDeviceId, supportsSetSinkId, applySinkId],
+  );
 
   const playFromQueue = useCallback(async () => {
     if (playingRef.current || queueRef.current.length === 0) return;
@@ -209,7 +206,7 @@ export function useAudioOutput() {
           activeSourceRef.current = null;
           if (!cancelled && item.streamEnd !== false) {
             window.electron.reportPlaybackEvent({
-              event: "complete",
+              event: 'complete',
               bytes: data.byteLength,
               playbackId: playbackId,
             });
@@ -219,7 +216,7 @@ export function useAudioOutput() {
         source.onended = finish;
         if (item.streamStart !== false) {
           window.electron.reportPlaybackEvent({
-            event: "start",
+            event: 'start',
             bytes: data.byteLength,
             playbackId: playbackId,
           });
@@ -242,11 +239,22 @@ export function useAudioOutput() {
 
   useEffect(() => {
     const unsub = window.electron.onAudioData(
-      (chunk: { data: ArrayBuffer; format: AudioFormat; playbackId?: number | null; streamStart?: boolean; streamEnd?: boolean }) => {
+      (chunk: {
+        data: ArrayBuffer;
+        format: AudioFormat;
+        playbackId?: number | null;
+        streamStart?: boolean;
+        streamEnd?: boolean;
+      }) => {
         sampleRateRef.current = chunk.format.sampleRate;
-        queueRef.current.push({ data: chunk.data, playbackId: chunk.playbackId ?? null, streamStart: chunk.streamStart, streamEnd: chunk.streamEnd });
+        queueRef.current.push({
+          data: chunk.data,
+          playbackId: chunk.playbackId ?? null,
+          streamStart: chunk.streamStart,
+          streamEnd: chunk.streamEnd,
+        });
         playFromQueue();
-      }
+      },
     );
     return unsub;
   }, [playFromQueue]);
@@ -263,17 +271,17 @@ export function useAudioOutput() {
     setError(null);
     const result = await window.electron.startAudioOutput();
     if (!result.ok) {
-      setError(result.message ?? "Could not start audio output.");
-      setStatus("error");
+      setError(result.message ?? 'Could not start audio output.');
+      setStatus('error');
     }
   }, []);
 
   const stop = useCallback(async () => {
-    setStatus("idle");
+    setStatus('idle');
     queueRef.current = [];
     playingRef.current = false;
-    currentSinkRef.current = "";
-    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+    currentSinkRef.current = '';
+    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
       audioCtxRef.current.close();
       audioCtxRef.current = null;
     }
@@ -285,15 +293,18 @@ export function useAudioOutput() {
     setDevices(devs);
   }, [enumerateOutputDevices]);
 
-  const selectDevice = useCallback(async (deviceId: string) => {
-    setSelectedDeviceId(deviceId);
-    await window.electron.selectAudioOutput(deviceId);
+  const selectDevice = useCallback(
+    async (deviceId: string) => {
+      setSelectedDeviceId(deviceId);
+      await window.electron.selectAudioOutput(deviceId);
 
-    // Apply to active AudioContext if one exists
-    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-      await applySinkId(audioCtxRef.current, deviceId);
-    }
-  }, [applySinkId]);
+      // Apply to active AudioContext if one exists
+      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+        await applySinkId(audioCtxRef.current, deviceId);
+      }
+    },
+    [applySinkId],
+  );
 
   return {
     status,

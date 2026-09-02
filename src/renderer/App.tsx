@@ -145,6 +145,7 @@ export default function App() {
       devices={microphone.devices}
       selectedDeviceId={microphone.selectedDeviceId}
       level={microphone.level}
+      spectrum={microphone.spectrum}
       error={microphone.error}
       onSelectDevice={microphone.selectDevice}
       onStart={microphone.start}

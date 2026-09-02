@@ -59,6 +59,7 @@ interface HomeScreenProps {
   devices: AudioDevice[];
   selectedDeviceId: string | null;
   level: number;
+  spectrum: number[];
   error: string | null;
   onSelectDevice: (deviceId: string) => void;
   onStart: () => void;
@@ -186,6 +187,7 @@ export default function HomeScreen(props: HomeScreenProps) {
             mode="static"
             active={activeListening}
             processing={processing}
+            audioLevels={meetingActive ? props.spectrum : []}
             height={80}
             barWidth={3}
             barGap={2}

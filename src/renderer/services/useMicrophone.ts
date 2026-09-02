@@ -16,12 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  ApplicationStatus,
-  AudioDevice,
-  PermissionStatus,
-} from "@shared/index";
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ApplicationStatus, AudioDevice, PermissionStatus } from '@shared/index';
 
 export interface MicrophoneCaptureResult {
   ok: boolean;
@@ -32,35 +28,34 @@ export interface MicrophoneCaptureResult {
 function captureErrorMessage(err: unknown): string {
   if (err instanceof DOMException) {
     switch (err.name) {
-      case "NotAllowedError":
-        return "Microphone permission was denied. Enable it in System Settings → Privacy & Security → Microphone.";
-      case "NotFoundError":
-        return "No microphone is available.";
-      case "NotReadableError":
-        return "The microphone is busy (used by another app) or unavailable.";
-      case "OverconstrainedError":
-        return "The selected microphone is unavailable.";
+      case 'NotAllowedError':
+        return 'Microphone permission was denied. Enable it in System Settings → Privacy & Security → Microphone.';
+      case 'NotFoundError':
+        return 'No microphone is available.';
+      case 'NotReadableError':
+        return 'The microphone is busy (used by another app) or unavailable.';
+      case 'OverconstrainedError':
+        return 'The selected microphone is unavailable.';
       default:
         return `Could not start capture (${err.name}).`;
     }
   }
-  return "Could not start capture.";
+  return 'Could not start capture.';
 }
 
 export function useMicrophone() {
-  const [permission, setPermission] = useState<PermissionStatus>("unknown");
+  const [permission, setPermission] = useState<PermissionStatus>('unknown');
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
-  const [status, setStatus] = useState<ApplicationStatus>("idle");
+  const [status, setStatus] = useState<ApplicationStatus>('idle');
   const [level, setLevel] = useState(0);
-  const [spectrum, setSpectrum] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number>(0);
   const permissionRef = useRef(permission);
-  const statusRef = useRef<ApplicationStatus>("idle");
+  const statusRef = useRef<ApplicationStatus>('idle');
 
   useEffect(() => {
     permissionRef.current = permission;
@@ -74,11 +69,11 @@ export function useMicrophone() {
     try {
       const list = await navigator.mediaDevices.enumerateDevices();
       const inputs: AudioDevice[] = list
-        .filter((d) => d.kind === "audioinput" && d.deviceId !== "")
+        .filter((d) => d.kind === 'audioinput' && d.deviceId !== '')
         .map((d) => ({
           deviceId: d.deviceId,
-          label: d.label || "Microphone",
-          type: "input" as const,
+          label: d.label || 'Microphone',
+          type: 'input' as const,
         }));
       setDevices(inputs);
       setSelectedDeviceId((current) => {
@@ -86,39 +81,39 @@ export function useMicrophone() {
         return inputs.length > 0 ? inputs[0].deviceId : null;
       });
       if (inputs.length === 0) {
-        setStatus((s) => (s === "listening" ? s : "error"));
-        setError("No microphone found.");
+        setStatus((s) => (s === 'listening' ? s : 'error'));
+        setError('No microphone found.');
       } else {
         setError(null);
-        setStatus((s) => (s === "error" ? "ready" : s));
+        setStatus((s) => (s === 'error' ? 'ready' : s));
       }
       return inputs;
     } catch {
-      setError("Could not list audio devices.");
+      setError('Could not list audio devices.');
       return [];
     }
   }, []);
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
-    setStatus("requesting-permission");
+    setStatus('requesting-permission');
     setError(null);
     try {
       const result = await window.electron.requestMicPermission();
       setPermission(result);
-      if (result === "granted") {
-        setStatus("ready");
+      if (result === 'granted') {
+        setStatus('ready');
         return true;
       }
-      setStatus("error");
+      setStatus('error');
       setError(
-        result === "denied"
-          ? "Microphone permission was denied. Enable it in System Settings → Privacy & Security → Microphone."
-          : "Could not determine microphone permission."
+        result === 'denied'
+          ? 'Microphone permission was denied. Enable it in System Settings → Privacy & Security → Microphone.'
+          : 'Could not determine microphone permission.',
       );
       return false;
     } catch {
-      setStatus("error");
-      setError("Failed to request microphone permission.");
+      setStatus('error');
+      setError('Failed to request microphone permission.');
       return false;
     }
   }, []);
@@ -126,7 +121,7 @@ export function useMicrophone() {
   const start = useCallback(async (): Promise<MicrophoneCaptureResult> => {
     setError(null);
 
-    if (statusRef.current === "listening") {
+    if (statusRef.current === 'listening') {
       return {
         ok: true,
         stream: streamRef.current,
@@ -134,7 +129,7 @@ export function useMicrophone() {
       };
     }
 
-    let granted = permission === "granted";
+    let granted = permission === 'granted';
     if (!granted) granted = await requestPermission();
     if (!granted) {
       return { ok: false, stream: null, audioContext: null };
@@ -142,15 +137,15 @@ export function useMicrophone() {
 
     const currentDevices = await refreshDevices();
     if (currentDevices.length === 0) {
-      setStatus("error");
-      setError("No microphone found.");
+      setStatus('error');
+      setError('No microphone found.');
       return { ok: false, stream: null, audioContext: null };
     }
 
     const deviceId = selectedDeviceId ?? currentDevices[0].deviceId;
     if (!deviceId) {
-      setStatus("error");
-      setError("No microphone is selected.");
+      setStatus('error');
+      setError('No microphone is selected.');
       return { ok: false, stream: null, audioContext: null };
     }
 
@@ -161,10 +156,7 @@ export function useMicrophone() {
           audio: { deviceId: { exact: deviceId } },
         });
       } catch (err) {
-        if (
-          err instanceof DOMException &&
-          err.name === "OverconstrainedError"
-        ) {
+        if (err instanceof DOMException && err.name === 'OverconstrainedError') {
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         } else {
           throw err;
@@ -175,8 +167,7 @@ export function useMicrophone() {
 
       const AudioContextCtor =
         window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext })
-          .webkitAudioContext;
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const audioContext = new AudioContextCtor();
       audioContextRef.current = audioContext;
 
@@ -186,8 +177,6 @@ export function useMicrophone() {
       source.connect(analyser);
 
       const data = new Uint8Array(analyser.fftSize);
-      const freqData = new Uint8Array(analyser.frequencyBinCount);
-      const FREQ_BANDS = 32;
       const tick = () => {
         analyser.getByteTimeDomainData(data);
         let sum = 0;
@@ -197,32 +186,15 @@ export function useMicrophone() {
         }
         const rms = Math.sqrt(sum / data.length);
         setLevel(Math.min(1, rms * 5));
-
-        analyser.getByteFrequencyData(freqData);
-        const startBin = Math.floor(freqData.length * 0.05);
-        const endBin = Math.floor(freqData.length * 0.4);
-        const span = Math.max(1, endBin - startBin);
-        const out = new Array<number>(FREQ_BANDS);
-        for (let b = 0; b < FREQ_BANDS; b++) {
-          const s = startBin + Math.floor((span * b) / FREQ_BANDS);
-          const e = startBin + Math.floor((span * (b + 1)) / FREQ_BANDS);
-          let m = 0;
-          for (let i = s; i < e; i++) {
-            if (freqData[i] > m) m = freqData[i];
-          }
-          out[b] = m / 255;
-        }
-        setSpectrum(out);
-
         rafRef.current = requestAnimationFrame(tick);
       };
       tick();
 
-      setStatus("listening");
+      setStatus('listening');
       refreshDevices();
       return { ok: true, stream, audioContext };
     } catch (err) {
-      setStatus("error");
+      setStatus('error');
       setError(captureErrorMessage(err));
       return { ok: false, stream: null, audioContext: null };
     }
@@ -239,8 +211,7 @@ export function useMicrophone() {
       audioContextRef.current = null;
     }
     setLevel(0);
-    setSpectrum([]);
-    setStatus(permissionRef.current === "granted" ? "ready" : "idle");
+    setStatus(permissionRef.current === 'granted' ? 'ready' : 'idle');
   }, []);
 
   useEffect(() => {
@@ -250,14 +221,14 @@ export function useMicrophone() {
       .then((result) => {
         if (cancelled) return;
         setPermission(result);
-        if (result === "granted") {
+        if (result === 'granted') {
           refreshDevices();
-          setStatus("ready");
+          setStatus('ready');
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setError("Could not read microphone permission from the main process.");
+          setError('Could not read microphone permission from the main process.');
         }
       });
 
@@ -265,11 +236,11 @@ export function useMicrophone() {
       if (cancelled) return;
       refreshDevices();
     };
-    navigator.mediaDevices.addEventListener("devicechange", onDeviceChange);
+    navigator.mediaDevices.addEventListener('devicechange', onDeviceChange);
 
     return () => {
       cancelled = true;
-      navigator.mediaDevices.removeEventListener("devicechange", onDeviceChange);
+      navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange);
       stop();
     };
   }, [refreshDevices, stop]);
@@ -280,7 +251,6 @@ export function useMicrophone() {
     selectedDeviceId,
     status,
     level,
-    spectrum,
     error,
     selectDevice: setSelectedDeviceId,
     refreshDevices,

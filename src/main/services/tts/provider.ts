@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { AudioChunk } from "@shared/index";
+import type { AudioChunk } from '@shared/index';
 
 export interface TtsProvider {
   readonly name: string;
@@ -36,20 +36,20 @@ export interface TtsProvider {
 }
 
 export async function createTtsProvider(): Promise<TtsProvider | null> {
-  const providerName = (process.env.TTS_PROVIDER || "mock").toLowerCase();
+  const providerName = (process.env.TTS_PROVIDER || 'mock').toLowerCase();
 
-  if (providerName === "mock") {
-    const { createMockTtsProvider } = await import("./providers/mock");
+  if (providerName === 'mock') {
+    const { createMockTtsProvider } = await import('./providers/mock');
     return createMockTtsProvider();
   }
 
-  if (providerName === "say") {
-    const { createSayTtsProvider } = await import("./providers/say");
+  if (providerName === 'say') {
+    const { createSayTtsProvider } = await import('./providers/say');
     return createSayTtsProvider();
   }
 
-  if (providerName === "azure") {
-    const { createAzureTtsProvider } = await import("./providers/azure");
+  if (providerName === 'azure') {
+    const { createAzureTtsProvider } = await import('./providers/azure');
     return createAzureTtsProvider();
   }
 

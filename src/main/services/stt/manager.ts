@@ -16,10 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { SttEvent, SttStartResult } from "@shared/index";
-import type { SttHandlers, SttProvider } from "./provider";
-import { createMockSttProvider } from "./providers/mock";
-import { pipelineTelemetry } from "../telemetry/pipeline-telemetry";
+import type { SttEvent, SttStartResult } from '@shared/index';
+import type { SttHandlers, SttProvider } from './provider';
+import { createMockSttProvider } from './providers/mock';
+import { pipelineTelemetry } from '../telemetry/pipeline-telemetry';
 
 function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -27,24 +27,24 @@ function errMessage(err: unknown): string {
 }
 
 async function createConfiguredProvider(): Promise<SttProvider | null> {
-  const providerName = (process.env.STT_PROVIDER || "azure").toLowerCase();
+  const providerName = (process.env.STT_PROVIDER || 'azure').toLowerCase();
 
-  if (providerName === "mock") {
+  if (providerName === 'mock') {
     return createMockSttProvider();
   }
 
-  if (providerName === "azure") {
+  if (providerName === 'azure') {
     const key = process.env.AZURE_SPEECH_KEY;
     const region = process.env.AZURE_SPEECH_REGION;
     if (!key || !region) return null;
-    const { createAzureSttProvider } = await import("./providers/azure");
+    const { createAzureSttProvider } = await import('./providers/azure');
     // ur-IN is the only Urdu locale Azure real-time STT supports
     // (ur-PK exists for TTS/video translation only — websocket error 1007).
-    return createAzureSttProvider(key, region, "ur-IN");
+    return createAzureSttProvider(key, region, 'ur-IN');
   }
 
-  if (providerName === "whisper") {
-    const { createWhisperSttProvider } = await import("./providers/whisper");
+  if (providerName === 'whisper') {
+    const { createWhisperSttProvider } = await import('./providers/whisper');
     return createWhisperSttProvider();
   }
 
@@ -61,7 +61,7 @@ class SttSession {
 
   async start(emit: (event: SttEvent) => void): Promise<SttStartResult> {
     if (this.provider) {
-      return { ok: false, message: "Speech recognition is already running." };
+      return { ok: false, message: 'Speech recognition is already running.' };
     }
 
     const provider = await createConfiguredProvider();
@@ -69,7 +69,7 @@ class SttSession {
       return {
         ok: false,
         message:
-          "No speech-to-text provider is configured. Set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION in .env (Azure), set STT_PROVIDER=whisper for local Whisper, or set STT_PROVIDER=mock for development.",
+          'No speech-to-text provider is configured. Set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION in .env (Azure), set STT_PROVIDER=whisper for local Whisper, or set STT_PROVIDER=mock for development.',
       };
     }
 
@@ -78,14 +78,14 @@ class SttSession {
       onSpeechStart: () => pipelineTelemetry.onSpeechStart(),
       onPartial: (text) => {
         pipelineTelemetry.onFirstPartial();
-        emit({ type: "partial", text });
+        emit({ type: 'partial', text });
       },
       onFinal: (text) => {
         pipelineTelemetry.onSttFinal(text);
-        emit({ type: "final", text });
+        emit({ type: 'final', text });
       },
       onError: (message) => {
-        emit({ type: "error", message });
+        emit({ type: 'error', message });
         this.provider = null;
         this.handlers = null;
       },
@@ -93,7 +93,7 @@ class SttSession {
 
     try {
       await provider.start(this.handlers);
-      emit({ type: "started" });
+      emit({ type: 'started' });
       return { ok: true, provider: provider.name };
     } catch (err) {
       this.provider = null;

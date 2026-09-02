@@ -25,24 +25,20 @@ import type {
   TranslationStatus,
   TtsStatus,
   AudioOutputStatus,
-} from "@shared/index";
-import type {
-  AudioOutputEvent,
-  TranslationEvent,
-  TtsEvent,
-} from "@shared/index";
-import type { BrowserWindow } from "electron";
-import { sttSession } from "./stt/manager";
-import { translationManager } from "../ipc/translation";
-import { ttsManager } from "../ipc/tts";
-import { audioOutputManager } from "../ipc/audio-output";
+} from '@shared/index';
+import type { AudioOutputEvent, TranslationEvent, TtsEvent } from '@shared/index';
+import type { BrowserWindow } from 'electron';
+import { sttSession } from './stt/manager';
+import { translationManager } from '../ipc/translation';
+import { ttsManager } from '../ipc/tts';
+import { audioOutputManager } from '../ipc/audio-output';
 
 function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
 }
 
-const DEBUG = process.env.PIPELINE_DEBUG === "1";
+const DEBUG = process.env.PIPELINE_DEBUG === '1';
 const debugT0 = Date.now();
 function log(tag: string, ...args: unknown[]): void {
   if (DEBUG) {
@@ -52,23 +48,23 @@ function log(tag: string, ...args: unknown[]): void {
 }
 
 function deriveSttStatus(): SttStatus {
-  if (sttSession.active) return "listening";
-  return "idle";
+  if (sttSession.active) return 'listening';
+  return 'idle';
 }
 
 function deriveTranslationStatus(): TranslationStatus {
-  if (translationManager.isActive) return "active";
-  return "idle";
+  if (translationManager.isActive) return 'active';
+  return 'idle';
 }
 
 function deriveTtsStatus(): TtsStatus {
-  if (ttsManager.isActive) return "active";
-  return "idle";
+  if (ttsManager.isActive) return 'active';
+  return 'idle';
 }
 
 function deriveAudioOutputStatus(): AudioOutputStatus {
-  if (audioOutputManager.isActive) return "active";
-  return "idle";
+  if (audioOutputManager.isActive) return 'active';
+  return 'idle';
 }
 
 function getStages(): PipelineStageStatus {
@@ -81,7 +77,7 @@ function getStages(): PipelineStageStatus {
 }
 
 export class SessionManager {
-  private status: SessionStatus = "idle";
+  private status: SessionStatus = 'idle';
   private emitFn: ((event: SessionEvent) => void) | null = null;
   private getWindow: (() => BrowserWindow | null) | null = null;
 
@@ -102,11 +98,11 @@ export class SessionManager {
   }
 
   private emitStatus(): void {
-    this.emit({ type: "session:status", stages: getStages() });
+    this.emit({ type: 'session:status', stages: getStages() });
   }
 
   private emitStageChange(stage: string, status: string): void {
-    this.emit({ type: "session:stage", stage, status });
+    this.emit({ type: 'session:stage', stage, status });
   }
 
   private sendToRenderer(channel: string, event: unknown): void {
@@ -122,10 +118,15 @@ export class SessionManager {
    */
   private createTranslationEmit(): (event: TranslationEvent) => void {
     return (event: TranslationEvent) => {
-      log("TRANSLATION", "emit →", event.type, "english" in event ? (event as { english: string }).english : "");
-      this.sendToRenderer("translation:event", event);
-      if (event.type === "translation:text") {
-        log("TRANSLATION", "chaining to TTS:", (event as { english: string }).english);
+      log(
+        'TRANSLATION',
+        'emit →',
+        event.type,
+        'english' in event ? (event as { english: string }).english : '',
+      );
+      this.sendToRenderer('translation:event', event);
+      if (event.type === 'translation:text') {
+        log('TRANSLATION', 'chaining to TTS:', (event as { english: string }).english);
         ttsManager.onTranslationText(event.english, event.interim === true);
       }
     };
@@ -134,14 +135,14 @@ export class SessionManager {
   /** Emit closure for the TTS manager. Forwards events to the renderer. */
   private createTtsEmit(): (event: TtsEvent) => void {
     return (event: TtsEvent) => {
-      this.sendToRenderer("tts:event", event);
+      this.sendToRenderer('tts:event', event);
     };
   }
 
   /** Emit closure for the audio output manager. Forwards events to the renderer. */
   private createAudioOutputEmit(): (event: AudioOutputEvent) => void {
     return (event: AudioOutputEvent) => {
-      this.sendToRenderer("audio-output:event", event);
+      this.sendToRenderer('audio-output:event', event);
     };
   }
 
@@ -150,12 +151,12 @@ export class SessionManager {
    * STT is started separately by the renderer (needs mic stream).
    */
   async start(): Promise<SessionStartResult> {
-    if (this.status === "active" || this.status === "starting") {
-      return { ok: false, message: "Session is already active." };
+    if (this.status === 'active' || this.status === 'starting') {
+      return { ok: false, message: 'Session is already active.' };
     }
 
-    log("SESSION", "start requested");
-    this.status = "starting";
+    log('SESSION', 'start requested');
+    this.status = 'starting';
     this.emitStatus();
 
     let sttProvider: string | undefined;
@@ -164,7 +165,7 @@ export class SessionManager {
 
     // Stage 1: Audio Output
     try {
-      this.emitStageChange("audioOutput", "starting");
+      this.emitStageChange('audioOutput', 'starting');
       const audioResult = await audioOutputManager.start(
         this.createAudioOutputEmit(),
         this.getWindow ?? (() => null),
@@ -173,68 +174,75 @@ export class SessionManager {
         throw new Error(audioResult.message);
       }
       ttsProvider = undefined; // audio output has no ttsProvider
-      log("SESSION", "audio output started");
-      this.emitStageChange("audioOutput", "active");
+      log('SESSION', 'audio output started');
+      this.emitStageChange('audioOutput', 'active');
       this.emitStatus();
     } catch (err) {
-      this.status = "error";
+      this.status = 'error';
       const msg = `Audio output failed to start: ${errMessage(err)}`;
-      this.emit({ type: "session:error", message: msg });
+      this.emit({ type: 'session:error', message: msg });
       this.emitStatus();
       return { ok: false, message: msg };
     }
 
     // Stage 2: TTS
     try {
-      this.emitStageChange("tts", "starting");
-      const ttsResult = await ttsManager.start(
-        this.createTtsEmit(),
-        audioOutputManager,
-      );
+      this.emitStageChange('tts', 'starting');
+      const ttsResult = await ttsManager.start(this.createTtsEmit(), audioOutputManager);
       if (!ttsResult.ok) {
         throw new Error(ttsResult.message);
       }
       ttsProvider = ttsResult.provider;
-      log("SESSION", "TTS started, provider:", ttsProvider);
-      this.emitStageChange("tts", "active");
+      log('SESSION', 'TTS started, provider:', ttsProvider);
+      this.emitStageChange('tts', 'active');
       this.emitStatus();
     } catch (err) {
-      this.status = "error";
+      this.status = 'error';
       const msg = `TTS failed to start: ${errMessage(err)}`;
-      this.emit({ type: "session:error", message: msg });
+      this.emit({ type: 'session:error', message: msg });
       // Roll back: stop audio output
-      try { audioOutputManager.stop(); } catch { /* best effort */ }
+      try {
+        audioOutputManager.stop();
+      } catch {
+        /* best effort */
+      }
       this.emitStatus();
       return { ok: false, message: msg };
     }
 
     // Stage 3: Translation
     try {
-      this.emitStageChange("translation", "starting");
-      const translationResult = await translationManager.start(
-        this.createTranslationEmit(),
-      );
+      this.emitStageChange('translation', 'starting');
+      const translationResult = await translationManager.start(this.createTranslationEmit());
       if (!translationResult.ok) {
         throw new Error(translationResult.message);
       }
       translationProvider = translationResult.provider;
-      log("SESSION", "translation started, provider:", translationProvider);
-      this.emitStageChange("translation", "active");
+      log('SESSION', 'translation started, provider:', translationProvider);
+      this.emitStageChange('translation', 'active');
       this.emitStatus();
     } catch (err) {
-      this.status = "error";
+      this.status = 'error';
       const msg = `Translation failed to start: ${errMessage(err)}`;
-      this.emit({ type: "session:error", message: msg });
+      this.emit({ type: 'session:error', message: msg });
       // Roll back: stop TTS, audio output
-      try { ttsManager.stop(); } catch { /* best effort */ }
-      try { audioOutputManager.stop(); } catch { /* best effort */ }
+      try {
+        ttsManager.stop();
+      } catch {
+        /* best effort */
+      }
+      try {
+        audioOutputManager.stop();
+      } catch {
+        /* best effort */
+      }
       this.emitStatus();
       return { ok: false, message: msg };
     }
 
-    this.status = "active";
-    log("SESSION", "session active");
-    this.emit({ type: "session:started" });
+    this.status = 'active';
+    log('SESSION', 'session active');
+    this.emit({ type: 'session:started' });
     this.emitStatus();
 
     return {
@@ -249,30 +257,46 @@ export class SessionManager {
    * Stop the meeting session. Stops STT → translation → TTS → audio output.
    */
   async stop(): Promise<void> {
-    if (this.status === "idle" || this.status === "stopping") return;
+    if (this.status === 'idle' || this.status === 'stopping') return;
 
-    this.status = "stopping";
+    this.status = 'stopping';
     this.emitStatus();
 
     // Stop in reverse order: STT → Translation → TTS → Audio Output
-    this.emitStageChange("stt", "stopping");
-    try { await sttSession.stop(); } catch { /* best effort */ }
-    this.emitStageChange("stt", "idle");
+    this.emitStageChange('stt', 'stopping');
+    try {
+      await sttSession.stop();
+    } catch {
+      /* best effort */
+    }
+    this.emitStageChange('stt', 'idle');
 
-    this.emitStageChange("translation", "stopping");
-    try { translationManager.stop(); } catch { /* best effort */ }
-    this.emitStageChange("translation", "idle");
+    this.emitStageChange('translation', 'stopping');
+    try {
+      translationManager.stop();
+    } catch {
+      /* best effort */
+    }
+    this.emitStageChange('translation', 'idle');
 
-    this.emitStageChange("tts", "stopping");
-    try { ttsManager.stop(); } catch { /* best effort */ }
-    this.emitStageChange("tts", "idle");
+    this.emitStageChange('tts', 'stopping');
+    try {
+      ttsManager.stop();
+    } catch {
+      /* best effort */
+    }
+    this.emitStageChange('tts', 'idle');
 
-    this.emitStageChange("audioOutput", "stopping");
-    try { audioOutputManager.stop(); } catch { /* best effort */ }
-    this.emitStageChange("audioOutput", "idle");
+    this.emitStageChange('audioOutput', 'stopping');
+    try {
+      audioOutputManager.stop();
+    } catch {
+      /* best effort */
+    }
+    this.emitStageChange('audioOutput', 'idle');
 
-    this.status = "idle";
-    this.emit({ type: "session:stopped" });
+    this.status = 'idle';
+    this.emit({ type: 'session:stopped' });
     this.emitStatus();
   }
 
@@ -280,12 +304,28 @@ export class SessionManager {
    * Emergency stop — called on app quit. No events emitted.
    */
   emergencyStop(): void {
-    this.status = "idle";
+    this.status = 'idle';
     this.emitFn = null;
-    try { sttSession.stop(); } catch { /* best effort */ }
-    try { translationManager.stop(); } catch { /* best effort */ }
-    try { ttsManager.stop(); } catch { /* best effort */ }
-    try { audioOutputManager.stop(); } catch { /* best effort */ }
+    try {
+      sttSession.stop();
+    } catch {
+      /* best effort */
+    }
+    try {
+      translationManager.stop();
+    } catch {
+      /* best effort */
+    }
+    try {
+      ttsManager.stop();
+    } catch {
+      /* best effort */
+    }
+    try {
+      audioOutputManager.stop();
+    } catch {
+      /* best effort */
+    }
   }
 
   getStages(): PipelineStageStatus {

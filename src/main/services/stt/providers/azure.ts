@@ -16,10 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import * as sdk from "microsoft-cognitiveservices-speech-sdk";
-import type { SttHandlers, SttProvider } from "../provider";
+import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
+import type { SttHandlers, SttProvider } from '../provider';
 
-const AZURE_STT_DEBUG = process.env.PIPELINE_DEBUG === "1";
+const AZURE_STT_DEBUG = process.env.PIPELINE_DEBUG === '1';
 
 /**
  * Resolve the optional service segmentation silence timeout from
@@ -28,14 +28,12 @@ const AZURE_STT_DEBUG = process.env.PIPELINE_DEBUG === "1";
  * Unset/empty → undefined (service default). Out-of-range values are
  * clamped with a warning; non-numeric values are ignored with a warning.
  */
-export function resolveSegmentationSilenceMs(
-  raw: string | undefined
-): number | undefined {
-  if (raw === undefined || raw.trim() === "") return undefined;
+export function resolveSegmentationSilenceMs(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === '') return undefined;
   const trimmed = raw.trim();
   if (!/^\d+$/.test(trimmed)) {
     console.warn(
-      `[CONFIG] AZURE_STT_SEGMENTATION_SILENCE_MS="${raw}" is not an integer — using service default`
+      `[CONFIG] AZURE_STT_SEGMENTATION_SILENCE_MS="${raw}" is not an integer — using service default`,
     );
     return undefined;
   }
@@ -43,7 +41,7 @@ export function resolveSegmentationSilenceMs(
   if (value < 100 || value > 5000) {
     const clamped = Math.min(5000, Math.max(100, value));
     console.warn(
-      `[CONFIG] AZURE_STT_SEGMENTATION_SILENCE_MS=${value} outside supported range 100–5000ms — clamped to ${clamped}`
+      `[CONFIG] AZURE_STT_SEGMENTATION_SILENCE_MS=${value} outside supported range 100–5000ms — clamped to ${clamped}`,
     );
     return clamped;
   }
@@ -51,7 +49,7 @@ export function resolveSegmentationSilenceMs(
 }
 
 function isNonEmpty(text: string | undefined): text is string {
-  return typeof text === "string" && text.trim().length > 0;
+  return typeof text === 'string' && text.trim().length > 0;
 }
 
 /**
@@ -71,22 +69,17 @@ function makeDiagnostics() {
       const now = Date.now();
       recognizingCount++;
       if (lastRecognizingAt > 0) gaps.push(now - lastRecognizingAt);
-      const gap =
-        lastRecognizingAt > 0 ? ` (+${now - lastRecognizingAt}ms)` : "";
+      const gap = lastRecognizingAt > 0 ? ` (+${now - lastRecognizingAt}ms)` : '';
       lastRecognizingAt = now;
-      console.log(
-        `[AZURE-STT] recognizing #${recognizingCount}${gap} text="${text.slice(0, 80)}"`
-      );
+      console.log(`[AZURE-STT] recognizing #${recognizingCount}${gap} text="${text.slice(0, 80)}"`);
     },
     onFinal(text: string): void {
       if (!AZURE_STT_DEBUG) return;
-      const avg = gaps.length
-        ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length)
-        : 0;
+      const avg = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : 0;
       console.log(
         `[AZURE-STT] recognized final after ${recognizingCount} partial(s)` +
-          `${gaps.length ? ` (avg partial interval ${avg}ms)` : ""}` +
-          ` text="${text.slice(0, 80)}"`
+          `${gaps.length ? ` (avg partial interval ${avg}ms)` : ''}` +
+          ` text="${text.slice(0, 80)}"`,
       );
       recognizingCount = 0;
       gaps.length = 0;
@@ -99,53 +92,43 @@ function makeDiagnostics() {
       if (lastChunkAt > 0) chunkGaps.push(now - lastChunkAt);
       lastChunkAt = now;
       if (chunkCount % 100 === 0) {
-        const avg = Math.round(
-          chunkGaps.reduce((a, b) => a + b, 0) / chunkGaps.length
-        );
-        console.log(
-          `[AZURE-STT] audio chunks=${chunkCount} avgInterval=${avg}ms bytes=${bytes}`
-        );
+        const avg = Math.round(chunkGaps.reduce((a, b) => a + b, 0) / chunkGaps.length);
+        console.log(`[AZURE-STT] audio chunks=${chunkCount} avgInterval=${avg}ms bytes=${bytes}`);
       }
     },
     onStop(): void {
       if (!AZURE_STT_DEBUG || chunkCount === 0) return;
       const sorted = [...chunkGaps].sort((a, b) => a - b);
-      const avg = Math.round(
-        chunkGaps.reduce((a, b) => a + b, 0) / chunkGaps.length
-      );
+      const avg = Math.round(chunkGaps.reduce((a, b) => a + b, 0) / chunkGaps.length);
       console.log(
         `[AZURE-STT] session audio summary: chunks=${chunkCount}` +
           ` avgInterval=${avg}ms` +
           ` p50=${sorted[Math.floor(sorted.length / 2)] ?? 0}ms` +
-          ` max=${sorted[sorted.length - 1] ?? 0}ms`
+          ` max=${sorted[sorted.length - 1] ?? 0}ms`,
       );
     },
   };
 }
 
-export function createAzureSttProvider(
-  key: string,
-  region: string,
-  language: string
-): SttProvider {
+export function createAzureSttProvider(key: string, region: string, language: string): SttProvider {
   let recognizer: sdk.SpeechRecognizer | null = null;
   let pushStream: sdk.PushAudioInputStream | null = null;
   const diag = makeDiagnostics();
 
   return {
-    name: "azure",
+    name: 'azure',
 
     async start(handlers: SttHandlers) {
       const speechConfig = sdk.SpeechConfig.fromSubscription(key, region);
       speechConfig.speechRecognitionLanguage = language;
 
       const segmentationSilenceMs = resolveSegmentationSilenceMs(
-        process.env.AZURE_STT_SEGMENTATION_SILENCE_MS
+        process.env.AZURE_STT_SEGMENTATION_SILENCE_MS,
       );
       if (segmentationSilenceMs !== undefined) {
         speechConfig.setProperty(
           sdk.PropertyId.Speech_SegmentationSilenceTimeoutMs,
-          String(segmentationSilenceMs)
+          String(segmentationSilenceMs),
         );
       }
 
@@ -153,8 +136,8 @@ export function createAzureSttProvider(
         // Startup config visibility for benchmarks. NEVER logs the API key.
         console.log(
           `[AZURE-STT] region="${region}" language="${language}" ` +
-            `endpointId="${speechConfig.endpointId || "(none — standard model)"}" ` +
-            `segmentationSilence=${segmentationSilenceMs ?? "(service default)"}ms`
+            `endpointId="${speechConfig.endpointId || '(none — standard model)'}" ` +
+            `segmentationSilence=${segmentationSilenceMs ?? '(service default)'}ms`,
         );
       }
 
@@ -186,13 +169,11 @@ export function createAzureSttProvider(
       recognizer.canceled = (_sender, event) => {
         const reason = sdk.CancellationReason[event.reason];
         const details =
-          event.errorDetails && event.errorDetails.trim() !== ""
-            ? event.errorDetails.trim()
-            : undefined;
+          event.errorDetails && event.errorDetails.trim() !== '' ? event.errorDetails.trim() : undefined;
         handlers.onError(
           details
             ? `Speech recognition canceled (${reason}): ${details}`
-            : `Speech recognition canceled (${reason}).`
+            : `Speech recognition canceled (${reason}).`,
         );
         // Session ended; close the recognizer so a later start works.
         try {
@@ -210,8 +191,9 @@ export function createAzureSttProvider(
       };
 
       await new Promise<void>((resolve, reject) => {
-        recognizer!.startContinuousRecognitionAsync(() => resolve(), (err) =>
-          reject(err)
+        recognizer!.startContinuousRecognitionAsync(
+          () => resolve(),
+          (err) => reject(err),
         );
       });
     },

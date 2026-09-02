@@ -16,18 +16,18 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { TranslationEvent, TranslationStartResult } from "@shared/index";
-import type { TranslationProvider } from "./provider";
-import { RateLimitError, createTranslationProvider } from "./provider";
-import { parseWindowMs } from "./config";
-import { pipelineTelemetry } from "../telemetry/pipeline-telemetry";
+import type { TranslationEvent, TranslationStartResult } from '@shared/index';
+import type { TranslationProvider } from './provider';
+import { RateLimitError, createTranslationProvider } from './provider';
+import { parseWindowMs } from './config';
+import { pipelineTelemetry } from '../telemetry/pipeline-telemetry';
 
 function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
 }
 
-const DEBUG = process.env.PIPELINE_DEBUG === "1";
+const DEBUG = process.env.PIPELINE_DEBUG === '1';
 const debugT0 = Date.now();
 function log(...args: unknown[]): void {
   if (DEBUG) {
@@ -39,7 +39,7 @@ function log(...args: unknown[]): void {
 /** Default STT-final dedupe window when STT_FINAL_DEDUPE_WINDOW_MS is unset. */
 const DEFAULT_STT_FINAL_DEDUPE_WINDOW_MS = 2000;
 
-export { parseWindowMs } from "./config";
+export { parseWindowMs } from './config';
 
 /**
  * Normalize a final transcript for duplicate comparison only.
@@ -48,7 +48,7 @@ export { parseWindowMs } from "./config";
  * The ORIGINAL text is still used for translation when accepted.
  */
 export function normalizeForDedupe(text: string): string {
-  return text.normalize("NFC").replace(/\s+/g, " ").trim();
+  return text.normalize('NFC').replace(/\s+/g, ' ').trim();
 }
 
 export class TranslationManager {
@@ -70,7 +70,7 @@ export class TranslationManager {
    * text changes or stays absent for longer than the window. 0 disables.
    */
   private readonly dedupeWindowMs: number;
-  private lastFinalKey: string = "";
+  private lastFinalKey: string = '';
   private lastFinalTime: number = 0;
 
   /* ---------------- Incremental (partial-based) translation ----------------
@@ -84,7 +84,7 @@ export class TranslationManager {
   private readonly partialEnabled: boolean;
   private readonly partialMinWords: number;
   private readonly partialStableMs: number;
-  private partialText: string = "";
+  private partialText: string = '';
   private partialChangedAt: number = 0;
   private partialTimer: ReturnType<typeof setTimeout> | null = null;
   /** One interim request per utterance (reset on the next utterance's first partial). */
@@ -92,7 +92,7 @@ export class TranslationManager {
   private interimInFlight: boolean = false;
   /** Set when a final arrives while an interim request is in flight. */
   private interimSuperseded: boolean = false;
-  private lastInterimKey: string = "";
+  private lastInterimKey: string = '';
 
   constructor(dedupeWindowMs?: number) {
     if (dedupeWindowMs !== undefined) {
@@ -100,25 +100,23 @@ export class TranslationManager {
     } else {
       this.dedupeWindowMs = parseWindowMs(
         process.env.STT_FINAL_DEDUPE_WINDOW_MS,
-        "STT_FINAL_DEDUPE_WINDOW_MS",
-        DEFAULT_STT_FINAL_DEDUPE_WINDOW_MS
+        'STT_FINAL_DEDUPE_WINDOW_MS',
+        DEFAULT_STT_FINAL_DEDUPE_WINDOW_MS,
       );
     }
 
-    const enabledRaw = (process.env.PARTIAL_TRANSLATION_ENABLED ?? "true")
-      .trim()
-      .toLowerCase();
-    this.partialEnabled = enabledRaw !== "false" && enabledRaw !== "0";
+    const enabledRaw = (process.env.PARTIAL_TRANSLATION_ENABLED ?? 'true').trim().toLowerCase();
+    this.partialEnabled = enabledRaw !== 'false' && enabledRaw !== '0';
 
     this.partialMinWords = parseWindowMs(
       process.env.PARTIAL_TRANSLATION_MIN_WORDS,
-      "PARTIAL_TRANSLATION_MIN_WORDS",
-      4
+      'PARTIAL_TRANSLATION_MIN_WORDS',
+      4,
     );
     this.partialStableMs = parseWindowMs(
       process.env.PARTIAL_TRANSLATION_STABLE_MS,
-      "PARTIAL_TRANSLATION_STABLE_MS",
-      700
+      'PARTIAL_TRANSLATION_STABLE_MS',
+      700,
     );
   }
 
@@ -126,11 +124,9 @@ export class TranslationManager {
     return this.active;
   }
 
-  async start(
-    emit: (event: TranslationEvent) => void
-  ): Promise<TranslationStartResult> {
+  async start(emit: (event: TranslationEvent) => void): Promise<TranslationStartResult> {
     if (this.active) {
-      return { ok: false, message: "Translation is already running." };
+      return { ok: false, message: 'Translation is already running.' };
     }
 
     const provider = await createTranslationProvider();
@@ -138,7 +134,7 @@ export class TranslationManager {
       return {
         ok: false,
         message:
-          "No translation provider configured. Set TRANSLATION_PROVIDER=azure, mymemory, or mock in .env.",
+          'No translation provider configured. Set TRANSLATION_PROVIDER=azure, mymemory, or mock in .env.',
       };
     }
 
@@ -148,24 +144,24 @@ export class TranslationManager {
     this.processing = false;
     this.pendingTexts = [];
     this.pendingCount = 0;
-    this.lastFinalKey = "";
+    this.lastFinalKey = '';
     this.lastFinalTime = 0;
     this.clearPartialTimer();
-    this.partialText = "";
+    this.partialText = '';
     this.partialChangedAt = 0;
     this.interimUsedForUtterance = false;
     this.interimInFlight = false;
     this.interimSuperseded = false;
-    this.lastInterimKey = "";
+    this.lastInterimKey = '';
 
-    emit({ type: "translation:started", provider: provider.name });
+    emit({ type: 'translation:started', provider: provider.name });
     return { ok: true, provider: provider.name };
   }
 
   onSttText(text: string, isFinal: boolean): void {
-    if (isFinal) log("onSttText final:", text);
+    if (isFinal) log('onSttText final:', text);
     if (!this.active) {
-      log("onSttText IGNORED — not active:", text);
+      log('onSttText IGNORED — not active:', text);
       return;
     }
     if (!isFinal) {
@@ -176,11 +172,11 @@ export class TranslationManager {
     // A final supersedes any in-flight interim request: its result will be
     // dropped when it lands, and the final path below stays authoritative.
     if (this.interimInFlight) {
-      log("final arrived — superseding in-flight interim request");
+      log('final arrived — superseding in-flight interim request');
       this.interimSuperseded = true;
     }
     this.clearPartialTimer();
-    this.partialText = "";
+    this.partialText = '';
     this.partialChangedAt = 0;
 
     // Upstream dedupe: suppress identical consecutive finals before any
@@ -188,14 +184,8 @@ export class TranslationManager {
     if (this.dedupeWindowMs > 0) {
       const key = normalizeForDedupe(text);
       const now = Date.now();
-      if (
-        key === this.lastFinalKey &&
-        now - this.lastFinalTime < this.dedupeWindowMs
-      ) {
-        log(
-          `DEDUPED final (within ${this.dedupeWindowMs}ms):`,
-          text
-        );
+      if (key === this.lastFinalKey && now - this.lastFinalTime < this.dedupeWindowMs) {
+        log(`DEDUPED final (within ${this.dedupeWindowMs}ms):`, text);
         this.lastFinalTime = now;
         pipelineTelemetry.markSttDeduped();
         return;
@@ -268,7 +258,7 @@ export class TranslationManager {
       return;
     }
     const key = normalizeForDedupe(text);
-    if (key === "" || key === this.lastInterimKey) {
+    if (key === '' || key === this.lastInterimKey) {
       return; // unchanged / already translated
     }
 
@@ -282,18 +272,18 @@ export class TranslationManager {
     const provider = this.provider;
     const emit = this.emit;
     try {
-      log("interim translate:", text);
+      log('interim translate:', text);
       const english = await provider!.translate(text);
-      log("interim result:", english);
+      log('interim result:', english);
       if (this.active && this.emit === emit && !this.interimSuperseded) {
-        emit?.({ type: "translation:text", urdu: text, english, interim: true });
+        emit?.({ type: 'translation:text', urdu: text, english, interim: true });
       } else {
-        log("interim result dropped (superseded/inactive)");
+        log('interim result dropped (superseded/inactive)');
       }
     } catch (err) {
       // Interim failures are silent by design: the final path reports errors
       // and retries nothing. Rate-limit cooldowns inside providers still run.
-      log("interim translate failed:", errMessage(err));
+      log('interim translate failed:', errMessage(err));
     } finally {
       this.interimInFlight = false;
       this.interimSuperseded = false;
@@ -307,15 +297,15 @@ export class TranslationManager {
     this.processing = false;
     this.pendingTexts = [];
     this.pendingCount = 0;
-    this.lastFinalKey = "";
+    this.lastFinalKey = '';
     this.lastFinalTime = 0;
     this.clearPartialTimer();
-    this.partialText = "";
+    this.partialText = '';
     this.partialChangedAt = 0;
     this.interimUsedForUtterance = false;
     this.interimInFlight = false;
     this.interimSuperseded = false;
-    this.lastInterimKey = "";
+    this.lastInterimKey = '';
     pipelineTelemetry.resetPipeline();
   }
 
@@ -336,29 +326,29 @@ export class TranslationManager {
       try {
         pipelineTelemetry.beginTranslation();
         const english = await provider.translate(text);
-        log("translate result:", english);
+        log('translate result:', english);
         pipelineTelemetry.endTranslationSuccess(english);
         if (this.active && this.emit === emit) {
-          emit({ type: "translation:text", urdu: text, english });
+          emit({ type: 'translation:text', urdu: text, english });
         }
       } catch (err) {
         if (err instanceof RateLimitError) {
           // Provider is rate-limited. Surface a concise user-facing state;
           // the failed item is DROPPED (not queued/retried), so cooldown
           // expiry never replays stale transcripts.
-          log("rate-limited:", errMessage(err));
+          log('rate-limited:', errMessage(err));
           pipelineTelemetry.endTranslationRateLimited();
           if (this.active && this.emit === emit) {
             emit({
-              type: "translation:rate-limited",
-              message: "Translation temporarily rate-limited",
+              type: 'translation:rate-limited',
+              message: 'Translation temporarily rate-limited',
             });
           }
         } else {
-          log("translate ERROR:", errMessage(err));
+          log('translate ERROR:', errMessage(err));
           pipelineTelemetry.endTranslationError();
           if (this.active && this.emit === emit) {
-            emit({ type: "translation:error", message: errMessage(err) });
+            emit({ type: 'translation:error', message: errMessage(err) });
           }
         }
       }

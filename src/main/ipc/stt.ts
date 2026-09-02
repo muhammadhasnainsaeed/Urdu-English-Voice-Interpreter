@@ -16,9 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ipcMain, BrowserWindow } from "electron";
-import type { SttEvent } from "@shared/index";
-import { sttSession } from "../services/stt/manager";
+import { ipcMain, BrowserWindow } from 'electron';
+import type { SttEvent } from '@shared/index';
+import { sttSession } from '../services/stt/manager';
 
 function toArrayBuffer(data: unknown): ArrayBuffer | null {
   if (data instanceof ArrayBuffer) {
@@ -26,37 +26,34 @@ function toArrayBuffer(data: unknown): ArrayBuffer | null {
   }
   if (ArrayBuffer.isView(data)) {
     const view = data as ArrayBufferView;
-    return view.buffer.slice(
-      view.byteOffset,
-      view.byteOffset + view.byteLength
-    ) as ArrayBuffer;
+    return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength) as ArrayBuffer;
   }
   return null;
 }
 
 export function registerSttIpc(
   getWindow: () => BrowserWindow | null,
-  onSttText?: (text: string, isFinal: boolean) => void
+  onSttText?: (text: string, isFinal: boolean) => void,
 ) {
   const emit = (event: SttEvent) => {
     const win = getWindow();
     if (win && !win.isDestroyed()) {
-      win.webContents.send("stt:event", event);
+      win.webContents.send('stt:event', event);
     }
     if (onSttText) {
-      if (event.type === "partial") onSttText(event.text, false);
-      else if (event.type === "final") onSttText(event.text, true);
+      if (event.type === 'partial') onSttText(event.text, false);
+      else if (event.type === 'final') onSttText(event.text, true);
     }
   };
 
-  ipcMain.handle("stt:start", () => sttSession.start(emit));
+  ipcMain.handle('stt:start', () => sttSession.start(emit));
 
-  ipcMain.on("stt:audio-data", (_event, data: unknown) => {
+  ipcMain.on('stt:audio-data', (_event, data: unknown) => {
     const buffer = toArrayBuffer(data);
     if (buffer && buffer.byteLength > 0) {
       sttSession.pushAudio(buffer);
     }
   });
 
-  ipcMain.handle("stt:stop", () => sttSession.stop());
+  ipcMain.handle('stt:stop', () => sttSession.stop());
 }

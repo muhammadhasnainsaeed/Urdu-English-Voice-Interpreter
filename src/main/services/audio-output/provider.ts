@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { AudioChunk } from "@shared/index";
+import type { AudioChunk } from '@shared/index';
 
 export interface AudioOutputProvider {
   readonly name: string;

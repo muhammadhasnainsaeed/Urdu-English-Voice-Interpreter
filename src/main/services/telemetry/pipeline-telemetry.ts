@@ -18,13 +18,12 @@
 
 import type {
   PipelineEvent,
-  PipelinePhaseAverages,
   PipelineSummary,
   PlaybackTelemetryEvent,
   UtteranceOutcome,
   UtteranceLatencyBreakdown,
   UtteranceTraceReport,
-} from "@shared/index";
+} from '@shared/index';
 
 /**
  * Development-only pipeline latency instrumentation.
@@ -58,7 +57,7 @@ interface Trace {
   english?: string;
   /** STT partial (recognizing) events observed for this utterance. */
   sttPartialCount?: number;
-  t: UtteranceTraceReport["t"];
+  t: UtteranceTraceReport['t'];
   /** Earliest interim (partial-based) playback start, when one occurred. */
   interimFirstAudioAt?: number | null;
 }
@@ -83,7 +82,7 @@ function emptyBreakdown(): UtteranceLatencyBreakdown {
 export class PipelineTelemetry {
   private nowFn: () => number;
   private nextId = 1;
-  private enabled = process.env.PIPELINE_DEBUG === "1";
+  private enabled = process.env.PIPELINE_DEBUG === '1';
 
   /** Rolling window of completed end-to-end latencies. */
   private e2eWindow: number[] = [];
@@ -162,7 +161,7 @@ export class PipelineTelemetry {
   }
 
   private debug(...args: unknown[]): void {
-    if (this.enabled) console.log("[TELEMETRY]", ...args);
+    if (this.enabled) console.log('[TELEMETRY]', ...args);
   }
 
   /* ------------------------- STT intake ------------------------- */
@@ -179,7 +178,7 @@ export class PipelineTelemetry {
         interimFirstAudioAt: null,
         partialCount: 0,
       };
-      this.debug("speechStart");
+      this.debug('speechStart');
     }
   }
 
@@ -200,7 +199,7 @@ export class PipelineTelemetry {
     this.intake.partialCount++;
     if (this.intake.firstPartialAt === null) {
       this.intake.firstPartialAt = ts;
-      this.debug("firstPartial");
+      this.debug('firstPartial');
     }
   }
 
@@ -218,13 +217,12 @@ export class PipelineTelemetry {
 
     // Adopt any interim playback observed in the race window between the
     // final closing the intake and this trace being created.
-    const interimFirstAudioAt =
-      intake.interimFirstAudioAt ?? this.pendingInterimFirstAudioAt;
+    const interimFirstAudioAt = intake.interimFirstAudioAt ?? this.pendingInterimFirstAudioAt;
     this.pendingInterimFirstAudioAt = null;
 
     const trace: Trace = {
       id: this.nextId++,
-      outcome: "incomplete",
+      outcome: 'incomplete',
       speechStartApprox: intake.speechStartApprox,
       urdu,
       sttPartialCount: intake.partialCount,
@@ -253,13 +251,13 @@ export class PipelineTelemetry {
    */
   markSttDeduped(): void {
     const trace = this.awaitingTranslation.pop();
-    if (trace) this.finalize(trace, "stt-deduped");
+    if (trace) this.finalize(trace, 'stt-deduped');
   }
 
   /** A queued final was dropped by translation backpressure (oldest first). */
   markBackpressureDropped(): void {
     const trace = this.awaitingTranslation.shift();
-    if (trace) this.finalize(trace, "backpressure-dropped");
+    if (trace) this.finalize(trace, 'backpressure-dropped');
   }
 
   /* ----------------------- Translation ----------------------- */
@@ -283,13 +281,13 @@ export class PipelineTelemetry {
   endTranslationRateLimited(): void {
     const trace = this.inFlightTranslation;
     this.inFlightTranslation = null;
-    if (trace) this.finalize(trace, "rate-limited");
+    if (trace) this.finalize(trace, 'rate-limited');
   }
 
   endTranslationError(): void {
     const trace = this.inFlightTranslation;
     this.inFlightTranslation = null;
-    if (trace) this.finalize(trace, "translation-failed");
+    if (trace) this.finalize(trace, 'translation-failed');
   }
 
   /* --------------------------- TTS --------------------------- */
@@ -297,7 +295,7 @@ export class PipelineTelemetry {
   /** TTS dedupe suppressed this text before synthesis. */
   markTtsSuppressed(): void {
     const trace = this.awaitingTts.shift();
-    if (trace) this.finalize(trace, "tts-suppressed");
+    if (trace) this.finalize(trace, 'tts-suppressed');
   }
 
   /**
@@ -311,7 +309,7 @@ export class PipelineTelemetry {
     if (trace) {
       this.awaitingAudioOut = this.awaitingAudioOut.filter((item) => item !== trace);
       if (this.inFlightAudioOut === trace) this.inFlightAudioOut = null;
-      this.finalize(trace, "tts-interrupted");
+      this.finalize(trace, 'tts-interrupted');
     }
   }
 
@@ -349,7 +347,7 @@ export class PipelineTelemetry {
     if (trace) {
       this.awaitingAudioOut = this.awaitingAudioOut.filter((item) => item !== trace);
       if (this.inFlightAudioOut === trace) this.inFlightAudioOut = null;
-      this.finalize(trace, "tts-failed");
+      this.finalize(trace, 'tts-failed');
     }
   }
 
@@ -365,11 +363,11 @@ export class PipelineTelemetry {
     if (this.intake) {
       if (this.intake.interimFirstAudioAt === null) {
         this.intake.interimFirstAudioAt = ts;
-        this.debug("interimFirstAudio");
+        this.debug('interimFirstAudio');
       }
     } else if (this.pendingInterimFirstAudioAt === null) {
       this.pendingInterimFirstAudioAt = ts;
-      this.debug("interimFirstAudio (pending)");
+      this.debug('interimFirstAudio (pending)');
     }
   }
 
@@ -377,12 +375,12 @@ export class PipelineTelemetry {
     // Interim chunks carry playbackId 0 — they must never consume a FIFO
     // trace slot; their start timestamp feeds the true First-Audio metric.
     if (event.playbackId === 0) {
-      if (event.event === "start") {
+      if (event.event === 'start') {
         this.markInterimAudioReady();
       }
       return;
     }
-    if (event.event === "start") {
+    if (event.event === 'start') {
       const trace = this.awaitingAudioOut.shift() ?? this.inFlightAudioOut;
       if (!trace) return;
       this.inFlightAudioOut = trace;
@@ -392,7 +390,7 @@ export class PipelineTelemetry {
       if (!trace) return;
       this.inFlightAudioOut = null;
       trace.t.audioOutputComplete = this.now();
-      this.finalize(trace, "completed");
+      this.finalize(trace, 'completed');
     }
   }
 
@@ -425,8 +423,7 @@ export class PipelineTelemetry {
   }
 
   getSummary(): PipelineSummary {
-    const avg = (sum: number, count: number): number | null =>
-      count > 0 ? Math.round(sum / count) : null;
+    const avg = (sum: number, count: number): number | null => (count > 0 ? Math.round(sum / count) : null);
     return {
       windowSize: this.e2eWindow.length,
       windowCap: WINDOW_CAP,
@@ -435,56 +432,32 @@ export class PipelineTelemetry {
         lastMs: this.lastE2E,
         avgMs:
           this.e2eWindow.length > 0
-            ? Math.round(
-                this.e2eWindow.reduce((a, b) => a + b, 0) /
-                  this.e2eWindow.length
-              )
+            ? Math.round(this.e2eWindow.reduce((a, b) => a + b, 0) / this.e2eWindow.length)
             : null,
         minMs: this.e2eWindow.length > 0 ? Math.min(...this.e2eWindow) : null,
         maxMs: this.e2eWindow.length > 0 ? Math.max(...this.e2eWindow) : null,
       },
       phaseAvg: {
-        sttFirstPartialMs: avg(
-          this.phaseSums.sttFirstPartialMs,
-          this.phaseCounts.sttFirstPartialMs
-        ),
+        sttFirstPartialMs: avg(this.phaseSums.sttFirstPartialMs, this.phaseCounts.sttFirstPartialMs),
         sttFinalMs: avg(this.phaseSums.sttFinalMs, this.phaseCounts.sttFinalMs),
-        translationMs: avg(
-          this.phaseSums.translationMs,
-          this.phaseCounts.translationMs
-        ),
+        translationMs: avg(this.phaseSums.translationMs, this.phaseCounts.translationMs),
         ttsMs: avg(this.phaseSums.ttsMs, this.phaseCounts.ttsMs),
-        ttsFirstChunkMs: avg(
-          this.phaseSums.ttsFirstChunkMs,
-          this.phaseCounts.ttsFirstChunkMs
-        ),
+        ttsFirstChunkMs: avg(this.phaseSums.ttsFirstChunkMs, this.phaseCounts.ttsFirstChunkMs),
         audioOutputMs:
           this.phaseCounts.audioOutputMs > 0
-            ? Math.round(
-                (this.phaseSums.audioOutputMs ?? 0) /
-                  this.phaseCounts.audioOutputMs
-              )
+            ? Math.round((this.phaseSums.audioOutputMs ?? 0) / this.phaseCounts.audioOutputMs)
             : null,
         sttFinalToTranslationMs: avg(
           this.phaseSums.sttFinalToTranslationMs,
-          this.phaseCounts.sttFinalToTranslationMs
+          this.phaseCounts.sttFinalToTranslationMs,
         ),
         translationToTtsReadyMs: avg(
           this.phaseSums.translationToTtsReadyMs,
-          this.phaseCounts.translationToTtsReadyMs
+          this.phaseCounts.translationToTtsReadyMs,
         ),
-        ttsReadyToAudioOutMs: avg(
-          this.phaseSums.ttsReadyToAudioOutMs,
-          this.phaseCounts.ttsReadyToAudioOutMs
-        ),
-        firstAudioMs: avg(
-          this.phaseSums.firstAudioMs,
-          this.phaseCounts.firstAudioMs
-        ),
-        interimFirstAudioMs: avg(
-          this.phaseSums.interimFirstAudioMs,
-          this.phaseCounts.interimFirstAudioMs
-        ),
+        ttsReadyToAudioOutMs: avg(this.phaseSums.ttsReadyToAudioOutMs, this.phaseCounts.ttsReadyToAudioOutMs),
+        firstAudioMs: avg(this.phaseSums.firstAudioMs, this.phaseCounts.firstAudioMs),
+        interimFirstAudioMs: avg(this.phaseSums.interimFirstAudioMs, this.phaseCounts.interimFirstAudioMs),
       },
     };
   }
@@ -551,27 +524,23 @@ export class PipelineTelemetry {
     if (this.e2eWindow.length > WINDOW_CAP) this.e2eWindow.shift();
     this.totalCompleted++;
     this.lastE2E = ms.endToEndMs;
-    const add = (
-      key: keyof Omit<typeof this.phaseSums, "audioOutputMs">,
-      value: number | null
-    ) => {
+    const add = (key: keyof Omit<typeof this.phaseSums, 'audioOutputMs'>, value: number | null) => {
       if (value === null) return;
       this.phaseSums[key] += value;
       this.phaseCounts[key]++;
     };
-    add("sttFirstPartialMs", ms.sttFirstPartialMs);
-    add("sttFinalMs", ms.sttFinalMs);
-    add("translationMs", ms.translationMs);
-    add("ttsMs", ms.ttsMs);
-    add("ttsFirstChunkMs", ms.ttsFirstChunkMs);
-    add("sttFinalToTranslationMs", ms.sttFinalToTranslationMs);
-    add("translationToTtsReadyMs", ms.translationToTtsReadyMs);
-    add("ttsReadyToAudioOutMs", ms.ttsReadyToAudioOutMs);
-    add("firstAudioMs", ms.firstAudioMs);
-    add("interimFirstAudioMs", ms.interimFirstAudioMs);
+    add('sttFirstPartialMs', ms.sttFirstPartialMs);
+    add('sttFinalMs', ms.sttFinalMs);
+    add('translationMs', ms.translationMs);
+    add('ttsMs', ms.ttsMs);
+    add('ttsFirstChunkMs', ms.ttsFirstChunkMs);
+    add('sttFinalToTranslationMs', ms.sttFinalToTranslationMs);
+    add('translationToTtsReadyMs', ms.translationToTtsReadyMs);
+    add('ttsReadyToAudioOutMs', ms.ttsReadyToAudioOutMs);
+    add('firstAudioMs', ms.firstAudioMs);
+    add('interimFirstAudioMs', ms.interimFirstAudioMs);
     if (ms.audioOutputMs !== null) {
-      this.phaseSums.audioOutputMs =
-        (this.phaseSums.audioOutputMs ?? 0) + ms.audioOutputMs;
+      this.phaseSums.audioOutputMs = (this.phaseSums.audioOutputMs ?? 0) + ms.audioOutputMs;
       this.phaseCounts.audioOutputMs++;
     }
   }
@@ -579,7 +548,7 @@ export class PipelineTelemetry {
   private toReport(
     trace: Trace,
     outcome: UtteranceOutcome,
-    ms: UtteranceLatencyBreakdown
+    ms: UtteranceLatencyBreakdown,
   ): UtteranceTraceReport {
     return {
       id: trace.id,
@@ -596,28 +565,26 @@ export class PipelineTelemetry {
   private finalize(trace: Trace, outcome: UtteranceOutcome): void {
     trace.outcome = outcome;
     const ms = this.computeBreakdown(trace);
-    if (outcome === "completed") {
+    if (outcome === 'completed') {
       this.accumulate(trace, ms);
     }
     this.debug(
       `#${trace.id} ${outcome}` +
-        ` e2e=${ms.endToEndMs ?? "-"}ms` +
-        ` firstAudio=${ms.firstAudioMs ?? "-"}ms` +
-        (ms.interimFirstAudioMs !== null
-          ? ` (interim@${ms.interimFirstAudioMs}ms)`
-          : "") +
-        ` firstPartial=${ms.sttFirstPartialMs ?? "-"}ms` +
-        ` sttFinal=${ms.sttFinalMs ?? "-"}ms` +
-        ` partials=${trace.sttPartialCount ?? "-"}` +
-        ` translation=${ms.translationMs ?? "-"}ms` +
-        ` tts=${ms.ttsMs ?? "-"}ms` +
-        ` audioOut=${ms.audioOutputMs ?? "-"}ms` +
-        ` finalToTrans=${ms.sttFinalToTranslationMs ?? "-"}ms` +
-        ` transToReady=${ms.translationToTtsReadyMs ?? "-"}ms` +
-        ` readyToPlay=${ms.ttsReadyToAudioOutMs ?? "-"}ms`
+        ` e2e=${ms.endToEndMs ?? '-'}ms` +
+        ` firstAudio=${ms.firstAudioMs ?? '-'}ms` +
+        (ms.interimFirstAudioMs !== null ? ` (interim@${ms.interimFirstAudioMs}ms)` : '') +
+        ` firstPartial=${ms.sttFirstPartialMs ?? '-'}ms` +
+        ` sttFinal=${ms.sttFinalMs ?? '-'}ms` +
+        ` partials=${trace.sttPartialCount ?? '-'}` +
+        ` translation=${ms.translationMs ?? '-'}ms` +
+        ` tts=${ms.ttsMs ?? '-'}ms` +
+        ` audioOut=${ms.audioOutputMs ?? '-'}ms` +
+        ` finalToTrans=${ms.sttFinalToTranslationMs ?? '-'}ms` +
+        ` transToReady=${ms.translationToTtsReadyMs ?? '-'}ms` +
+        ` readyToPlay=${ms.ttsReadyToAudioOutMs ?? '-'}ms`,
     );
-    this.emit({ type: "pipeline:utterance", utterance: this.toReport(trace, outcome, ms) });
-    this.emit({ type: "pipeline:summary", summary: this.getSummary() });
+    this.emit({ type: 'pipeline:utterance', utterance: this.toReport(trace, outcome, ms) });
+    this.emit({ type: 'pipeline:summary', summary: this.getSummary() });
   }
 }
 

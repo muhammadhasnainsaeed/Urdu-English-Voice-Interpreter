@@ -124,8 +124,13 @@ Complete. See `docs/CURRENT_STATE.md`.
 npm install       # install dependencies
 npm run type-check   # TypeScript type checking (tsc --noEmit)
 npm run build        # esbuild bundle (main, preload, renderer) -> dist/
+npm run dev          # watch build + Electron with auto-restart on main/preload changes
 npm start            # build + launch Electron
-npm run watch        # esbuild watch mode
+npm run watch        # esbuild watch mode (rebuild only, no relaunch)
+npm run lint         # ESLint (flat config, eslint.config.mjs)
+npm run lint:fix     # ESLint with --fix
+npm run format       # Prettier --write (src, scripts, tests, packages, configs)
+npm run format:check # Prettier --check (CI-friendly)
 npm run package      # production .app + DMG (electron-builder, macOS arm64) -> dist_electron/
 npm run package:dir  # production .app only (no DMG)
 ```
@@ -139,6 +144,7 @@ Production packaging secrets rule: NEVER add `.env` or credentials to
 Before declaring a milestone complete:
 
 - `npm run type-check` passes with no errors
+- `npm run lint` passes with no errors
 - `npm run build` succeeds and `dist/renderer/index.html` exists
 - The Electron app launches and the React UI loads
 - The preload bridge (`window.electron`) is exercised without errors

@@ -16,13 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React from "react";
-import { usePipelineStats } from "../services/usePipelineStats";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Badge } from "./ui/badge";
+import React from 'react';
+import { usePipelineStats } from '../services/usePipelineStats';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Badge } from './ui/badge';
 
 function fmt(ms: number | null): string {
-  if (ms === null || ms === undefined) return "—";
+  if (ms === null || ms === undefined) return '—';
   if (ms < 1000) return `${Math.round(ms)} ms`;
   return `${(ms / 1000).toFixed(2)} s`;
 }
@@ -46,9 +46,7 @@ export default function PipelinePanel({ currentStage }: PipelinePanelProps) {
   const ms = lastUtterance?.ms;
   const e2e = summary?.e2e;
   const outcomeLabel =
-    lastUtterance?.outcome === "completed"
-      ? null
-      : lastUtterance?.outcome.replace(/-/g, " ");
+    lastUtterance?.outcome === 'completed' ? null : lastUtterance?.outcome.replace(/-/g, ' ');
 
   const row = (label: string, value: string, highlight = false) => (
     <tr>
@@ -56,8 +54,8 @@ export default function PipelinePanel({ currentStage }: PipelinePanelProps) {
       <td
         className={
           highlight
-            ? "py-0.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400"
-            : "py-0.5 text-right tabular-nums text-foreground"
+            ? 'py-0.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400'
+            : 'py-0.5 text-right tabular-nums text-foreground'
         }
       >
         {value}
@@ -75,25 +73,25 @@ export default function PipelinePanel({ currentStage }: PipelinePanelProps) {
       <CardContent className="flex flex-col gap-2 p-4 pt-0">
         <table className="w-full border-collapse">
           <tbody className="text-xs">
-            {row("STT First Partial", fmt(ms?.sttFirstPartialMs ?? null))}
-            {row("STT Final", fmt(ms?.sttFinalMs ?? null))}
+            {row('STT First Partial', fmt(ms?.sttFirstPartialMs ?? null))}
+            {row('STT Final', fmt(ms?.sttFinalMs ?? null))}
             {row(
-              "STT Partials",
+              'STT Partials',
               lastUtterance?.sttPartialCount !== undefined
                 ? `${lastUtterance.sttPartialCount} event(s)`
-                : "—"
+                : '—',
             )}
-            {row("Translation", fmt(ms?.translationMs ?? null))}
-            {row("TTS", fmt(ms?.ttsMs ?? null))}
-            {row("TTS First Chunk", fmt(ms?.ttsFirstChunkMs ?? null))}
-            {row("Audio Output", fmt(ms?.audioOutputMs ?? null))}
+            {row('Translation', fmt(ms?.translationMs ?? null))}
+            {row('TTS', fmt(ms?.ttsMs ?? null))}
+            {row('TTS First Chunk', fmt(ms?.ttsFirstChunkMs ?? null))}
+            {row('Audio Output', fmt(ms?.audioOutputMs ?? null))}
             <tr>
               <td colSpan={2}>
                 <div className="my-2 h-px bg-border" />
               </td>
             </tr>
-            {row("First Audio", fmt(ms?.firstAudioMs ?? null), true)}
-            {row("End-to-End", fmt(e2e?.lastMs ?? null), true)}
+            {row('First Audio', fmt(ms?.firstAudioMs ?? null), true)}
+            {row('End-to-End', fmt(e2e?.lastMs ?? null), true)}
           </tbody>
         </table>
 
@@ -111,9 +109,9 @@ export default function PipelinePanel({ currentStage }: PipelinePanelProps) {
 
         <div className="text-[10px] text-muted-foreground/70">
           window {summary?.windowSize ?? 0}/{summary?.windowCap ?? 20}
-          {" · "}completed {summary?.completedCount ?? 0}
-          {outcomeLabel ? ` · last: ${outcomeLabel}` : ""}
-          {lastUtterance?.speechStartApprox ? " · speech start approximated" : ""}
+          {' · '}completed {summary?.completedCount ?? 0}
+          {outcomeLabel ? ` · last: ${outcomeLabel}` : ''}
+          {lastUtterance?.speechStartApprox ? ' · speech start approximated' : ''}
         </div>
       </CardContent>
     </Card>

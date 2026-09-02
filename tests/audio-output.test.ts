@@ -26,8 +26,8 @@
  * fake BrowserWindow — no real audio output.
  */
 
-import { AudioOutputManager, detectBlackHole } from "../src/main/services/audio-output/manager";
-import type { AudioChunk, AudioOutputEvent } from "../packages/shared/index";
+import { AudioOutputManager, detectBlackHole } from '../src/main/services/audio-output/manager';
+import type { AudioChunk, AudioOutputEvent } from '../packages/shared/index';
 
 /* ------------------------------------------------------------------ */
 /*  Mock AudioOutputProvider                                           */
@@ -39,13 +39,23 @@ function createMockProvider() {
   let stopped = false;
 
   return {
-    name: "mock-speaker",
+    name: 'mock-speaker',
     written,
-    get started() { return started; },
-    get stopped() { return stopped; },
-    async start(): Promise<void> { started = true; },
-    async writeAudio(chunk: AudioChunk): Promise<void> { written.push(chunk); },
-    async stop(): Promise<void> { stopped = true; },
+    get started() {
+      return started;
+    },
+    get stopped() {
+      return stopped;
+    },
+    async start(): Promise<void> {
+      started = true;
+    },
+    async writeAudio(chunk: AudioChunk): Promise<void> {
+      written.push(chunk);
+    },
+    async stop(): Promise<void> {
+      stopped = true;
+    },
   };
 }
 
@@ -59,7 +69,9 @@ function createMockWindow() {
     sent,
     isDestroyed: () => false,
     webContents: {
-      send: (channel: string, data: unknown) => { sent.push({ channel, data }); },
+      send: (channel: string, data: unknown) => {
+        sent.push({ channel, data });
+      },
     },
   };
 }
@@ -97,12 +109,12 @@ async function runTests(cases: TestCase[]) {
     }
   }
 
-  console.log("\n--- Summary ---");
+  console.log('\n--- Summary ---');
   const passed = results.filter((r) => r.pass).length;
   const failed = results.length - passed;
   console.log(`${passed} passed, ${failed} failed, ${results.length} total`);
   if (failed > 0) {
-    console.log("\nFailed:");
+    console.log('\nFailed:');
     for (const r of results.filter((r) => !r.pass)) {
       console.log(`  ✗ ${r.name}: ${r.reason}`);
     }
@@ -118,21 +130,21 @@ async function runTests(cases: TestCase[]) {
 const tests: TestCase[] = [
   // --- A ---
   {
-    name: "A: New manager starts inactive",
+    name: 'A: New manager starts inactive',
     fn: () => {
       const mgr = new AudioOutputManager();
-      if (mgr.isActive) throw new Error("Expected isActive=false on new manager");
-      if (mgr.selectedDeviceId !== null) throw new Error("Expected selectedDeviceId=null on new manager");
+      if (mgr.isActive) throw new Error('Expected isActive=false on new manager');
+      if (mgr.selectedDeviceId !== null) throw new Error('Expected selectedDeviceId=null on new manager');
     },
   },
 
   // --- B ---
   {
-    name: "B: selectDevice stores the device ID",
+    name: 'B: selectDevice stores the device ID',
     fn: () => {
       const mgr = new AudioOutputManager();
-      mgr.selectDevice("test-device");
-      if (mgr.selectedDeviceId !== "test-device") {
+      mgr.selectDevice('test-device');
+      if (mgr.selectedDeviceId !== 'test-device') {
         throw new Error(`Expected selectedDeviceId="test-device", got "${mgr.selectedDeviceId}"`);
       }
     },
@@ -140,21 +152,22 @@ const tests: TestCase[] = [
 
   // --- C ---
   {
-    name: "C: getAvailableDevices always includes System Default",
+    name: 'C: getAvailableDevices always includes System Default',
     fn: () => {
       const mgr = new AudioOutputManager();
       const devices = mgr.getAvailableDevices();
-      if (devices.length < 1) throw new Error("Expected at least 1 device");
-      const def = devices.find((d) => d.id === "default");
+      if (devices.length < 1) throw new Error('Expected at least 1 device');
+      const def = devices.find((d) => d.id === 'default');
       if (!def) throw new Error("Expected 'default' device in list");
-      if (!def.isDefault) throw new Error("Expected default device to have isDefault=true");
-      if (def.label !== "System Default") throw new Error(`Expected label "System Default", got "${def.label}"`);
+      if (!def.isDefault) throw new Error('Expected default device to have isDefault=true');
+      if (def.label !== 'System Default')
+        throw new Error(`Expected label "System Default", got "${def.label}"`);
     },
   },
 
   // --- D ---
   {
-    name: "D: start() makes isActive true and emits started event",
+    name: 'D: start() makes isActive true and emits started event',
     fn: async () => {
       const mgr = new AudioOutputManager();
       const events: AudioOutputEvent[] = [];
@@ -164,41 +177,50 @@ const tests: TestCase[] = [
         () => win as never,
       );
       if (!result.ok) throw new Error(`start() failed: ${result.message}`);
-      if (!mgr.isActive) throw new Error("Expected isActive=true after start");
-      const started = events.find((e) => e.type === "audio-output:started");
-      if (!started) throw new Error("Expected audio-output:started event");
+      if (!mgr.isActive) throw new Error('Expected isActive=true after start');
+      const started = events.find((e) => e.type === 'audio-output:started');
+      if (!started) throw new Error('Expected audio-output:started event');
       mgr.stop();
     },
   },
 
   // --- E ---
   {
-    name: "E: start() twice returns ok=false",
+    name: 'E: start() twice returns ok=false',
     fn: async () => {
       const mgr = new AudioOutputManager();
       const win = createMockWindow();
-      await mgr.start(() => {}, () => win as never);
-      const result = await mgr.start(() => {}, () => win as never);
-      if (result.ok) throw new Error("Expected start() to fail on second call");
+      await mgr.start(
+        () => {},
+        () => win as never,
+      );
+      const result = await mgr.start(
+        () => {},
+        () => win as never,
+      );
+      if (result.ok) throw new Error('Expected start() to fail on second call');
       mgr.stop();
     },
   },
 
   // --- F ---
   {
-    name: "F: stop() makes isActive false",
+    name: 'F: stop() makes isActive false',
     fn: async () => {
       const mgr = new AudioOutputManager();
       const win = createMockWindow();
-      await mgr.start(() => {}, () => win as never);
+      await mgr.start(
+        () => {},
+        () => win as never,
+      );
       mgr.stop();
-      if (mgr.isActive) throw new Error("Expected isActive=false after stop");
+      if (mgr.isActive) throw new Error('Expected isActive=false after stop');
     },
   },
 
   // --- G ---
   {
-    name: "G: writeAudio is a no-op when not active",
+    name: 'G: writeAudio is a no-op when not active',
     fn: async () => {
       const mgr = new AudioOutputManager();
       // Should not throw
@@ -211,11 +233,14 @@ const tests: TestCase[] = [
 
   // --- H ---
   {
-    name: "H: writeAudio sends audio to renderer via IPC",
+    name: 'H: writeAudio sends audio to renderer via IPC',
     fn: async () => {
       const mgr = new AudioOutputManager();
       const win = createMockWindow();
-      await mgr.start(() => {}, () => win as never);
+      await mgr.start(
+        () => {},
+        () => win as never,
+      );
 
       const chunk: AudioChunk = {
         data: new ArrayBuffer(8),
@@ -223,11 +248,14 @@ const tests: TestCase[] = [
       };
       await mgr.writeAudio(chunk);
 
-      const audioEvents = win.sent.filter((s) => s.channel === "audio-output:audio");
+      const audioEvents = win.sent.filter((s) => s.channel === 'audio-output:audio');
       if (audioEvents.length !== 1) {
         throw new Error(`Expected 1 audio-output:audio IPC, got ${audioEvents.length}`);
       }
-      const payload = audioEvents[0].data as { data: ArrayBuffer; format: { sampleRate: number; bitsPerSample: number; channels: number } };
+      const payload = audioEvents[0].data as {
+        data: ArrayBuffer;
+        format: { sampleRate: number; bitsPerSample: number; channels: number };
+      };
       if (payload.format.sampleRate !== 24000) {
         throw new Error(`Expected sampleRate=24000, got ${payload.format.sampleRate}`);
       }
@@ -237,13 +265,16 @@ const tests: TestCase[] = [
 
   // --- I ---
   {
-    name: "I: start() sends audio-output:start IPC to renderer",
+    name: 'I: start() sends audio-output:start IPC to renderer',
     fn: async () => {
       const mgr = new AudioOutputManager();
       const win = createMockWindow();
-      await mgr.start(() => {}, () => win as never);
+      await mgr.start(
+        () => {},
+        () => win as never,
+      );
 
-      const startEvents = win.sent.filter((s) => s.channel === "audio-output:start");
+      const startEvents = win.sent.filter((s) => s.channel === 'audio-output:start');
       if (startEvents.length !== 1) {
         throw new Error(`Expected 1 audio-output:start IPC, got ${startEvents.length}`);
       }
@@ -253,14 +284,17 @@ const tests: TestCase[] = [
 
   // --- J ---
   {
-    name: "J: stop() sends audio-output:stop IPC to renderer",
+    name: 'J: stop() sends audio-output:stop IPC to renderer',
     fn: async () => {
       const mgr = new AudioOutputManager();
       const win = createMockWindow();
-      await mgr.start(() => {}, () => win as never);
+      await mgr.start(
+        () => {},
+        () => win as never,
+      );
       mgr.stop();
 
-      const stopEvents = win.sent.filter((s) => s.channel === "audio-output:stop");
+      const stopEvents = win.sent.filter((s) => s.channel === 'audio-output:stop');
       if (stopEvents.length !== 1) {
         throw new Error(`Expected 1 audio-output:stop IPC, got ${stopEvents.length}`);
       }
@@ -269,14 +303,14 @@ const tests: TestCase[] = [
 
   // --- K ---
   {
-    name: "K: detectBlackHole returns a boolean without throwing",
+    name: 'K: detectBlackHole returns a boolean without throwing',
     fn: () => {
       const result = detectBlackHole();
-      if (typeof result !== "boolean") {
+      if (typeof result !== 'boolean') {
         throw new Error(`Expected boolean, got ${typeof result}`);
       }
       // On non-macOS CI, it should return false
-      if (process.platform !== "darwin" && result !== false) {
+      if (process.platform !== 'darwin' && result !== false) {
         throw new Error(`Expected false on ${process.platform}`);
       }
     },
@@ -284,11 +318,14 @@ const tests: TestCase[] = [
 
   // --- L ---
   {
-    name: "L: writeAudio after stop is a no-op (no crash)",
+    name: 'L: writeAudio after stop is a no-op (no crash)',
     fn: async () => {
       const mgr = new AudioOutputManager();
       const win = createMockWindow();
-      await mgr.start(() => {}, () => win as never);
+      await mgr.start(
+        () => {},
+        () => win as never,
+      );
       mgr.stop();
       // Should not throw
       await mgr.writeAudio({
@@ -300,17 +337,20 @@ const tests: TestCase[] = [
 
   // --- M ---
   {
-    name: "M: reset on stop clears selectedDeviceId (via constructor reset)",
+    name: 'M: reset on stop clears selectedDeviceId (via constructor reset)',
     fn: async () => {
       const mgr = new AudioOutputManager();
-      mgr.selectDevice("my-device");
-      if (mgr.selectedDeviceId !== "my-device") throw new Error("selectDevice failed");
+      mgr.selectDevice('my-device');
+      if (mgr.selectedDeviceId !== 'my-device') throw new Error('selectDevice failed');
       // Stop doesn't clear selectedDeviceId (design choice: selection persists)
       const win = createMockWindow();
-      await mgr.start(() => {}, () => win as never);
+      await mgr.start(
+        () => {},
+        () => win as never,
+      );
       mgr.stop();
-      if (mgr.selectedDeviceId !== "my-device") {
-        throw new Error("selectedDeviceId should persist after stop");
+      if (mgr.selectedDeviceId !== 'my-device') {
+        throw new Error('selectedDeviceId should persist after stop');
       }
     },
   },

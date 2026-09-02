@@ -16,8 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { SttEvent, SttStatus } from "@shared/index";
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { SttEvent, SttStatus } from '@shared/index';
 
 const TARGET_SAMPLE_RATE = 16000;
 const PROCESSING_RESET_MS = 350;
@@ -37,8 +37,7 @@ function createResampler(fromRate: number, toRate: number) {
       const pos = i * ratio;
       const index = Math.floor(pos);
       const frac = pos - index;
-      const next =
-        index + 1 < combined.length ? combined[index + 1] : combined[index];
+      const next = index + 1 < combined.length ? combined[index + 1] : combined[index];
       output[i] = combined[index] + (next - combined[index]) * frac;
     }
 
@@ -57,24 +56,23 @@ function toInt16Pcm(float: Float32Array): ArrayBuffer {
 }
 
 export function useStt() {
-  const [status, setStatus] = useState<SttStatus>("idle");
-  const [partialText, setPartialText] = useState("");
-  const [finalText, setFinalText] = useState("");
+  const [status, setStatus] = useState<SttStatus>('idle');
+  const [partialText, setPartialText] = useState('');
+  const [finalText, setFinalText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
 
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  const statusRef = useRef<SttStatus>("idle");
+  const statusRef = useRef<SttStatus>('idle');
   const processingTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
 
-  const isActive =
-    status === "starting" || status === "listening" || status === "processing";
+  const isActive = status === 'starting' || status === 'listening' || status === 'processing';
 
   const stopFeeding = useCallback(() => {
     const processor = processorRef.current;
@@ -108,40 +106,43 @@ export function useStt() {
     gainNodeRef.current = null;
   }, []);
 
-  const onEvent = useCallback((event: SttEvent) => {
-    switch (event.type) {
-      case "started":
-        setError(null);
-        setStatus("listening");
-        break;
-      case "partial":
-        setPartialText(event.text);
-        break;
-      case "final":
-        setPartialText("");
-        setFinalText((prev) => (prev ? `${prev}\n` : "") + event.text);
-        setStatus("processing");
-        if (processingTimerRef.current) {
-          window.clearTimeout(processingTimerRef.current);
-        }
-        processingTimerRef.current = window.setTimeout(() => {
-          if (statusRef.current === "processing") {
-            setStatus("listening");
+  const onEvent = useCallback(
+    (event: SttEvent) => {
+      switch (event.type) {
+        case 'started':
+          setError(null);
+          setStatus('listening');
+          break;
+        case 'partial':
+          setPartialText(event.text);
+          break;
+        case 'final':
+          setPartialText('');
+          setFinalText((prev) => (prev ? `${prev}\n` : '') + event.text);
+          setStatus('processing');
+          if (processingTimerRef.current) {
+            window.clearTimeout(processingTimerRef.current);
           }
-        }, PROCESSING_RESET_MS);
-        break;
-      case "error":
-        setError(event.message);
-        setStatus("error");
-        stopFeeding();
-        break;
-      case "stopped":
-        stopFeeding();
-        setStatus("idle");
-        setProvider(null);
-        break;
-    }
-  }, [stopFeeding]);
+          processingTimerRef.current = window.setTimeout(() => {
+            if (statusRef.current === 'processing') {
+              setStatus('listening');
+            }
+          }, PROCESSING_RESET_MS);
+          break;
+        case 'error':
+          setError(event.message);
+          setStatus('error');
+          stopFeeding();
+          break;
+        case 'stopped':
+          stopFeeding();
+          setStatus('idle');
+          setProvider(null);
+          break;
+      }
+    },
+    [stopFeeding],
+  );
   useEffect(() => {
     const unsubscribe = window.electron.onSttEvent(onEvent);
     return unsubscribe;
@@ -150,8 +151,8 @@ export function useStt() {
   const start = useCallback(
     async (stream: MediaStream, audioContext: AudioContext): Promise<boolean> => {
       setError(null);
-      setPartialText("");
-      setStatus("starting");
+      setPartialText('');
+      setStatus('starting');
 
       const source = audioContext.createMediaStreamSource(stream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
@@ -162,18 +163,11 @@ export function useStt() {
       processor.connect(gain);
       gain.connect(audioContext.destination);
 
-      const resampler = createResampler(
-        audioContext.sampleRate,
-        TARGET_SAMPLE_RATE
-      );
+      const resampler = createResampler(audioContext.sampleRate, TARGET_SAMPLE_RATE);
 
       processor.onaudioprocess = (event) => {
         const activeStatus = statusRef.current;
-        if (
-          activeStatus !== "listening" &&
-          activeStatus !== "processing" &&
-          activeStatus !== "starting"
-        ) {
+        if (activeStatus !== 'listening' && activeStatus !== 'processing' && activeStatus !== 'starting') {
           return;
         }
         const channel = event.inputBuffer.getChannelData(0);
@@ -187,31 +181,29 @@ export function useStt() {
 
       const result = await window.electron.startStt();
       if (!result.ok) {
-        setError(
-          result.message ?? "Could not start speech recognition."
-        );
-        setStatus("error");
+        setError(result.message ?? 'Could not start speech recognition.');
+        setStatus('error');
         stopFeeding();
         return false;
       }
       setProvider(result.provider ?? null);
       return true;
     },
-    [stopFeeding]
+    [stopFeeding],
   );
 
   const stop = useCallback(async () => {
-    if (statusRef.current === "idle") return;
+    if (statusRef.current === 'idle') return;
     if (processingTimerRef.current) {
       window.clearTimeout(processingTimerRef.current);
       processingTimerRef.current = null;
     }
-    setStatus("stopping");
+    setStatus('stopping');
     stopFeeding();
     try {
       await window.electron.stopStt();
     } finally {
-      setStatus("idle");
+      setStatus('idle');
     }
   }, [stopFeeding]);
 

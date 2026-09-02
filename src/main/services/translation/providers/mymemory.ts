@@ -16,9 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { TranslationProvider } from "../provider";
-import { RateLimitError } from "../provider";
-import { parseWindowMs } from "../config";
+import type { TranslationProvider } from '../provider';
+import { RateLimitError } from '../provider';
+import { parseWindowMs } from '../config';
 
 /**
  * Cooldown used when MyMemory returns HTTP 429 without a usable Retry-After.
@@ -35,8 +35,8 @@ function errMessage(err: unknown): string {
 export function createMyMemoryProvider(): TranslationProvider {
   const fallbackCooldownMs = parseWindowMs(
     process.env.MYMEMORY_429_COOLDOWN_MS,
-    "MYMEMORY_429_COOLDOWN_MS",
-    DEFAULT_429_COOLDOWN_MS
+    'MYMEMORY_429_COOLDOWN_MS',
+    DEFAULT_429_COOLDOWN_MS,
   );
 
   // Provider-owned cooldown: while active, translate() fails fast WITHOUT
@@ -78,12 +78,12 @@ export function createMyMemoryProvider(): TranslationProvider {
     }
 
     if (resp.status === 429) {
-      const retryAfterMs = parseRetryAfter(resp.headers.get("retry-after"));
+      const retryAfterMs = parseRetryAfter(resp.headers.get('retry-after'));
       const cooldownMs = retryAfterMs ?? fallbackCooldownMs;
       cooldownUntil = Date.now() + cooldownMs;
       throw new RateLimitError(
         `MyMemory rate limited (HTTP 429) — cooling down for ${Math.round(cooldownMs / 1000)}s`,
-        cooldownMs
+        cooldownMs,
       );
     }
 
@@ -99,11 +99,11 @@ export function createMyMemoryProvider(): TranslationProvider {
     if (data.responseStatus === 200 && data.responseData?.translatedText) {
       return data.responseData.translatedText;
     }
-    throw new Error(data.responseDetails || "MyMemory translation failed");
+    throw new Error(data.responseDetails || 'MyMemory translation failed');
   }
 
   return {
-    name: "mymemory",
+    name: 'mymemory',
 
     async translate(text: string): Promise<string> {
       const now = Date.now();
@@ -111,11 +111,11 @@ export function createMyMemoryProvider(): TranslationProvider {
         const remainingS = Math.ceil((cooldownUntil - now) / 1000);
         throw new RateLimitError(
           `MyMemory rate limited — cooling down (${remainingS}s remaining)`,
-          cooldownUntil - now
+          cooldownUntil - now,
         );
       }
 
-      const key = text.normalize("NFC").replace(/\s+/g, " ").trim();
+      const key = text.normalize('NFC').replace(/\s+/g, ' ').trim();
       const existing = inFlight.get(key);
       if (existing) return existing;
 

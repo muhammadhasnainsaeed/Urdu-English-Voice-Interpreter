@@ -16,31 +16,29 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { AudioChunk } from "@shared/index";
-import type { TtsProvider } from "../provider";
+import type { AudioChunk } from '@shared/index';
+import type { TtsProvider } from '../provider';
 
 const MOCK_SAMPLE_RATE = 24000;
 const MOCK_DURATION_MS = 200;
 
 export function createMockTtsProvider(): TtsProvider {
   return {
-    name: "mock",
+    name: 'mock',
 
     async synthesize(_text: string, signal?: AbortSignal): Promise<AudioChunk> {
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(resolve, MOCK_DURATION_MS);
         signal?.addEventListener(
-          "abort",
+          'abort',
           () => {
             clearTimeout(timer);
             reject(signal.reason);
           },
-          { once: true }
+          { once: true },
         );
       });
-      const sampleCount = Math.floor(
-        (MOCK_SAMPLE_RATE * MOCK_DURATION_MS) / 1000
-      );
+      const sampleCount = Math.floor((MOCK_SAMPLE_RATE * MOCK_DURATION_MS) / 1000);
       const data = new ArrayBuffer(sampleCount * 2);
       return {
         data,

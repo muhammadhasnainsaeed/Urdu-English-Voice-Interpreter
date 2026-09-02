@@ -16,11 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useEffect, useState } from "react";
-import type {
-  PipelineSummary,
-  UtteranceTraceReport,
-} from "@shared/index";
+import { useEffect, useState } from 'react';
+import type { PipelineSummary, UtteranceTraceReport } from '@shared/index';
 
 interface PipelineStats {
   lastUtterance: UtteranceTraceReport | null;
@@ -40,9 +37,9 @@ export function usePipelineStats(): PipelineStats {
   useEffect(() => {
     if (!window.electron.pipelineDebugEnabled) return;
     return window.electron.onPipelineEvent((event) => {
-      if (event.type === "pipeline:utterance") {
+      if (event.type === 'pipeline:utterance') {
         setStats((prev) => ({ ...prev, lastUtterance: event.utterance }));
-      } else if (event.type === "pipeline:summary") {
+      } else if (event.type === 'pipeline:summary') {
         setStats((prev) => ({ ...prev, summary: event.summary }));
       }
     });

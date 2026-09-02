@@ -16,12 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { spawn } from "child_process";
-import * as path from "path";
-import * as os from "os";
-import * as fs from "fs";
-import type { AudioChunk } from "@shared/index";
-import type { TtsProvider } from "../provider";
+import { spawn } from 'child_process';
+import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
+import type { AudioChunk } from '@shared/index';
+import type { TtsProvider } from '../provider';
 
 /**
  * Walk RIFF chunks to find the "data" chunk. macOS `say` may insert
@@ -30,24 +30,24 @@ import type { TtsProvider } from "../provider";
  */
 function findDataChunk(buf: Buffer): { offset: number; size: number } {
   if (buf.length < 12) {
-    throw new Error("WAV too small to contain RIFF header");
+    throw new Error('WAV too small to contain RIFF header');
   }
-  const riff = buf.toString("ascii", 0, 4);
-  if (riff !== "RIFF") {
+  const riff = buf.toString('ascii', 0, 4);
+  if (riff !== 'RIFF') {
     throw new Error(`Expected RIFF header, got "${riff}"`);
   }
-  const wave = buf.toString("ascii", 8, 12);
-  if (wave !== "WAVE") {
+  const wave = buf.toString('ascii', 8, 12);
+  if (wave !== 'WAVE') {
     throw new Error(`Expected WAVE identifier, got "${wave}"`);
   }
 
   let pos = 12;
   while (pos + 8 <= buf.length) {
-    const chunkId = buf.toString("ascii", pos, pos + 4);
+    const chunkId = buf.toString('ascii', pos, pos + 4);
     const chunkSize = buf.readUInt32LE(pos + 4);
     const dataStart = pos + 8;
 
-    if (chunkId === "data") {
+    if (chunkId === 'data') {
       return { offset: dataStart, size: chunkSize };
     }
 
@@ -72,7 +72,7 @@ function parseWavFormat(header: Buffer): {
 
 export function createSayTtsProvider(): TtsProvider {
   return {
-    name: "say",
+    name: 'say',
 
     async synthesize(text: string, signal?: AbortSignal): Promise<AudioChunk> {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -83,28 +83,31 @@ export function createSayTtsProvider(): TtsProvider {
           throw signal.reason;
         }
         await new Promise<void>((resolve, reject) => {
-          const child = spawn("say", [
-            "-v", "Samantha",
-            "-r", "200",
-            "--file-format=WAVE",
-            "--data-format=LEI16@24000",
-            "-o", tmpFile,
+          const child = spawn('say', [
+            '-v',
+            'Samantha',
+            '-r',
+            '200',
+            '--file-format=WAVE',
+            '--data-format=LEI16@24000',
+            '-o',
+            tmpFile,
             text,
           ]);
 
           const onAbort = () => {
             // Kill the synthesizer promptly; say plays nothing itself here.
-            child.kill("SIGKILL");
+            child.kill('SIGKILL');
             reject(signal!.reason);
           };
-          signal?.addEventListener("abort", onAbort, { once: true });
+          signal?.addEventListener('abort', onAbort, { once: true });
 
-          child.on("error", (err) => {
-            signal?.removeEventListener("abort", onAbort);
+          child.on('error', (err) => {
+            signal?.removeEventListener('abort', onAbort);
             reject(err);
           });
-          child.on("close", (code) => {
-            signal?.removeEventListener("abort", onAbort);
+          child.on('close', (code) => {
+            signal?.removeEventListener('abort', onAbort);
             if (code === 0) resolve();
             else reject(new Error(`say exited with code ${code}`));
           });
@@ -115,19 +118,14 @@ export function createSayTtsProvider(): TtsProvider {
         const { offset, size } = findDataChunk(raw);
 
         if (offset + size > raw.length) {
-          throw new Error(
-            `data chunk claims ${size} bytes but file is only ${raw.length} bytes`
-          );
+          throw new Error(`data chunk claims ${size} bytes but file is only ${raw.length} bytes`);
         }
 
         const format = parseWavFormat(raw);
         const pcmData = raw.subarray(offset, offset + size);
 
         return {
-          data: pcmData.buffer.slice(
-            pcmData.byteOffset,
-            pcmData.byteOffset + pcmData.byteLength
-          ),
+          data: pcmData.buffer.slice(pcmData.byteOffset, pcmData.byteOffset + pcmData.byteLength),
           format,
         };
       } finally {
@@ -138,9 +136,9 @@ export function createSayTtsProvider(): TtsProvider {
     async stop(): Promise<void> {
       try {
         await new Promise<void>((resolve) => {
-          const child = spawn("killall", ["say"]);
-          child.on("close", () => resolve());
-          child.on("error", () => resolve());
+          const child = spawn('killall', ['say']);
+          child.on('close', () => resolve());
+          child.on('error', () => resolve());
         });
       } catch {
         // say may not be running.

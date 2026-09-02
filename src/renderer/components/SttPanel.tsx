@@ -16,12 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React from "react";
-import type { SttStatus } from "@shared/index";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
-import { Separator } from "./ui/separator";
+import React from 'react';
+import type { SttStatus } from '@shared/index';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
+import { Separator } from './ui/separator';
 
 interface SttPanelProps {
   status: SttStatus;
@@ -34,18 +34,18 @@ interface SttPanelProps {
 }
 
 const STATUS_LABELS: Record<SttStatus, string> = {
-  idle: "Idle",
-  starting: "Starting…",
-  listening: "Listening",
-  processing: "Processing…",
-  stopping: "Stopping…",
-  error: "Error",
+  idle: 'Idle',
+  starting: 'Starting…',
+  listening: 'Listening',
+  processing: 'Processing…',
+  stopping: 'Stopping…',
+  error: 'Error',
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
-  azure: "Azure",
-  whisper: "Local Whisper",
-  mock: "Mock (dev)",
+  azure: 'Azure',
+  whisper: 'Local Whisper',
+  mock: 'Mock (dev)',
 };
 
 export default function SttPanel({
@@ -58,29 +58,24 @@ export default function SttPanel({
   onStop,
 }: SttPanelProps) {
   const listening =
-    status === "starting" ||
-    status === "listening" ||
-    status === "processing" ||
-    status === "stopping";
-  const startDisabled = status === "starting" || status === "stopping";
+    status === 'starting' || status === 'listening' || status === 'processing' || status === 'stopping';
+  const startDisabled = status === 'starting' || status === 'stopping';
 
   const variant =
-    status === "listening"
-      ? "success"
-      : status === "error"
-        ? "destructive"
-        : status === "starting" || status === "processing" || status === "stopping"
-          ? "warning"
-          : "muted";
+    status === 'listening'
+      ? 'success'
+      : status === 'error'
+        ? 'destructive'
+        : status === 'starting' || status === 'processing' || status === 'stopping'
+          ? 'warning'
+          : 'muted';
 
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between p-4 pb-2">
         <CardTitle className="text-[13px]">Speech Recognition</CardTitle>
         <div className="flex items-center gap-2">
-          {provider && (
-            <Badge variant="outline">{PROVIDER_LABELS[provider] ?? provider}</Badge>
-          )}
+          {provider && <Badge variant="outline">{PROVIDER_LABELS[provider] ?? provider}</Badge>}
           <Badge variant={variant} dot>
             {STATUS_LABELS[status]}
           </Badge>
@@ -96,35 +91,21 @@ export default function SttPanel({
             <div className="textbox-urdu text-foreground">{finalText}</div>
           ) : (
             <div className="text-xs text-muted-foreground">
-              {listening ? "Listening for Urdu speech…" : "No speech yet."}
+              {listening ? 'Listening for Urdu speech…' : 'No speech yet.'}
             </div>
           )}
-          {partialText && (
-            <div className="textbox-urdu italic text-muted-foreground">
-              {partialText}
-            </div>
-          )}
+          {partialText && <div className="textbox-urdu italic text-muted-foreground">{partialText}</div>}
         </div>
 
         <Separator className="my-1" />
 
         <div className="flex items-center gap-2">
           {listening ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onStop}
-              disabled={status === "stopping"}
-            >
+            <Button variant="outline" size="sm" onClick={onStop} disabled={status === 'stopping'}>
               Stop Listening
             </Button>
           ) : (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={onStart}
-              disabled={startDisabled}
-            >
+            <Button variant="secondary" size="sm" onClick={onStart} disabled={startDisabled}>
               Start Listening
             </Button>
           )}

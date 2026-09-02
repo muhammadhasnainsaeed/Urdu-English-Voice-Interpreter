@@ -16,16 +16,16 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React, { useEffect } from "react";
-import HomeScreen from "./pages/HomeScreen";
-import { useMicrophone } from "./services/useMicrophone";
-import { useStt } from "./services/useStt";
-import { useTranslation } from "./services/useTranslation";
-import { useTts } from "./services/useTts";
-import { useAudioOutput } from "./services/useAudioOutput";
-import { useSession } from "./services/useSession";
-import { useSetup } from "./setup/useSetup";
-import { RENDERER_OPEN_EXTERNAL_LINKS } from "@shared/index";
+import React, { useEffect } from 'react';
+import HomeScreen from './pages/HomeScreen';
+import { useMicrophone } from './services/useMicrophone';
+import { useStt } from './services/useStt';
+import { useTranslation } from './services/useTranslation';
+import { useTts } from './services/useTts';
+import { useAudioOutput } from './services/useAudioOutput';
+import { useSession } from './services/useSession';
+import { useSetup } from './setup/useSetup';
+import { RENDERER_OPEN_EXTERNAL_LINKS } from '@shared/index';
 
 export default function App() {
   const microphone = useMicrophone();
@@ -54,12 +54,12 @@ export default function App() {
 
   const handleSttStop = async () => {
     try {
-      if (tts.status === "active") {
+      if (tts.status === 'active') {
         await tts.stop();
       }
     } finally {
       try {
-        if (translation.status === "active") {
+        if (translation.status === 'active') {
           await translation.stop();
         }
       } finally {
@@ -73,7 +73,7 @@ export default function App() {
   };
 
   const handleTtsStart = async () => {
-    if (audioOutput.status !== "active") {
+    if (audioOutput.status !== 'active') {
       await audioOutput.start();
     }
     await tts.start();
@@ -107,16 +107,16 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (microphone.status !== "listening" && stt.isActive) {
+    if (microphone.status !== 'listening' && stt.isActive) {
       stt.stop();
     }
   }, [microphone.status, stt.isActive, stt.stop]);
 
   // Session auto-stops mic + STT when session stops
   useEffect(() => {
-    if (session.status === "idle" || session.status === "error") {
+    if (session.status === 'idle' || session.status === 'error') {
       if (stt.isActive) stt.stop();
-      if (microphone.status === "listening") microphone.stop();
+      if (microphone.status === 'listening') microphone.stop();
     }
   }, [session.status, stt.isActive, stt.stop, microphone.status, microphone.stop]);
 
@@ -130,16 +130,8 @@ export default function App() {
           setup.recheck();
         }
       }}
-      onOpenMicSettings={() =>
-        window.electron.openExternal(
-          RENDERER_OPEN_EXTERNAL_LINKS.micPrivacySettings
-        )
-      }
-      onOpenBlackHoleSite={() =>
-        window.electron.openExternal(
-          RENDERER_OPEN_EXTERNAL_LINKS.blackholeDownload
-        )
-      }
+      onOpenMicSettings={() => window.electron.openExternal(RENDERER_OPEN_EXTERNAL_LINKS.micPrivacySettings)}
+      onOpenBlackHoleSite={() => window.electron.openExternal(RENDERER_OPEN_EXTERNAL_LINKS.blackholeDownload)}
       permission={microphone.permission}
       status={microphone.status}
       devices={microphone.devices}

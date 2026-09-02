@@ -36,26 +36,26 @@ export class RateLimitError extends Error {
 
   constructor(message: string, retryAfterMs: number | null = null) {
     super(message);
-    this.name = "RateLimitError";
+    this.name = 'RateLimitError';
     this.retryAfterMs = retryAfterMs;
   }
 }
 
 export async function createTranslationProvider(): Promise<TranslationProvider | null> {
-  const providerName = (process.env.TRANSLATION_PROVIDER || "mock").toLowerCase();
+  const providerName = (process.env.TRANSLATION_PROVIDER || 'mock').toLowerCase();
 
-  if (providerName === "mock") {
-    const { createMockTranslationProvider } = await import("./providers/mock");
+  if (providerName === 'mock') {
+    const { createMockTranslationProvider } = await import('./providers/mock');
     return createMockTranslationProvider();
   }
 
-  if (providerName === "mymemory") {
-    const { createMyMemoryProvider } = await import("./providers/mymemory");
+  if (providerName === 'mymemory') {
+    const { createMyMemoryProvider } = await import('./providers/mymemory');
     return createMyMemoryProvider();
   }
 
-  if (providerName === "azure") {
-    const { createAzureTranslatorProvider } = await import("./providers/azure");
+  if (providerName === 'azure') {
+    const { createAzureTranslatorProvider } = await import('./providers/azure');
     return createAzureTranslatorProvider();
   }
 

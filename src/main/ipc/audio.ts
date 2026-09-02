@@ -16,15 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ipcMain } from "electron";
-import {
-  getMicrophonePermission,
-  requestMicrophonePermission,
-} from "../services/audio";
+import { ipcMain } from 'electron';
+import { getMicrophonePermission, requestMicrophonePermission } from '../services/audio';
 
 export function registerAudioIpc() {
-  ipcMain.handle("mic:get-permission", () => getMicrophonePermission());
-  ipcMain.handle("mic:request-permission", () =>
-    requestMicrophonePermission()
-  );
+  ipcMain.handle('mic:get-permission', () => getMicrophonePermission());
+  ipcMain.handle('mic:request-permission', () => requestMicrophonePermission());
 }

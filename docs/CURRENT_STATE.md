@@ -1,6 +1,6 @@
 # Current State
 
-_Last updated: 2026-08-28_
+_Last updated: 2026-09-02_
 
 ## Open-source readiness
 
@@ -707,6 +707,99 @@ Comparison vs Phase 1 (legacy) and Phase 2 (streaming) digital averages:
   devices (incl. BlackHole) and fire onSelect; Start/Stop Meeting 2-cycle
   returns Ready; zero console errors on reload + interaction.
 
+### M11 UI follow-up — ElevenLabs LiveWaveform in Meeting Mode (2026-09-02, complete)
+
+- **Scope**: small UI enhancement only. Added the ElevenLabs `live-waveform`
+  component inside the existing Meeting Mode card (header/badges → waveform →
+  Start/Stop button → error). No redesign; no business-logic change (STT/
+  Translation/TTS/audio-output, SessionManager, IPC, mic capture, providers all
+  untouched; no new dependencies added).
+- **Component**: vendored the official ElevenLabs `live-waveform` source into
+  `src/renderer/components/ui/live-waveform.tsx` (the `@elevenlabs/cli` /
+  `shadcn` registry fetches at `ui.elevenlabs.io` were persistently
+  rate-limited (HTTP 429), so the source of record
+  `github.com/elevenlabs/examples` was used verbatim (`speech-to-text/
+  nextjs/realtime/example/components/ui/live-waveform.tsx`, 560 lines, no
+  functional edits; only normalized to the project's Prettier style). An
+  official source header notes the origin.
+- **On-mount wiring**: `HomeScreen.tsx` renders the component in stock form
+  (`mode="static"`, `height={80}`, `barWidth={3}`, `barGap={2}`, `fadeEdges`).
+  When the meeting is active the component captures the microphone itself
+  (its own `getUserMedia` + analyser); when idle it plays its stock
+  "Processing audio" animation. `activeListening = meetingActive`,
+  `processing = !meetingActive`.
+- **Reverted experiment (do not re-apply without user request)**: an earlier
+  iteration modified `useMicrophone.ts` / `App.tsx` / `HomeScreen.tsx` to drive
+  the waveform from the app's *existing* analyser via a derived 32-band
+  `spectrum` (`audioLevels` prop), avoiding a second mic capture. The user
+  explicitly asked for main components to be left untouched, so the experiment
+  was **fully reverted**: `live-waveform.tsx` is again verbatim upstream,
+  `useMicrophone` exposes only `level` (no `spectrum`), and `App.tsx` /
+  `HomeScreen.tsx` have no `spectrum`/`audioLevels` references. While a meeting
+  is active the stock component runs its own capture — with the app's own mic
+  already in use this is non-functional by design (component renders its idle
+  animation); meeting functionality is unaffected.
+- **Validation**: `npm run type-check` clean; `npm test` 60/60; `npm run build`
+  OK. Stock component compiled; no console errors on reload.
+
+### Dev tooling — `npm run dev` + hot reload (2026-09-02, complete)
+
+- **`npm run dev`** (`scripts/dev.js`, plain Node, no new deps) replaces the
+  manual `npm start` edit loop: spawns the esbuild/Tailwind watch build **and**
+  Electron, then **auto-restarts Electron** whenever `dist/main/index.js` or
+  `dist/preload/index.js` is rewritten on save. Restart detection polls the two
+  bundle mtimes (400 ms) instead of `fs.watch` — macOS FSEvents coalescing can
+  drop rapid rewrites, and esbuild only re-writes a bundle when its content
+  actually changed. `Ctrl+C` stops everything. Verified end to end (clean
+  `dist/`): launch → edits to `src/main/index.ts` → restart → edits to
+  `src/preload/index.ts` → restart.
+- **Renderer hot reload** (main-process, dev only): `src/main/index.ts` now
+  polls `dist/renderer/index.html`, `bundle.js`, and `tailwind.css` mtimes
+  (350 ms poll, 150 ms debounce) and reloads the window when any change —
+  logged as `[dev] renderer bundle/CSS changed — reloading window`. Gated by
+  `process.env.NODE_ENV === 'development'`; esbuild bakes `NODE_ENV` via a
+  main-build `define` (watch → `"development"`, else `"production"`).
+- **Tailwind watch fix (root cause)**: Tailwind v3's CLI only rebuilds while its
+  stdin is open — once the previous `execSync("tailwindcss ... --watch")`
+  returned, stdin hit EOF and the built-in watcher called `process.exit(0)`,
+  so CSS changes **never** regenerated in watch mode. `esbuild.config.js` now
+  runs a one-shot `compileTailwind()` (never `--watch`) plus a background
+  `spawn('tailwindcss', ['--watch=always'])` watcher. Verified: editing
+  `globals.css` regenerates `dist/renderer/tailwind.css` and the window
+  reloads.
+- Note: `HomeScreen.tsx` has no `audioLevels`/`spectrum` wiring (reverted, see
+  LiveWaveform section above); the waveform is fully stock.
+
+### Dev tooling — ESLint + Prettier (2026-09-02, complete)
+
+- **DevDependencies**: `eslint@^9` (flat config), `@eslint/js@^9`, `prettier@^3`,
+  `typescript-eslint@^8`, `eslint-plugin-react` (`flat.recommended` +
+  `flat["jsx-runtime"]`), `eslint-plugin-react-hooks`, `eslint-config-prettier`,
+  `globals`. Peer-pinned so the whole toolchain shares eslint 9
+  (`@eslint/js@^9`, not the eslint-10-track latest).
+- **`eslint.config.mjs`** (flat): `js.configs.recommended` +
+  `tseslint.configs.recommended` for `src/**`; per-area globals
+  (renderer = browser → main/preload/tests = node → configs/scripts = node);
+  react + react-hooks rules; `prettier` config last to turn off formatting
+  rules. `no-undef` off (TS owns it), `react/prop-types` off (TS props),
+  `react-hooks/set-state-in-effect` off (false-positive on async setState in
+  effects). Test files relax `no-unused-vars` to `warn` (verbose suites keep
+  unused helpers); source files keep it as `error`. Lint is clean
+  (0 errors; 13 non-blocking warnings: 3 pre-existing exhaustive-deps in
+  `App.tsx`/`useSetup.ts`, 10 unused test helpers).
+- **`.prettierrc.json`**: `{ semi: true, singleQuote: true, printWidth: 110,
+  tabWidth: 2, trailingComma: all }`. **`.prettierignore`**: `node_modules/`,
+  `dist/`, `dist_electron/`, `docs/`, `*.md`, `package-lock.json`.
+- **Source cleanups surfaced by lint**: removed the unused
+  `PipelinePhaseAverages` type import (`pipeline-telemetry.ts`) and the unused
+  `BLACKHOLE_PATTERN` + `setSetSinkIdSupported` setter (`useAudioOutput.ts`).
+  No behavior change.
+- **Scripts**: `lint` (`eslint .`), `lint:fix`, `format`
+  (`prettier --write src/scripts/tests/packages + configs`), `format:check`.
+- **Validation**: `npm run lint` → 0 errors; `npm run format:check` → all files
+  Prettier-clean; `npm run type-check` clean; `npm test` 60/60; `npm run build`
+  OK.
+
 ## What is NOT implemented (intentionally)
 
 Meeting-app integration, authentication, database, backend server, Python.
@@ -717,9 +810,11 @@ cross-platform ready; not exercised in M10 Phase 3).
 ## Next task
 
 M10 Phase 3/4 (production packaging & macOS distribution + non-technical
-onboarding), M11 (UI design-system revamp), and the M11 follow-up (real
-shadcn/ui + Tailwind migration) are complete and documented. M10, M11, and the
-M11 follow-up are fully complete — do not start M12.
+onboarding), M11 (UI design-system revamp), the M11 follow-up (real
+shadcn/ui + Tailwind migration), the LiveWaveform enhancement, and the dev
+tooling round (hot reload, Tailwind watch fix, ESLint + Prettier) are complete
+and documented. M10, M11, and the M11 follow-up are fully complete — do not
+start M12.
 Remaining (manual, outside repo code):
 1. **upload `docs/demo/demo-v1.0.0.mp4` as a v1.0.0 Release asset**,
 2. **sign/notarize + release the built app** when Apple Developer credentials
@@ -748,7 +843,7 @@ src/preload/index.ts
 src/renderer/{App.tsx,index.tsx,index.html}
 src/renderer/pages/HomeScreen.tsx
 src/renderer/lib/utils.ts
-src/renderer/components/ui/{button,card,badge,label,select,separator,alert,progress,dropdown-menu}.tsx
+src/renderer/components/ui/{button,card,badge,label,select,separator,alert,progress,dropdown-menu,live-waveform}.tsx
 src/renderer/components/{theme-provider,theme-selector}.tsx
 src/renderer/components/{MicrophonePanel,AudioLevelMeter,SetupPanel}.tsx
 src/renderer/components/{TranslationPanel,TtsPanel,AudioOutputPanel}.tsx
@@ -762,8 +857,12 @@ tests/tts-dedup.test.ts
 tests/audio-output.test.ts
 tests/session.test.ts
 tests/setup-onboarding.test.ts
+scripts/dev.js
 scripts/setup-whisper.sh
 esbuild.config.js
+eslint.config.mjs
+.prettierrc.json
+.prettierignore
 tailwind.config.js
 packaging/entitlements.mac.plist
 package.json   (includes electron-builder "build" config + package scripts)

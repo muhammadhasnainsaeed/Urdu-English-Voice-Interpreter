@@ -16,18 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React from "react";
-import type { AudioOutputDevice, AudioOutputStatus } from "@shared/index";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Badge } from "./ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
-import { Label } from "./ui/label";
+import React from 'react';
+import type { AudioOutputDevice, AudioOutputStatus } from '@shared/index';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Badge } from './ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Label } from './ui/label';
 
 interface AudioOutputPanelProps {
   status: AudioOutputStatus;
@@ -42,18 +36,8 @@ export default function AudioOutputPanel({
   selectedDeviceId,
   onSelect,
 }: AudioOutputPanelProps) {
-  const variant =
-    status === "active"
-      ? "success"
-      : status === "error"
-        ? "destructive"
-        : "muted";
-  const label =
-    status === "active"
-      ? "Active"
-      : status === "error"
-        ? "Error"
-        : "Off";
+  const variant = status === 'active' ? 'success' : status === 'error' ? 'destructive' : 'muted';
+  const label = status === 'active' ? 'Active' : status === 'error' ? 'Error' : 'Off';
 
   return (
     <Card>
@@ -70,11 +54,7 @@ export default function AudioOutputPanel({
             Device
           </Label>
           <div className="grow">
-            <Select
-              value={selectedDeviceId}
-              onValueChange={onSelect}
-              disabled={devices.length === 0}
-            >
+            <Select value={selectedDeviceId} onValueChange={onSelect} disabled={devices.length === 0}>
               <SelectTrigger id="output-device" aria-label="Output device">
                 <SelectValue placeholder="No output device" />
               </SelectTrigger>

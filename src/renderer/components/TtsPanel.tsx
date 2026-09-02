@@ -16,12 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import React from "react";
-import type { TtsStatus } from "@shared/index";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
-import { Alert } from "./ui/alert";
+import React from 'react';
+import type { TtsStatus } from '@shared/index';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
+import { Alert } from './ui/alert';
 
 interface TtsPanelProps {
   status: TtsStatus;
@@ -34,16 +34,16 @@ interface TtsPanelProps {
 }
 
 const STATUS_LABELS: Record<TtsStatus, string> = {
-  idle: "Off",
-  starting: "Starting…",
-  active: "Active",
-  error: "Error",
+  idle: 'Off',
+  starting: 'Starting…',
+  active: 'Active',
+  error: 'Error',
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
-  azure: "Azure",
-  say: "macOS Say",
-  mock: "Mock (dev)",
+  azure: 'Azure',
+  say: 'macOS Say',
+  mock: 'Mock (dev)',
 };
 
 export default function TtsPanel({
@@ -55,26 +55,24 @@ export default function TtsPanel({
   onStart,
   onStop,
 }: TtsPanelProps) {
-  const active = status === "active" || status === "starting";
+  const active = status === 'active' || status === 'starting';
   const canToggle = translationActive;
 
   const variant =
-    status === "active"
-      ? "success"
-      : status === "error"
-        ? "destructive"
-        : status === "starting"
-          ? "warning"
-          : "muted";
+    status === 'active'
+      ? 'success'
+      : status === 'error'
+        ? 'destructive'
+        : status === 'starting'
+          ? 'warning'
+          : 'muted';
 
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between p-4 pb-2">
         <CardTitle className="text-[13px]">Text-to-Speech</CardTitle>
         <div className="flex items-center gap-2">
-          {provider && (
-            <Badge variant="outline">{PROVIDER_LABELS[provider] ?? provider}</Badge>
-          )}
+          {provider && <Badge variant="outline">{PROVIDER_LABELS[provider] ?? provider}</Badge>}
           <Badge variant={variant} dot>
             {STATUS_LABELS[status]}
           </Badge>
@@ -90,12 +88,7 @@ export default function TtsPanel({
 
         <div className="flex items-center gap-2">
           {active ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onStop}
-              disabled={status === "starting"}
-            >
+            <Button variant="outline" size="sm" onClick={onStop} disabled={status === 'starting'}>
               Stop TTS
             </Button>
           ) : (
@@ -104,7 +97,7 @@ export default function TtsPanel({
               size="sm"
               onClick={onStart}
               disabled={!canToggle}
-              title={!canToggle ? "Start translation first" : undefined}
+              title={!canToggle ? 'Start translation first' : undefined}
             >
               Start TTS
             </Button>

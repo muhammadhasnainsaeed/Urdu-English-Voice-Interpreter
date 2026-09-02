@@ -37,6 +37,8 @@ export type LiveWaveformProps = HTMLAttributes<HTMLDivElement> & {
   processing?: boolean;
   /** External 0..1 audio level that drives the waveform when provided. */
   audioLevel?: number;
+  /** External 0..1 frequency-band levels that drive the waveform when provided. */
+  audioLevels?: number[];
   deviceId?: string;
   barWidth?: number;
   barHeight?: number;
@@ -61,6 +63,7 @@ export const LiveWaveform = ({
   active = false,
   processing = false,
   audioLevel,
+  audioLevels = [],
   deviceId,
   barWidth = 3,
   barGap = 1,
@@ -100,8 +103,15 @@ export const LiveWaveform = ({
 
   const heightStyle = typeof height === "number" ? `${height}px` : height;
 
+  // True when only a single scalar level is supplied (uniform bars).
+  function typeofModeIsSingle(level?: number, levels?: number[]): boolean {
+    return typeof level === "number" && !(levels && levels.length > 0);
+  }
+
   // External audio-level mode: never capture our own microphone/analyser.
-  const useExternalLevel = typeof audioLevel === "number";
+  const useExternalLevels =
+    typeof audioLevel === "number" ||
+    (Array.isArray(audioLevels) && audioLevels.length > 0);
 
   // Handle canvas resizing
   useEffect(() => {
@@ -264,7 +274,7 @@ export const LiveWaveform = ({
 
   // Handle microphone setup and teardown
   useEffect(() => {
-    if (useExternalLevel) {
+    if (useExternalLevels) {
       return;
     }
 
@@ -357,8 +367,9 @@ export const LiveWaveform = ({
     onError,
     onStreamReady,
     onStreamEnd,
-    useExternalLevel,
+    useExternalLevels,
     audioLevel,
+    audioLevels,
   ]);
 
   // Animation loop
@@ -379,28 +390,74 @@ export const LiveWaveform = ({
       if (active && currentTime - lastUpdateRef.current > updateRate) {
         lastUpdateRef.current = currentTime;
 
-        if (useExternalLevel) {
-          const value = Math.max(
-            0.05,
-            Math.min(1, (audioLevel ?? 0) * sensitivity)
-          );
+        if (useExternalLevels) {
+          if (
+            Array.isArray(audioLevels) &&
+            audioLevels.length > 0 &&
+            !typeofModeIsSingle(audioLevel, audioLevels)
+          ) {
+            // Frequency-band (spectrum) mode: preserve natural bar shape.
+            const values = audioLevels.map(v =>
+              Math.max(0.05, Math.min(1, v * sensitivity))
+            );
 
-          if (mode === "static") {
-            const barCount = Math.floor(rect.width / (barWidth + barGap));
-            const newBars: number[] = [];
-            for (let i = 0; i < barCount; i++) {
-              newBars.push(value);
+            if (mode === "static") {
+              const barCount = Math.floor(rect.width / (barWidth + barGap));
+              const halfCount = Math.floor(barCount / 2);
+              const newBars: number[] = [];
+              // Left half (mirrored): i goes from halfCount-1 (center) down to 0 (edge).
+              for (let i = halfCount - 1; i >= 0; i--) {
+                const bandIndex = Math.min(
+                  values.length - 1,
+                  Math.floor((i / Math.max(1, halfCount)) * values.length)
+                );
+                newBars.push(values[bandIndex]);
+              }
+              // Right half: i goes from 0 (center) up to halfCount-1 (edge).
+              for (let i = 0; i < halfCount; i++) {
+                const bandIndex = Math.min(
+                  values.length - 1,
+                  Math.floor((i / Math.max(1, halfCount)) * values.length)
+                );
+                newBars.push(values[bandIndex]);
+              }
+              staticBarsRef.current = newBars;
+              lastActiveDataRef.current = newBars;
+            } else {
+              let sum = 0;
+              for (let i = 0; i < values.length; i++) sum += values[i];
+              const average = sum / Math.max(1, values.length);
+              historyRef.current.push(Math.min(1, Math.max(0.05, average)));
+              lastActiveDataRef.current = [...historyRef.current];
+              if (historyRef.current.length > historySize) {
+                historyRef.current.shift();
+              }
             }
-            staticBarsRef.current = newBars;
-            lastActiveDataRef.current = newBars;
+            needsRedrawRef.current = true;
           } else {
-            historyRef.current.push(value);
-            lastActiveDataRef.current = [...historyRef.current];
-            if (historyRef.current.length > historySize) {
-              historyRef.current.shift();
+            // Single scalar mode.
+            const value = Math.max(
+              0.05,
+              Math.min(1, (audioLevel ?? 0) * sensitivity)
+            );
+
+            if (mode === "static") {
+              const barCount = Math.floor(rect.width / (barWidth + barGap));
+              const newBars: number[] = [];
+              for (let i = 0; i < barCount; i++) {
+                newBars.push(value);
+              }
+              staticBarsRef.current = newBars;
+              lastActiveDataRef.current = newBars;
+            } else {
+              historyRef.current.push(value);
+              lastActiveDataRef.current = [...historyRef.current];
+              if (historyRef.current.length > historySize) {
+                historyRef.current.shift();
+              }
             }
+            needsRedrawRef.current = true;
           }
-          needsRedrawRef.current = true;
         } else if (analyserRef.current) {
           const dataArray = new Uint8Array(
             analyserRef.current.frequencyBinCount
@@ -584,11 +641,12 @@ export const LiveWaveform = ({
     barGap,
     barRadius,
     barColor,
-    fadeEdges,
+fadeEdges,
     fadeWidth,
     mode,
-    useExternalLevel,
+    useExternalLevels,
     audioLevel,
+    audioLevels,
   ]);
 
   return (

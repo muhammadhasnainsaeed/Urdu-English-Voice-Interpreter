@@ -1,6 +1,6 @@
 # Current State
 
-_Last updated: 2026-08-28_
+_Last updated: 2026-09-02_
 
 ## Open-source readiness
 
@@ -718,39 +718,87 @@ Comparison vs Phase 1 (legacy) and Phase 2 (streaming) digital averages:
   `src/renderer/components/ui/live-waveform.tsx` (the `@elevenlabs/cli` /
   `shadcn` registry fetches at `ui.elevenlabs.io` were persistently
   rate-limited (HTTP 429), so the source of record
-  `github.com/elevenlabs/examples` was used verbatim). An official source
-  header notes the origin.
-- **Optional renderer-side adapter (available, wired)**: `useMicrophone` now
-  derives a 32-band normalized frequency spectrum from its **existing**
-  `AnalyserNode` (same capture, no second `getUserMedia`, no second analyser)
-  and exposes it as `spectrum`. `App.tsx` passes this to `HomeScreen`, which
-  feeds it to the waveform via `audioLevels={meetingActive ? spectrum : []}`.
-  In the component, when `audioLevels` is non-empty the animation loop builds
-  mirrored static-mode bars from the bands — reproducing the native frequency
-  visualization from a single capture. When `audioLevels` is empty (meeting
-  stopped) the component falls back to its processing animation. The optional
-  `audioLevel?: number` scalar prop remains for a uniform-bars fallback.
-- **State mapping** (derived, no duplicate meeting state): `activeListening =
-  meetingActive`, `processing = !meetingActive`.
-  - Meeting stopped/idle: `active=false`, `processing=true` (animated idle).
-  - Meeting started: `active=true`, `processing=false`.
-  - Meeting stopped: back to `active=false`, `processing=true`.
-- **Audio reactivity**: the waveform is driven by the existing single-capture
-  analyser's frequency spectrum (`spectrum` from `useMicrophone`) during an
-  active meeting — no second `getUserMedia()`, no second analyser. Idle
-  (meeting stopped) shows the animated processing wave.
-- **Presentation**: `mode="static"`, `height={80}`, `barWidth={3}`, `barGap={2}`,
-  `fadeEdges`, neutral theme-adaptive bar color (inherits computed text color,
-  so Light/Dark/System all render correctly), no gradients/glass/excess motion.
-- **Files changed**: `src/renderer/components/ui/live-waveform.tsx` (new),
-  `src/renderer/pages/HomeScreen.tsx` (card integration),
-  `src/renderer/services/useMicrophone.ts` (adds derived `spectrum`),
-  `src/renderer/App.tsx` (passes `spectrum`). No config/dep changes.
+  `github.com/elevenlabs/examples` was used verbatim (`speech-to-text/
+  nextjs/realtime/example/components/ui/live-waveform.tsx`, 560 lines, no
+  functional edits; only normalized to the project's Prettier style). An
+  official source header notes the origin.
+- **On-mount wiring**: `HomeScreen.tsx` renders the component in stock form
+  (`mode="static"`, `height={80}`, `barWidth={3}`, `barGap={2}`, `fadeEdges`).
+  When the meeting is active the component captures the microphone itself
+  (its own `getUserMedia` + analyser); when idle it plays its stock
+  "Processing audio" animation. `activeListening = meetingActive`,
+  `processing = !meetingActive`.
+- **Reverted experiment (do not re-apply without user request)**: an earlier
+  iteration modified `useMicrophone.ts` / `App.tsx` / `HomeScreen.tsx` to drive
+  the waveform from the app's *existing* analyser via a derived 32-band
+  `spectrum` (`audioLevels` prop), avoiding a second mic capture. The user
+  explicitly asked for main components to be left untouched, so the experiment
+  was **fully reverted**: `live-waveform.tsx` is again verbatim upstream,
+  `useMicrophone` exposes only `level` (no `spectrum`), and `App.tsx` /
+  `HomeScreen.tsx` have no `spectrum`/`audioLevels` references. While a meeting
+  is active the stock component runs its own capture — with the app's own mic
+  already in use this is non-functional by design (component renders its idle
+  animation); meeting functionality is unaffected.
 - **Validation**: `npm run type-check` clean; `npm test` 60/60; `npm run build`
-  OK (`dist/renderer/bundle.js` contains the component). Runtime CDP smoke test
-  of the built app: zero console errors; Meeting Mode card renders; waveform
-  renders with aria-label "Processing audio" (idle state: `active=false`,
-  `processing=true`); badges/theme toggle intact.
+  OK. Stock component compiled; no console errors on reload.
+
+### Dev tooling — `npm run dev` + hot reload (2026-09-02, complete)
+
+- **`npm run dev`** (`scripts/dev.js`, plain Node, no new deps) replaces the
+  manual `npm start` edit loop: spawns the esbuild/Tailwind watch build **and**
+  Electron, then **auto-restarts Electron** whenever `dist/main/index.js` or
+  `dist/preload/index.js` is rewritten on save. Restart detection polls the two
+  bundle mtimes (400 ms) instead of `fs.watch` — macOS FSEvents coalescing can
+  drop rapid rewrites, and esbuild only re-writes a bundle when its content
+  actually changed. `Ctrl+C` stops everything. Verified end to end (clean
+  `dist/`): launch → edits to `src/main/index.ts` → restart → edits to
+  `src/preload/index.ts` → restart.
+- **Renderer hot reload** (main-process, dev only): `src/main/index.ts` now
+  polls `dist/renderer/index.html`, `bundle.js`, and `tailwind.css` mtimes
+  (350 ms poll, 150 ms debounce) and reloads the window when any change —
+  logged as `[dev] renderer bundle/CSS changed — reloading window`. Gated by
+  `process.env.NODE_ENV === 'development'`; esbuild bakes `NODE_ENV` via a
+  main-build `define` (watch → `"development"`, else `"production"`).
+- **Tailwind watch fix (root cause)**: Tailwind v3's CLI only rebuilds while its
+  stdin is open — once the previous `execSync("tailwindcss ... --watch")`
+  returned, stdin hit EOF and the built-in watcher called `process.exit(0)`,
+  so CSS changes **never** regenerated in watch mode. `esbuild.config.js` now
+  runs a one-shot `compileTailwind()` (never `--watch`) plus a background
+  `spawn('tailwindcss', ['--watch=always'])` watcher. Verified: editing
+  `globals.css` regenerates `dist/renderer/tailwind.css` and the window
+  reloads.
+- Note: `HomeScreen.tsx` has no `audioLevels`/`spectrum` wiring (reverted, see
+  LiveWaveform section above); the waveform is fully stock.
+
+### Dev tooling — ESLint + Prettier (2026-09-02, complete)
+
+- **DevDependencies**: `eslint@^9` (flat config), `@eslint/js@^9`, `prettier@^3`,
+  `typescript-eslint@^8`, `eslint-plugin-react` (`flat.recommended` +
+  `flat["jsx-runtime"]`), `eslint-plugin-react-hooks`, `eslint-config-prettier`,
+  `globals`. Peer-pinned so the whole toolchain shares eslint 9
+  (`@eslint/js@^9`, not the eslint-10-track latest).
+- **`eslint.config.mjs`** (flat): `js.configs.recommended` +
+  `tseslint.configs.recommended` for `src/**`; per-area globals
+  (renderer = browser → main/preload/tests = node → configs/scripts = node);
+  react + react-hooks rules; `prettier` config last to turn off formatting
+  rules. `no-undef` off (TS owns it), `react/prop-types` off (TS props),
+  `react-hooks/set-state-in-effect` off (false-positive on async setState in
+  effects). Test files relax `no-unused-vars` to `warn` (verbose suites keep
+  unused helpers); source files keep it as `error`. Lint is clean
+  (0 errors; 13 non-blocking warnings: 3 pre-existing exhaustive-deps in
+  `App.tsx`/`useSetup.ts`, 10 unused test helpers).
+- **`.prettierrc.json`**: `{ semi: true, singleQuote: true, printWidth: 110,
+  tabWidth: 2, trailingComma: all }`. **`.prettierignore`**: `node_modules/`,
+  `dist/`, `dist_electron/`, `docs/`, `*.md`, `package-lock.json`.
+- **Source cleanups surfaced by lint**: removed the unused
+  `PipelinePhaseAverages` type import (`pipeline-telemetry.ts`) and the unused
+  `BLACKHOLE_PATTERN` + `setSetSinkIdSupported` setter (`useAudioOutput.ts`).
+  No behavior change.
+- **Scripts**: `lint` (`eslint .`), `lint:fix`, `format`
+  (`prettier --write src/scripts/tests/packages + configs`), `format:check`.
+- **Validation**: `npm run lint` → 0 errors; `npm run format:check` → all files
+  Prettier-clean; `npm run type-check` clean; `npm test` 60/60; `npm run build`
+  OK.
 
 ## What is NOT implemented (intentionally)
 
@@ -763,7 +811,8 @@ cross-platform ready; not exercised in M10 Phase 3).
 
 M10 Phase 3/4 (production packaging & macOS distribution + non-technical
 onboarding), M11 (UI design-system revamp), the M11 follow-up (real
-shadcn/ui + Tailwind migration), and the LiveWaveform enhancement are complete
+shadcn/ui + Tailwind migration), the LiveWaveform enhancement, and the dev
+tooling round (hot reload, Tailwind watch fix, ESLint + Prettier) are complete
 and documented. M10, M11, and the M11 follow-up are fully complete — do not
 start M12.
 Remaining (manual, outside repo code):
@@ -808,8 +857,12 @@ tests/tts-dedup.test.ts
 tests/audio-output.test.ts
 tests/session.test.ts
 tests/setup-onboarding.test.ts
+scripts/dev.js
 scripts/setup-whisper.sh
 esbuild.config.js
+eslint.config.mjs
+.prettierrc.json
+.prettierignore
 tailwind.config.js
 packaging/entitlements.mac.plist
 package.json   (includes electron-builder "build" config + package scripts)

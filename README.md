@@ -121,6 +121,8 @@ audio captured from the selected local microphone.
 npm install
 cp .env.example .env
 npm run type-check
+npm run lint         # ESLint
+npm run format:check # Prettier
 npm run build
 npm start
 ```
@@ -128,7 +130,10 @@ npm start
 For development rebuilds:
 
 ```bash
-npm run watch
+npm run dev           # rebuilds on save + hot-reloads renderer, auto-restarts Electron (recommended)
+npm run watch         # rebuilds only; relaunch Electron yourself
+npm run lint          # lint (eslint .)
+npm run format        # auto-format with Prettier
 ```
 
 ## Install & first run (end users)
@@ -243,6 +248,8 @@ play the Urdu test audio through MacBook speakers into the MacBook microphone.
 
 ```bash
 npm run type-check
+npm run lint
+npm run format:check
 npm run build
 npm test
 ```

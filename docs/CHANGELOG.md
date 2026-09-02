@@ -1543,3 +1543,80 @@ component split, and functional wiring (UI/design-system migration only).
   `audioLevels` is empty (meeting stopped). App is now effectively single-mic
   again: no second capture is opened by the waveform during a meeting.
 - Validation: `npm run type-check` clean; `npm test` 60/60; `npm run build` OK.
+
+## 2026-09-02 — npm run dev: watch build + Electron auto-restart
+
+- Added `npm run dev` (`node scripts/dev.js`, zero new dependencies) so source
+  edits are visible without manually re-running `npm start`.
+- It spawns the existing esbuild/Tailwind `--watch` build and launches Electron
+  from the freshly built `dist/`, then **restarts Electron automatically** when
+  the main or preload bundle changes. Renderer/Tailwind-only edits rebuild in
+  place and appear on window reload (`Cmd+R`) — no restart needed. `Ctrl+C`
+  stops the build watcher and Electron together.
+- Restart detection polls `dist/main/index.js` + `dist/preload/index.js`
+  mtimes (400 ms) rather than `fs.watch`, because macOS FSEvents coalescing
+  can silently drop rapid rewrites and esbuild only re-writes a bundle when its
+  content actually changed (e.g. comment-only edits produce identical bundles
+  and correctly trigger no restart).
+- Verified end to end: clean `dist/` start → Electron launches; a real edit to
+  `src/main/index.ts` and to `src/preload/index.ts` each reliably restarted
+  Electron (launch → restart → relaunch, twice).
+- Also added `npm run dev` to README quick-start and docs. Note: `HOME` state
+  on the user's machine — HomeScreen.tsx currently has the `audioLevels`
+  wiring removed (their own uncommitted edit); the waveform falls back to its
+  own mic capture during active meetings.
+
+## 2026-09-02 — Revert LiveWaveform to stock; fix Tailwind watch + hot reload; ESLint + Prettier
+
+- **LiveWaveform reverted to verbatim upstream** (user request: keep main
+  components untouched). `live-waveform.tsx` is again verbatim upstream
+  content (no functional edits — `github.com/elevenlabs/examples`
+  `speech-to-text/nextjs/realtime/example/components/ui/live-waveform.tsx`,
+  560 lines) + GPL origin header, later normalized only to the project's
+  Prettier style. The earlier spectrum experiment is fully
+  removed: `useMicrophone.ts` exposes only `level` (no `spectrum`),
+  `App.tsx` passes no `spectrum`, `HomeScreen.tsx` has no
+  `audioLevels`/`spectrum` props (interface + JSX cleaned). `grep -c
+  audioLevel` across `src/` is 0.
+- **Tailwind watch fix (real root cause of "CSS never regenerates")**:
+  Tailwind v3.4.19's CLI watcher exits on stdin EOF
+  (`process.stdin.on("end", () => process.exit(0))`), so the previous
+  `execSync("tailwindcss ... --watch")` in `esbuild.config.js` returned
+  immediately and styling-class edits never appeared in dev. Now
+  `compileTailwind()` runs a one-shot build (never `--watch`) and a
+  background `spawn('tailwindcss', ['--watch=always'])` keeps regenerating
+  `dist/renderer/tailwind.css`. Verified: editing `globals.css` rebuilds CSS.
+- **Renderer hot reload (dev-only)**: `src/main/index.ts` polls
+  `dist/renderer/index.html` + `bundle.js` + `tailwind.css` mtimes (350 ms
+  poll, 150 ms debounce) and reloads the window on change
+  (`[dev] renderer bundle/CSS changed — reloading window`). Gated by
+  `process.env.NODE_ENV === 'development'`; esbuild main build now defines
+  `process.env.NODE_ENV` (`"development"` in watch, else `"production"`).
+  Verified twice via `npm run dev` on a real HomeScreen edit.
+- **ESLint 9 (flat config) + Prettier**:
+  - DevDeps added (peer-pinned to the eslint-9 line):
+    `eslint@^9`, `@eslint/js@^9`, `prettier@^3`, `typescript-eslint@^8`,
+    `eslint-plugin-react`, `eslint-plugin-react-hooks`,
+    `eslint-config-prettier`, `globals`.
+  - `eslint.config.mjs` (flat): recommended JS + recommended TS; per-area
+    globals (main/preload/tests = node, renderer = browser, configs/scripts =
+    node); react (`flat.recommended` + `flat["jsx-runtime"]`) + react-hooks;
+    `prettier` config last. Rationale comments for `no-undef` off,
+    `react/prop-types` off, `react-hooks/set-state-in-effect` off
+    (false-positive on async setState in effect), and test-only
+    `no-unused-vars` → warn.
+  - `.prettierrc.json` (`semi`, `singleQuote`, `printWidth 110`, trailing
+    commas) + `.prettierignore` (`node_modules`, `dist`, `dist_electron`,
+    `docs`, `*.md`, `package-lock.json`).
+  - Scripts: `lint`, `lint:fix`, `format`, `format:check`.
+  - Lint-driven source cleanups (no behavior change): removed unused
+    `PipelinePhaseAverages` import (`pipeline-telemetry.ts`), unused
+    `BLACKHOLE_PATTERN` and unused `setSetSinkIdSupported` setter
+    (`useAudioOutput.ts`), and leftover `spectrum` prop residue in
+    `App.tsx`/`HomeScreen.tsx`.
+  - Whole repo formatted with Prettier (single-quote style applied to all
+    source incl. the vendored waveform's JSX).
+- **Validation**: `npm run lint` 0 errors (13 warnings: 3 pre-existing
+  exhaustive-deps in `App.tsx`/`useSetup.ts`, 10 unused test helpers);
+  `npm run format:check` clean; `npm run type-check` clean; `npm test` 60/60;
+  `npm run build` OK.

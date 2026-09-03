@@ -24,6 +24,7 @@ import type { AppPreferences, GetPreferencesResult, SetPreferencesResult } from 
 /** Defaults used when no persisted preferences file exists yet. */
 const DEFAULT_PREFERENCES: AppPreferences = {
   onboardingCompleted: false,
+  ttsVoiceId: null,
 };
 
 /**
@@ -35,13 +36,19 @@ function preferencesFile(): string {
   return path.join(app.getPath('userData'), 'preferences.json');
 }
 
-function loadPreferences(): AppPreferences {
+export function loadPreferences(): AppPreferences {
   try {
     const raw = fs.readFileSync(preferencesFile(), 'utf8');
     const parsed = JSON.parse(raw) as Partial<AppPreferences>;
     return {
       onboardingCompleted:
         typeof parsed.onboardingCompleted === 'boolean' ? parsed.onboardingCompleted : false,
+      ttsVoiceId:
+        parsed.ttsVoiceId === undefined || parsed.ttsVoiceId === null
+          ? null
+          : typeof parsed.ttsVoiceId === 'string' && parsed.ttsVoiceId.trim() !== ''
+            ? parsed.ttsVoiceId.trim()
+            : null,
     };
   } catch {
     return { ...DEFAULT_PREFERENCES };
@@ -79,6 +86,12 @@ export function registerPreferencesIpc() {
       const next = loadPreferences();
       if (typeof incoming.onboardingCompleted === 'boolean') {
         next.onboardingCompleted = incoming.onboardingCompleted;
+      }
+      if (incoming.ttsVoiceId !== undefined) {
+        next.ttsVoiceId =
+          typeof incoming.ttsVoiceId === 'string' && incoming.ttsVoiceId.trim() !== ''
+            ? incoming.ttsVoiceId.trim()
+            : null;
       }
       persistPreferences(next);
       return { ok: true, preferences: next };

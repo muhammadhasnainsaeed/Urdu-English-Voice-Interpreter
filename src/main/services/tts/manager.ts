@@ -113,12 +113,13 @@ export class TtsManager {
     emit: (event: TtsEvent) => void,
     audioOutput: AudioOutputManager,
     providerOverride?: TtsProvider,
+    voiceId?: string,
   ): Promise<TtsStartResult> {
     if (this.active) {
       return { ok: false, message: 'TTS is already running.' };
     }
 
-    const provider = providerOverride ?? (await createTtsProvider());
+    const provider = providerOverride ?? (await createTtsProvider(voiceId));
     if (!provider) {
       return {
         ok: false,

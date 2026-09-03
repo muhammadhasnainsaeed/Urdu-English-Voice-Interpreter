@@ -3,6 +3,131 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-09-03 — Searchable Voice picker replaces the gender + voice selects
+
+- **Removed the Voice gender (Female/Male) Select and the gender-filtered Voice
+  Select** from the Settings → Voice section. `ttsVoiceGender` was dropped from
+  `AppPreferences` (`packages/shared/index.ts`) and from
+  `src/main/ipc/preferences.ts` (default, `loadPreferences`, and
+  `preferences:set` all updated); the `selectedGender`/`onSelectVoiceGender`
+  props were removed from `App.tsx`, `SettingsScreen.tsx`, and `TtsPanel.tsx`.
+- **Added a searchable voice picker** (`src/renderer/components/VoicePicker.tsx`,
+  built on new shadcn `ui/popover.tsx` + `ui/command.tsx` primitives pulled from
+  `@radix-ui/react-popover` and `cmdk`). It lists **all** voices in two groups —
+  **Azure voices** (22) and **macOS system voices** (184, dev) — with
+  type-to-search filtering by name **and** id. `TtsPanel.tsx` now renders just
+  the Voice label + `VoicePicker` + Test Voice.
+- **Verified via CDP**: Settings → Voice shows one Voice combobox (no "Voice
+  gender"); opening it shows Azure voices + macOS system voices; searching
+  "prabhat" returns only `Prabhat (IN)` and "alice" matches the Alice system
+  voice; selecting updates the trigger and persists `ttsVoiceId` (e.g.
+  `en-IN-NeerjaNeural`). Test Voice and Start Meeting still behave correctly.
+- **Validation**: type-check clean; tests 80/80; build OK; ESLint 0 errors
+  (removed the `cmdk-input-wrapper` attribute to satisfy `react/no-unknown-
+  property`); Prettier clean.
+- Added deps: `cmdk@^1.1.1`, `@radix-ui/react-popover@^1.1.23`.
+
+## 2026-09-03 — Make the Voice gender filter actually visible (Female/Male splits the list)
+
+- `TtsPanel` no longer mixes macOS system voices (gender `unknown`) into the
+  gender-filtered Azure list. **Female → only female Azure voices; Male → only
+  male Azure voices.** The only macOS voice shown is a currently persisted
+  system selection, kept so it is not lost.
+- Verified via CDP: with gender Male the Voice dropdown lists exactly Guy,
+  Christopher, Eric, Roger, Steffan, Tony, Ryan, Thomas, William, Prabhat (IN),
+  Liam (plus any retained macOS selection). Female uses the identical code
+  branch.
+- Validation: type-check, tests 80/80, build OK, ESLint 0 errors, Prettier
+  clean.
+
+## 2026-09-03 — Fix: silent Test Voice + "TTS is already running" on Start Meeting
+
+Follow-up bug fix to the voice-selection feature.
+
+- **No audio on Test Voice**: `AudioOutputManager.writeAudio()` silently drops
+  audio when the audio output manager is inactive, and `tts:test` never started
+  it. The handler now starts `audioOutput` (if not active) before speaking the
+  test phrase, so the selected voice is actually audible. Also, non-Azure/system
+  voice ids route to the `say` provider (never Azure).
+- **"TTS is already running" on Start Meeting**: `tts:test` used the shared
+  singleton `ttsManager` and left it active, so a later session start returned
+  "TTS is already running." `tts:test` now uses an **independent `TtsManager`**
+  that starts, speaks the test phrase, then self-terminates (`tts:spoken` →
+  `setImmediate` stop) and stops the audio output it started, emitting
+  `tts:stopped` so the renderer returns to Off. The shared session manager is
+  untouched by a test, so Start Meeting works without the error.
+- **Gender filter retained**: Filters the Azure voice list by documented Azure
+  gender; dev macOS system voices are appended regardless. Verified via CDP:
+  Settings → Voice → gender Male → select voice → Test Voice shows the text with
+  provider "Say", badge Active, then auto-returns to Off; Start Meeting
+  completes with no "TTS is already running" error.
+- **Validation**: type-check, tests 80/80, build OK, ESLint 0 errors, Prettier
+  clean.
+
+## 2026-09-03 — Fix: "Speech playback failed" when selecting/testing a voice
+
+Follow-up bug fix to the voice-selection feature.
+
+- **Root cause**: `createAzureTtsProvider` passed the selected voice id to the
+  Azure SDK unconditionally. A macOS `say` voice id (dev-only, selectable only
+  when a system voice is picked) is not an Azure voice — Azure rejected it →
+  `tts:error` → "Speech playback failed". Selecting an Azure voice without
+  `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` also threw immediately.
+- **Fix 1 — voice-aware provider routing**: `provider.ts`
+  `createTtsProvider(voiceId?)` routes any non-Azure voice id to the `say`
+  provider via new `voiceIsAzure()` (`voices.ts`), so a macOS system voice is
+  always synthesized locally and never reaches the Azure SDK. Dev-only;
+  production still exposes Azure voices only, so the production Azure path is
+  unchanged.
+- **Fix 2 — system voices selectable in dev**: `TtsPanel` lists macOS system
+  voices (marked "(macOS)", gender `unknown`) in the Voice dropdown in dev, so
+  users can test tones fully offline with `say` and no Azure keys. Azure voices
+  still need the Azure credential to synthesize.
+- **Tests**: 2 new `voiceIsAzure` tests; suite 80 passing (was 78).
+- **Validation**: type-check, tests 80/80, build OK, ESLint 0 errors, Prettier
+  clean. CDP-verified: selecting a macOS voice + Test Voice completes with no
+  error toast and no console errors.
+
+## 2026-09-03 — TTS voice selection: gender + voice dropdowns, Test Voice, dev system voices
+
+Voice selection feature for Settings → Voice (no commit/push).
+
+- **Shared types** (`packages/shared/index.ts`): `VoiceGender`
+  (`female | male | unknown`), `TtsVoiceSource` (`azure | system`), `TtsVoice`,
+  `ListVoicesResult`; `AppPreferences` gains `ttsVoiceGender` (default
+  `female`) and `ttsVoiceId` (default `null`); `ElectronAPI` gains
+  `getTtsVoices()` and `testTtsVoice()`.
+- **Voice catalog/enumeration** (`src/main/services/tts/voices.ts`):
+  curated `AZURE_VOICES` (22 real Azure Neural English voices with documented
+  gender, default `en-US-JennyNeural`); `parseSayVoices()` for `say -v '\?'`
+  (system voice gender is `unknown` — macOS exposes no gender metadata, so
+  system voices are excluded from the Female/Male filter, documented
+  limitation); `listVoices(development)` + `normalizeSelectedVoiceId()`
+  (production restricted to curated Azure ids; dev passes through). macOS
+  system voices exposed only when `!app.isPackaged` — Azure-only in packaged
+  builds.
+- **Provider voice threading**: `createTtsProvider(voiceId?)` → Azure
+  (`voiceId` beats `AZURE_TTS_VOICE`, fallback `en-US-JennyNeural`) and `say`
+  (`-v <voice>`, default `Samantha`); `TtsManager.start(..., voiceId?)`.
+- **IPC** (`src/main/ipc/tts.ts`): `tts:start` resolves the persisted voice;
+  new `tts:list-voices` and `tts:test` (stops active TTS, restarts with the
+  selected voice, then feeds a fixed test sentence through the existing
+  `ttsManager.onTranslationText(...)` pipeline — no parallel TTS path).
+  `resolveTtsVoiceId()` feeds the SessionManager via an injected resolver
+  (`setTtsVoiceIdResolver`), keeping the session service electron-free and
+  unit-testable.
+- **Preferences** (`src/main/ipc/preferences.ts`): exports `loadPreferences`,
+  persists `ttsVoiceGender`/`ttsVoiceId` so a selection survives restart.
+- **UI** (`TtsPanel.tsx`, `App.tsx`, `SettingsScreen.tsx`, new
+  `useTtsVoices.ts`): Voice gender Select (Female/Male) + Voice Select filtered
+  by gender + dev-only "system voices available in dev" label + **Test Voice**
+  button.
+- **Tests** (`tests/voices.test.ts`): 10 new tests; suite 78 passing (was 68).
+- **Validation**: type-check clean, tests 78/78, build OK, ESLint 0 errors,
+  Prettier clean; CDP-smoke at 480px (gender + voice dropdowns populate, male
+  filter shows male Azure voices, `getTtsVoices` returns 206 voices in dev,
+  no horizontal overflow, correct theme).
+
 ## [1.0.0] - 2026-08-28
 
 First public open-source release of the Urdu → English Voice Interpreter for

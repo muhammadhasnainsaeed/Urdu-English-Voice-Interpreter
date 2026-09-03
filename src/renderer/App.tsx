@@ -24,6 +24,7 @@ import { useMicrophone } from './services/useMicrophone';
 import { useStt } from './services/useStt';
 import { useTranslation } from './services/useTranslation';
 import { useTts } from './services/useTts';
+import { useTtsVoices } from './services/useTtsVoices';
 import { useAudioOutput } from './services/useAudioOutput';
 import { useSession } from './services/useSession';
 import { useSetup } from './setup/useSetup';
@@ -38,6 +39,7 @@ export default function App() {
   const stt = useStt();
   const translation = useTranslation();
   const tts = useTts();
+  const ttsVoices = useTtsVoices();
   const audioOutput = useAudioOutput();
   const session = useSession();
   const preferences = usePreferences();
@@ -161,6 +163,16 @@ export default function App() {
       }
     }
   };
+
+  const handleSelectVoice = async (voiceId: string) => {
+    await preferences.update({ ttsVoiceId: voiceId });
+  };
+
+  const handleTestVoice = async () => {
+    await window.electron.testTtsVoice();
+  };
+
+  const ttsVoiceId = preferences.preferences?.ttsVoiceId ?? null;
 
   const handleCompleteOnboarding = async () => {
     await preferences.completeOnboarding();
@@ -300,6 +312,12 @@ export default function App() {
       ttsError={tts.error}
       ttsProvider={tts.provider}
       ttsCurrentText={tts.currentText}
+      ttsVoices={ttsVoices.voices}
+      ttsVoicesLoading={ttsVoices.loading}
+      ttsDevelopment={ttsVoices.development}
+      ttsVoiceId={ttsVoiceId}
+      onSelectVoice={handleSelectVoice}
+      onTestVoice={handleTestVoice}
       currentStage={currentStage}
       onDeviceTest={microphone.start}
     />

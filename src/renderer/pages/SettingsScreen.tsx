@@ -36,6 +36,7 @@ import type {
   SttStatus,
   TranslationStatus,
   TtsStatus,
+  TtsVoice,
 } from '@shared/index';
 import { Button } from '../components/ui/button';
 import { Separator } from '../components/ui/separator';
@@ -138,6 +139,12 @@ interface SettingsScreenProps {
   ttsError: string | null;
   ttsProvider: string | null;
   ttsCurrentText: string;
+  ttsVoices: TtsVoice[];
+  ttsVoicesLoading: boolean;
+  ttsDevelopment: boolean;
+  ttsVoiceId: string | null;
+  onSelectVoice: (voiceId: string) => void;
+  onTestVoice: () => void;
   currentStage: string;
   onDeviceTest: () => void;
 }
@@ -233,6 +240,12 @@ export default function SettingsScreen(props: SettingsScreenProps) {
                 }
                 onStart={props.onTtsStart}
                 onStop={props.onTtsStop}
+                voices={props.ttsVoices}
+                voicesLoading={props.ttsVoicesLoading}
+                development={props.ttsDevelopment}
+                selectedVoiceId={props.ttsVoiceId}
+                onSelectVoice={props.onSelectVoice}
+                onTestVoice={props.onTestVoice}
               />
             </div>
           )}

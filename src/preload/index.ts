@@ -26,6 +26,7 @@ import type {
   AppPreferences,
   ElectronAPI,
   GetPreferencesResult,
+  ListVoicesResult,
   OpenExternalResult,
   PermissionStatus,
   PipelineEvent,
@@ -80,6 +81,8 @@ const api: ElectronAPI = {
       ipcRenderer.removeListener('tts:event', listener);
     };
   },
+  getTtsVoices: () => ipcRenderer.invoke('tts:list-voices') as Promise<ListVoicesResult>,
+  testTtsVoice: () => ipcRenderer.invoke('tts:test') as Promise<TtsStartResult>,
 
   /* Audio output (Milestone 6) */
   getAudioOutputDevices: () =>

@@ -70,7 +70,9 @@ function parseWavFormat(header: Buffer): {
   };
 }
 
-export function createSayTtsProvider(): TtsProvider {
+export function createSayTtsProvider(voiceId?: string): TtsProvider {
+  const voice = voiceId?.trim() || 'Samantha';
+
   return {
     name: 'say',
 
@@ -85,7 +87,7 @@ export function createSayTtsProvider(): TtsProvider {
         await new Promise<void>((resolve, reject) => {
           const child = spawn('say', [
             '-v',
-            'Samantha',
+            voice,
             '-r',
             '200',
             '--file-format=WAVE',

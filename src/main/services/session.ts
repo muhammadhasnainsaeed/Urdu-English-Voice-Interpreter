@@ -80,6 +80,8 @@ export class SessionManager {
   private status: SessionStatus = 'idle';
   private emitFn: ((event: SessionEvent) => void) | null = null;
   private getWindow: (() => BrowserWindow | null) | null = null;
+  /** Resolves the persisted TTS voice for the current environment. Injected by the IPC layer. */
+  private voiceIdResolver: () => string | null = () => null;
 
   get status$(): SessionStatus {
     return this.status;
@@ -91,6 +93,10 @@ export class SessionManager {
 
   setWindowGetter(getWindow: () => BrowserWindow | null): void {
     this.getWindow = getWindow;
+  }
+
+  setTtsVoiceIdResolver(resolver: () => string | null): void {
+    this.voiceIdResolver = resolver;
   }
 
   private emit(event: SessionEvent): void {
@@ -188,7 +194,12 @@ export class SessionManager {
     // Stage 2: TTS
     try {
       this.emitStageChange('tts', 'starting');
-      const ttsResult = await ttsManager.start(this.createTtsEmit(), audioOutputManager);
+      const ttsResult = await ttsManager.start(
+        this.createTtsEmit(),
+        audioOutputManager,
+        undefined,
+        this.voiceIdResolver() ?? undefined,
+      );
       if (!ttsResult.ok) {
         throw new Error(ttsResult.message);
       }

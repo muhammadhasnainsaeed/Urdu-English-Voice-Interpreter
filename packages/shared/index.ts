@@ -96,6 +96,31 @@ export interface TtsStartResult {
   provider?: string;
 }
 
+/* ---- TTS voices (voice selection) ---- */
+
+/** Reliable-to-know gender for a TTS voice where the source advertises it. */
+export type VoiceGender = 'female' | 'male' | 'unknown';
+
+export type TtsVoiceSource = 'azure' | 'system';
+
+export interface TtsVoice {
+  /** Provider-specific id — azure: "en-US-JennyNeural"; system: macOS name. */
+  id: string;
+  /** Human-friendly label for the dropdown. */
+  name: string;
+  gender: VoiceGender;
+  source: TtsVoiceSource;
+}
+
+export interface ListVoicesResult {
+  ok: boolean;
+  /** Available for the current environment (dev exposes system voices). */
+  voices: TtsVoice[];
+  /** True when the app is running unpackaged (macOS system voices available). */
+  development: boolean;
+  message?: string;
+}
+
 /* ---- Audio output (Milestone 6) ---- */
 
 export interface AudioFormat {
@@ -308,6 +333,8 @@ export function isAllowedOpenExternalUrl(url: string): boolean {
 export interface AppPreferences {
   /** True once the user has completed (or dismissed) first-launch onboarding. */
   onboardingCompleted: boolean;
+  /** Selected TTS voice id (provider-specific). Absent/null → provider default. */
+  ttsVoiceId?: string | null;
 }
 
 export interface GetPreferencesResult {
@@ -341,6 +368,8 @@ export interface ElectronAPI {
   startTts: () => Promise<TtsStartResult>;
   stopTts: () => Promise<void>;
   onTtsEvent: (handler: (event: TtsEvent) => void) => () => void;
+  getTtsVoices: () => Promise<ListVoicesResult>;
+  testTtsVoice: () => Promise<TtsStartResult>;
   getAudioOutputDevices: () => Promise<AudioOutputDevice[]>;
   selectAudioOutput: (deviceId: string) => Promise<void>;
   startAudioOutput: () => Promise<AudioOutputStartResult>;

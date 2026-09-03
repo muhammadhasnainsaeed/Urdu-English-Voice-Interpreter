@@ -17,11 +17,13 @@
  */
 
 import React from 'react';
-import type { TtsStatus } from '@shared/index';
+import type { TtsStatus, TtsVoice } from '@shared/index';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Alert } from './ui/alert';
+import { Label } from './ui/label';
+import VoicePicker from './VoicePicker';
 
 interface TtsPanelProps {
   status: TtsStatus;
@@ -31,6 +33,12 @@ interface TtsPanelProps {
   translationActive: boolean;
   onStart: () => void;
   onStop: () => void;
+  voices: TtsVoice[];
+  voicesLoading: boolean;
+  development: boolean;
+  selectedVoiceId: string | null;
+  onSelectVoice: (voiceId: string) => void;
+  onTestVoice: () => void;
 }
 
 const STATUS_LABELS: Record<TtsStatus, string> = {
@@ -54,6 +62,12 @@ export default function TtsPanel({
   translationActive,
   onStart,
   onStop,
+  voices,
+  voicesLoading,
+  development,
+  selectedVoiceId,
+  onSelectVoice,
+  onTestVoice,
 }: TtsPanelProps) {
   const active = status === 'active' || status === 'starting';
   const canToggle = translationActive;
@@ -79,7 +93,36 @@ export default function TtsPanel({
         </div>
       </CardHeader>
 
-      <CardContent className="flex flex-col gap-2 p-4 pt-0">
+      <CardContent className="flex flex-col gap-3 p-4 pt-0">
+        <div className="grid grid-cols-1 gap-3">
+          <div className="flex flex-col gap-1 min-w-0">
+            <Label className="flex items-center gap-1 text-xs text-muted-foreground">
+              Voice
+              {development && (
+                <>
+                  <span className="text-muted-foreground/60">·</span>
+                  <span className="flex items-center gap-1 font-normal normal-case text-muted-foreground/70">
+                    system voices available in dev
+                  </span>
+                </>
+              )}
+            </Label>
+            <VoicePicker
+              voices={voices}
+              value={selectedVoiceId}
+              onChange={onSelectVoice}
+              disabled={voicesLoading}
+              placeholder={voicesLoading ? 'Loading voices…' : 'Select a voice'}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onTestVoice} disabled={voicesLoading}>
+            Test Voice
+          </Button>
+        </div>
+
         {currentText && (
           <div className="flex max-h-36 min-h-16 flex-col gap-2 overflow-y-auto rounded-md border p-3 text-[13px] leading-relaxed">
             <div className="text-foreground">{currentText}</div>

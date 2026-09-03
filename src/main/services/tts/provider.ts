@@ -17,6 +17,7 @@
  */
 
 import type { AudioChunk } from '@shared/index';
+import { voiceIsAzure } from './voices';
 
 export interface TtsProvider {
   readonly name: string;
@@ -35,7 +36,16 @@ export interface TtsProvider {
   stop(): Promise<void>;
 }
 
-export async function createTtsProvider(): Promise<TtsProvider | null> {
+export async function createTtsProvider(voiceId?: string): Promise<TtsProvider | null> {
+  // A non-Azure voice id is a macOS system voice (selectable only in dev).
+  // System voices are local `say` voices — route them to the `say` provider so
+  // they are never passed to the Azure SDK (which would reject them). This
+  // only affects dev/unpackaged builds; production only exposes Azure voices.
+  if (voiceId && !voiceIsAzure(voiceId)) {
+    const { createSayTtsProvider } = await import('./providers/say');
+    return createSayTtsProvider(voiceId);
+  }
+
   const providerName = (process.env.TTS_PROVIDER || 'mock').toLowerCase();
 
   if (providerName === 'mock') {
@@ -45,12 +55,12 @@ export async function createTtsProvider(): Promise<TtsProvider | null> {
 
   if (providerName === 'say') {
     const { createSayTtsProvider } = await import('./providers/say');
-    return createSayTtsProvider();
+    return createSayTtsProvider(voiceId);
   }
 
   if (providerName === 'azure') {
     const { createAzureTtsProvider } = await import('./providers/azure');
-    return createAzureTtsProvider();
+    return createAzureTtsProvider(voiceId);
   }
 
   return null;

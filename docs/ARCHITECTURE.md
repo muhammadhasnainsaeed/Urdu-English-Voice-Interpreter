@@ -355,12 +355,14 @@ from the environment:
 
 - `azure` (default) — Azure Speech TTS, same credentials as STT
   (`AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION`). Uses `SpeechSynthesizer` from
-  `microsoft-cognitiveservices-speech-sdk` (already a dependency). Configurable
-  voice via `AZURE_TTS_VOICE` (default `en-US-JennyNeural`). Uses `null`
+  `microsoft-cognitiveservices-speech-sdk` (already a dependency). Voice from
+  the Settings selection (added 2026-09-03) beats `AZURE_TTS_VOICE`
+  (default `en-US-JennyNeural`). Uses `null`
   AudioConfig to get raw PCM from `result.audioData` (no system speaker
   output); audio is routed through `AudioOutputManager`.
 - `say` — macOS built-in `say` command. Zero dependencies, fully offline.
-  Uses `Samantha` voice at 200 wpm. `stop()` kills via `killall say`.
+  Voice from the Settings selection adds `-v <voice>` (default `Samantha`,
+  200 wpm). `stop()` kills via `killall say`.
   Platform-isolated for future Windows/Linux porting.
 - `mock` — 200 ms simulated delay. No audio output. For automated testing.
 - anything else / missing Azure keys — `tts:start` returns `{ok:false, message}`
@@ -545,6 +547,32 @@ Zoom / Google Meet / Microsoft Teams
   them into the central flow without rewriting business logic. Persistent
   recoverable state (missing device/config/permission) keeps its inline
   setup/panel UI, while transient failures surface as toasts.
+- **TTS voice selection (added 2026-09-03)**: the Settings → Voice section
+  selects a voice via a searchable combobox that persists through `preferences`
+  (`ttsVoiceId`) and is threaded into the existing TTS provider. Voice
+  enumeration (`src/main/services/tts/voices.ts`) is dev-vs-prod gated on
+  `!app.isPackaged`: packaged (production) builds expose a curated catalog of
+  real Azure Neural voices only; dev (unpackaged) builds additionally enumerate
+  macOS `say` system voices. The `SessionManager` receives the resolved voice
+  through an injected resolver (`setTtsVoiceIdResolver`), so the session service
+  stays free of `electron`/filesystem dependencies and remains unit-testable.
+  **Known limitation**: macOS `say` exposes no gender metadata, so system voice
+  gender is `unknown`. **Picker (2026-09-03)**: the picker (`VoicePicker.tsx`,
+  Popover + Command/cmdk) lists **all** voices in two groups — "Azure voices"
+  and "macOS system voices" (dev) — with type-to-search filtering by name and
+  id; the earlier Female/Male gender Select and gender-filtered Voice Select
+  were removed, and `ttsVoiceGender` was dropped from `AppPreferences`. This
+  "one source of truth" rule keeps the production Azure TTS path and the "no
+  parallel implementation" constraint intact — the Test Voice action reuses the
+  same `TtsManager.onTranslationText()` pipeline. **Voice routing (2026-09-03
+  fix)**: `createTtsProvider()` routes any non-Azure voice id (i.e. a macOS
+  system voice, dev-only) to the `say` provider, so a system voice is never sent
+  to the Azure SDK.
+  **Test Voice isolation (2026-09-03 fix)**: the `tts:test` handler runs on its
+  own `TtsManager` instance (not the shared session manager), starts the audio
+  output it needs, and self-terminates after the test phrase — so a test never
+  leaves TTS/audio active and never blocks a subsequent "/ Start Meeting" with
+  "already running".
 - **Microphone capture in the renderer, permission in the main process**
   (see "Microphone pipeline" above): zero native dependencies, exact
   deviceId matching, and macOS TCC handled via `systemPreferences`.

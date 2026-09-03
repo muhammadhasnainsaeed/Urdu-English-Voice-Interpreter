@@ -2,6 +2,116 @@
 
 _Last updated: 2026-09-03_
 
+## TTS voice selection: searchable VoicePicker, Test Voice, dev system voices
+
+Completed (2026-09-03). Voice preference feature for the Settings → Voice section.
+
+### What is done
+- **Voice model (shared)** — `packages/shared/index.ts` adds `VoiceGender`
+  (`female | male | unknown`), `TtsVoiceSource` (`azure | system`),
+  `TtsVoice { id; name; gender; source }`, and `ListVoicesResult { ok; voices;
+  development; message? }`. `AppPreferences` retains only
+  `ttsVoiceId: string | null` (default `null`) — the gender preference was
+  removed. `ElectronAPI` (preload bridge) gains `getTtsVoices()` and
+  `testTtsVoice()`.
+- **Voice catalog + enumeration** — `src/main/services/tts/voices.ts`
+  - `AZURE_VOICES`: curated catalog of 22 real, documented Azure Neural English
+    voices (en-US/en-GB/en-AU/en-IN/en-CA) with their documented gender. Safe
+    default `en-US-JennyNeural` (female).
+  - `parseSayVoices()`: parses `say -v '\?'` output. macOS `say` exposes no
+    gender metadata, so **system voice gender is `unknown`** (documented
+    limitation, not guessed). Handles multi-word + parenthesized names ("Bad
+    News", "Eddy (English)") by locating the `xx_YY` locale token before `#`.
+  - `listVoices(development)`: Azure always + macOS system voices in dev only.
+  - `normalizeSelectedVoiceId(storedId, development)`: production restricts to
+    the curated Azure ids (stale dev system ids never reach production); empty
+    → default.
+- **Dev-vs-prod gating** — macOS system voices exposed only when
+  `!app.isPackaged` (dev/unpackaged). Production (packaged) lists Azure only.
+  Detection lives in the IPC layer (`isTtsDevelopment()`), keeping `voices.ts`
+  pure and unit-testable (no `require('electron')`).
+- **Provider voice threading** — `createTtsProvider(voiceId?)` flows the
+  selected id into Azure (`createAzureTtsProvider` — voiceId beats
+  `AZURE_TTS_VOICE`, fallback `en-US-JennyNeural`) and `say`
+  (`createSayTtsProvider` — `-v <voice>`, default `Samantha`). `TtsManager.start`
+  accepts `voiceId`.
+- **IPC** — `src/main/ipc/tts.ts`: `tts:start` resolves the persisted voice;
+  `tts:list-voices` returns `ListVoicesResult`; `tts:test` stops active TTS,
+  restarts with the selected voice, and feeds a fixed test sentence through the
+  existing TTS pipeline (`ttsManager.onTranslationText(...)`) — no parallel TTS
+  path. `resolveTtsVoiceId()` exported; the SessionManager is fed it via an
+  injected resolver (`setTtsVoiceIdResolver`) so the session service stays
+  electron-free and unit-testable.
+- **Preferences persistence** — `src/main/ipc/preferences.ts` (exports
+  `loadPreferences`) persists `ttsVoiceId`; `preferences:set` persists it so a
+  selection survives restart. (`ttsVoiceGender` removed.)
+- **UI — searchable VoicePicker** — `TtsPanel.tsx` Voice section now uses a
+  single searchable combobox (`VoicePicker.tsx`, built on `Popover` +
+  `Command`/cmdk) that lists **every** available voice — the **Voice gender**
+  Select and the gender-filtered **Voice** Select were both removed. The picker
+  groups voices into **"Azure voices"** (22) and, in dev, **"macOS system
+  voices"** (184); typing filters by name **and** id. A dev-only "system voices
+  available in dev" label shows when `development`, plus a **Test Voice** button
+  that calls `window.electron.testTtsVoice()`. Wired through `App.tsx` →
+  `SettingsScreen.tsx` via new `useTtsVoices()` hook (loads on mount) and the
+  existing `usePreferences()`.
+- **Tests** — `tests/voices.test.ts`: 12 tests for `parseSayVoices` (simple,
+  multi-word/parenthesized, missing locale, blank lines, gender `unknown`),
+  catalog validity, default voice, `normalizeSelectedVoiceId`
+  (dev passthrough / empty fallback / prod restriction), and `voiceIsAzure`.
+  Project suite: **80 tests pass**.
+- **Validation** — `npm run type-check` clean; `npm test` 80/80; `npm run build`
+  OK (`dist/renderer/index.html` present); ESLint 0 errors; Prettier clean.
+  CDP-smoke-tested against the running app at min width: Settings → Voice shows
+  one searchable Voice combobox, `getTtsVoices` returns **206** voices (22 Azure
+  + ~184 macOS system) with `development:true`, searching "prabhat" returns only
+  `Prabhat (IN)`, Test Voice + Start TTS buttons present, no horizontal overflow
+  (`scrollW == winW`), theme correct (dark).
+
+### What remains
+- None for this feature. Requires a real Azure credential to hear the Test Voice /
+  Meeting TTS with a selected Azure voice (provider path reused; already covered
+  by the existing TTS pipeline).
+- Manual tasting of a specific macOS `say` voice in dev (optional, via system
+  voice list).
+
+### Bug fix — "Speech playback failed" / "TTS is already running" when selecting/testing voices (2026-09-03)
+- **Root cause (A) — silent "Speech playback failed"**: `createAzureTtsProvider`
+  passes the selected voice id to the Azure SDK. (a) A macOS `say` voice id
+  (dev-only; never an Azure voice) sent to Azure is rejected by the SDK →
+  `tts:error`. (b) `AudioOutputManager.writeAudio()` **silently drops audio when
+  the audio output manager is inactive** (`if (!this.active || !this.provider)
+  return`), and the `tts:test` handler never started audio output — so the test
+  synthesizes text and shows it but nothing is audible.
+- **Root cause (B) — "TTS is already running"**: `tts:test` used the **shared
+  singleton `ttsManager`** and left it **active**. A subsequent `/ Start
+  Meeting` called session → `ttsManager.start()` again → `{ok:false,
+  message:'TTS is already running.'}` → session aborted at the TTS stage.
+- **Fix A (routing + audio)** — `provider.ts` routes any non-Azure voice id to
+  the `say` provider (`voiceIsAzure()` in `voices.ts`), and the `tts:test`
+  handler now starts `audioOutput` (if not already active) before feeding the
+  test phrase so the audio is actually played.
+- **Fix B (independent test manager)** — `tts:test` now creates its **own
+  `TtsManager`** instance (same provider path, no parallel TTS implementation)
+  that starts, speaks the test phrase, then **self-terminates** (`setImmediate`
+  on `tts:spoken` → `stop()`) and stops the audio output it started, emitting
+  `tts:stopped` so the renderer returns to idle. The shared meeting/session
+  `ttsManager` is never touched by a test, so starting a meeting no longer hits
+  "already running".
+- **Gender filter removed (2026-09-03)**: the Female/Male dropdown and the
+  gender-filtered Voice dropdown were both replaced by a single searchable
+  **VoicePicker** showing all voices (Azure + macOS in dev). No gender UI or
+  `ttsVoiceGender` preference remains.
+- **Verified via CDP (TTS_PROVIDER=say)**: Settings → Voice now shows a single
+  Voice combobox (no "Voice gender"); opening it lists two groups — **Azure
+  voices** (22) and **macOS system voices** (184); searching "prabhat" yields
+  only `Prabhat (IN)`, searching "alice" matches the Alice system voice; picking
+  a voice updates the trigger and persists `ttsVoiceId` (e.g.
+  `en-IN-NeerjaNeural`). **Test Voice** shows "Hello, this is a test…", provider
+  "macOS Say", badge Active, then auto-returns to Off; Start Meeting completes
+  with no "TTS is already running" error. Suite **80 passing**;
+  type-check/build/eslint/format clean.
+
 ## UX/UI infrastructure: Settings layout overflow fix + centralized error handling & toasts
 
 Completed (2026-09-03). Two-part task, both verified end-to-end.

@@ -558,10 +558,16 @@ Zoom / Google Meet / Microsoft Teams
   stays free of `electron`/filesystem dependencies and remains unit-testable.
   **Known limitation**: macOS `say` exposes no gender metadata, so system voice
   gender is `unknown`. **Picker (2026-09-03)**: the picker (`VoicePicker.tsx`,
-  Popover + Command/cmdk) lists **all** voices in two groups — "Azure voices"
-  and "macOS system voices" (dev) — with type-to-search filtering by name and
-  id; the earlier Female/Male gender Select and gender-filtered Voice Select
-  were removed, and `ttsVoiceGender` was dropped from `AppPreferences`. This
+  Popover + Command/cmdk) is styled after the **ElevenLabs UI `voice-picker`** —
+  a round voice avatar + name in the trigger, and searchable rows with a round
+  gesture + voice name + a `Gender • Country • Source` metadata line + a check
+  on the selected voice. It lists **all** voices with no gender filter and
+  searches across **any facet** (name, gender, country, source) via cmdk
+  `keywords`. `TtsVoice.country` is derived from the Azure id locale
+  (`countryFromAzureId`) or the macOS `_YY` region. The earlier Female/Male
+  gender Select, the gender-filtered Voice Select, the grouped lists, and
+  `ttsVoiceGender` were removed. The EleventhLabs WebGL orb was replaced with a
+  lightweight CSS avatar to avoid pulling in react-three/WebGL. This
   "one source of truth" rule keeps the production Azure TTS path and the "no
   parallel implementation" constraint intact — the Test Voice action reuses the
   same `TtsManager.onTranslationText()` pipeline. **Voice routing (2026-09-03

@@ -9,19 +9,22 @@ Completed (2026-09-03). Voice preference feature for the Settings → Voice sect
 ### What is done
 - **Voice model (shared)** — `packages/shared/index.ts` adds `VoiceGender`
   (`female | male | unknown`), `TtsVoiceSource` (`azure | system`),
-  `TtsVoice { id; name; gender; source }`, and `ListVoicesResult { ok; voices;
-  development; message? }`. `AppPreferences` retains only
-  `ttsVoiceId: string | null` (default `null`) — the gender preference was
-  removed. `ElectronAPI` (preload bridge) gains `getTtsVoices()` and
-  `testTtsVoice()`.
+  `TtsVoice { id; name; gender; source; country? }`, and
+  `ListVoicesResult { ok; voices; development; message? }`. `country` is derived
+  from the Azure locale prefix or macOS `_YY` region (may be `unknown`).
+  `AppPreferences` retains only `ttsVoiceId: string | null` (default `null`) —
+  the gender preference was removed. `ElectronAPI` (preload bridge) gains
+  `getTtsVoices()` and `testTtsVoice()`.
 - **Voice catalog + enumeration** — `src/main/services/tts/voices.ts`
   - `AZURE_VOICES`: curated catalog of 22 real, documented Azure Neural English
     voices (en-US/en-GB/en-AU/en-IN/en-CA) with their documented gender. Safe
-    default `en-US-JennyNeural` (female).
+    default `en-US-JennyNeural` (female). `countryFromAzureId()` extracts the
+    country from the id locale (`en-IN-PrabhatNeural` → `IN`).
   - `parseSayVoices()`: parses `say -v '\?'` output. macOS `say` exposes no
     gender metadata, so **system voice gender is `unknown`** (documented
-    limitation, not guessed). Handles multi-word + parenthesized names ("Bad
-    News", "Eddy (English)") by locating the `xx_YY` locale token before `#`.
+    limitation, not guessed); country is derived from the `xx_YY` locale region
+    (e.g. `en_GB` → `GB`). Handles multi-word + parenthesized names ("Bad News",
+    "Eddy (English)") by locating the `xx_YY` locale token before `#`.
   - `listVoices(development)`: Azure always + macOS system voices in dev only.
   - `normalizeSelectedVoiceId(storedId, development)`: production restricts to
     the curated Azure ids (stale dev system ids never reach production); empty
@@ -45,28 +48,35 @@ Completed (2026-09-03). Voice preference feature for the Settings → Voice sect
 - **Preferences persistence** — `src/main/ipc/preferences.ts` (exports
   `loadPreferences`) persists `ttsVoiceId`; `preferences:set` persists it so a
   selection survives restart. (`ttsVoiceGender` removed.)
-- **UI — searchable VoicePicker** — `TtsPanel.tsx` Voice section now uses a
-  single searchable combobox (`VoicePicker.tsx`, built on `Popover` +
-  `Command`/cmdk) that lists **every** available voice — the **Voice gender**
-  Select and the gender-filtered **Voice** Select were both removed. The picker
-  groups voices into **"Azure voices"** (22) and, in dev, **"macOS system
-  voices"** (184); typing filters by name **and** id. A dev-only "system voices
-  available in dev" label shows when `development`, plus a **Test Voice** button
-  that calls `window.electron.testTtsVoice()`. Wired through `App.tsx` →
-  `SettingsScreen.tsx` via new `useTtsVoices()` hook (loads on mount) and the
-  existing `usePreferences()`.
-- **Tests** — `tests/voices.test.ts`: 12 tests for `parseSayVoices` (simple,
+- **UI — ElevenLabs-style searchable VoicePicker** — `TtsPanel.tsx` Voice
+  section now uses a single searchable combobox that mirrors the **ElevenLabs UI
+  `voice-picker`** design (`VoicePicker.tsx`, built on `Popover` + `Command`/
+  cmdk): a trigger button showing a round voice avatar + selected name, and a
+  dropdown where each voice row shows a round CSS avatar (WebGL orb replaced with
+  a lightweight gradient glyph), the **name**, a muted metadata line of
+  `Gender • Country • Source`, and a **check** on the selected voice. It lists
+  **every** voice (22 Azure + 184 macOS in dev — no gender filter). Search
+  matches **any facet** — voice name, gender, country, and source — via cmdk
+  `keywords`. The old **Voice gender** Select and gender-filtered **Voice**
+  Select were removed. A dev-only "system voices available in dev" label shows
+  when `development`, plus a **Test Voice** button. Wired through `App.tsx` →
+  `SettingsScreen.tsx` via `useTtsVoices()` hook and `usePreferences()`.
+- **Tests** — `tests/voices.test.ts`: 15 tests for `parseSayVoices` (simple,
   multi-word/parenthesized, missing locale, blank lines, gender `unknown`),
-  catalog validity, default voice, `normalizeSelectedVoiceId`
+  **country derivation from macOS locale**, `countryFromAzureId`, catalog
+  validity, default voice, `normalizeSelectedVoiceId`
   (dev passthrough / empty fallback / prod restriction), and `voiceIsAzure`.
-  Project suite: **80 tests pass**.
-- **Validation** — `npm run type-check` clean; `npm test` 80/80; `npm run build`
+  Project suite: **83 tests pass**.
+- **Validation** — `npm run type-check` clean; `npm test` 83/83; `npm run build`
   OK (`dist/renderer/index.html` present); ESLint 0 errors; Prettier clean.
   CDP-smoke-tested against the running app at min width: Settings → Voice shows
-  one searchable Voice combobox, `getTtsVoices` returns **206** voices (22 Azure
-  + ~184 macOS system) with `development:true`, searching "prabhat" returns only
-  `Prabhat (IN)`, Test Voice + Start TTS buttons present, no horizontal overflow
-  (`scrollW == winW`), theme correct (dark).
+  the ElevenLabs-style picker (round avatar + name + `Gender • Country • Source`
+  metadata line + check; 206 avatars). `getTtsVoices` returns **206** voices (22
+  Azure + ~184 macOS system) each with `country`, `development:true`. Search
+  works across facets: "female" → 26, "male" → male voices, "GB" → GB Azure +
+  macOS, "macOS" → system voices, "prabhat" → `Prabhat (IN)`. Test Voice + Start
+  TTS buttons present, no horizontal overflow (`scrollW == winW`), theme correct
+  (dark).
 
 ### What remains
 - None for this feature. Requires a real Azure credential to hear the Test Voice /

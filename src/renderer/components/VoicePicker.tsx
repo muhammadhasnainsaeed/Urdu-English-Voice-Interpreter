@@ -21,6 +21,56 @@ import type { TtsVoice } from '@shared/index';
 import { Button } from './ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
+import { cn } from '@/lib/utils';
+
+/**
+ * Searchable voice picker styled after the ElevenLabs UI `voice-picker`
+ * (combobox trigger with a voice avatar + name, and a searchable list where
+ * each voice shows a round glyph, its name, and a metadata line
+ * `gender • country • source`, with a check on the selected voice). It uses the
+ * project's own `TtsVoice[]` data (Azure + macOS system voices). Search matches
+ * any facet — voice name, gender, country, and source.
+ */
+
+/** A small CSS round "voice" glyph that stands in for the ElevenLabs WebGL orb. */
+function VoiceGlyph({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#CADCFC] to-[#A0B9D1]',
+        className,
+      )}
+    >
+      <svg
+        className="h-[55%] w-[55%] text-primary-foreground"
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden
+      >
+        <circle cx="12" cy="8.5" r="3.25" fill="currentColor" />
+        <path
+          d="M5.5 18.5c.6-3 3-4.5 6.5-4.5s5.9 1.5 6.5 4.5"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      </svg>
+    </span>
+  );
+}
+
+const GENDER_LABELS: Record<string, string> = {
+  female: 'Female',
+  male: 'Male',
+  unknown: 'System',
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  azure: 'Azure',
+  system: 'macOS',
+};
 
 interface VoicePickerProps {
   voices: TtsVoice[];
@@ -30,16 +80,15 @@ interface VoicePickerProps {
   placeholder?: string;
 }
 
-/** A searchable combobox that lists every available TTS voice (no gender filter). */
-export default function VoicePicker({ voices, value, onChange, disabled, placeholder }: VoicePickerProps) {
+export default function VoicePicker({
+  voices,
+  value,
+  onChange,
+  disabled,
+  placeholder = 'Select a voice...',
+}: VoicePickerProps) {
   const [open, setOpen] = React.useState(false);
   const selected = voices.find((v) => v.id === value) ?? null;
-
-  const triggerLabel = selected?.name ?? placeholder ?? 'Select a voice';
-  const triggerMeta = selected?.source === 'system' ? '(macOS)' : null;
-
-  const azure = voices.filter((v) => v.source === 'azure');
-  const system = voices.filter((v) => v.source === 'system');
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -49,14 +98,18 @@ export default function VoicePicker({ voices, value, onChange, disabled, placeho
           role="combobox"
           aria-expanded={open}
           disabled={disabled || voices.length === 0}
-          className="flex h-8 w-full items-center justify-between px-3 text-sm font-normal"
+          className={cn('w-full justify-between px-3 font-normal')}
         >
-          <span className="truncate">
-            {selected?.name ?? triggerLabel}
-            {triggerMeta && <span className="ml-1 text-muted-foreground/60">{triggerMeta}</span>}
-          </span>
+          {selected ? (
+            <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+              <VoiceGlyph className="size-6" />
+              <span className="truncate">{selected.name}</span>
+            </span>
+          ) : (
+            <span className="truncate text-muted-foreground">{placeholder}</span>
+          )}
           <svg
-            className="ml-2 h-4 w-4 shrink-0 opacity-50"
+            className="ml-2 size-4 shrink-0 opacity-50"
             viewBox="0 0 16 16"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
@@ -74,78 +127,88 @@ export default function VoicePicker({ voices, value, onChange, disabled, placeho
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={4} className="w-[var(--radix-popover-trigger-width)] p-0">
         <Command>
-          <CommandInput placeholder="Search voices…" />
+          <CommandInput placeholder="Search by name, gender, country…" />
           <CommandList>
-            <CommandEmpty>No voice found</CommandEmpty>
-            {azure.length > 0 && (
-              <CommandGroup heading="Azure voices">
-                {azure.map((voice) => (
-                  <CommandItem
-                    key={voice.id}
-                    value={`${voice.name} ${voice.id}`}
-                    onSelect={() => {
-                      onChange(voice.id);
-                      setOpen(false);
-                    }}
-                  >
-                    <span className="flex-1 truncate">{voice.name}</span>
-                    {voice.id === value && (
-                      <svg
-                        className="h-4 w-4 shrink-0 text-foreground"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden
-                      >
-                        <path
-                          d="M3.5 8.5l2.5 2.5 6-6.5"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    )}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
-            {system.length > 0 && (
-              <CommandGroup heading="macOS system voices">
-                {system.map((voice) => (
-                  <CommandItem
-                    key={voice.id}
-                    value={`${voice.name} ${voice.id}`}
-                    onSelect={() => {
-                      onChange(voice.id);
-                      setOpen(false);
-                    }}
-                  >
-                    <span className="flex-1 truncate">{voice.name}</span>
-                    {voice.id === value && (
-                      <svg
-                        className="h-4 w-4 shrink-0 text-foreground"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden
-                      >
-                        <path
-                          d="M3.5 8.5l2.5 2.5 6-6.5"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    )}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
+            <CommandEmpty>No voice found.</CommandEmpty>
+            <CommandGroup>
+              {voices.map((voice) => (
+                <VoicePickerItem
+                  key={voice.id}
+                  voice={voice}
+                  isSelected={value === voice.id}
+                  onSelect={() => {
+                    onChange(voice.id);
+                    setOpen(false);
+                  }}
+                />
+              ))}
+            </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>
     </Popover>
+  );
+}
+
+interface VoicePickerItemProps {
+  voice: TtsVoice;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+function VoicePickerItem({ voice, isSelected, onSelect }: VoicePickerItemProps) {
+  // cmdk `keywords` drive case-insensitive search across every facet a user
+  // might type: the voice name, its gender, country, and source.
+  const keywords = [
+    voice.name,
+    GENDER_LABELS[voice.gender] ?? voice.gender,
+    voice.country,
+    SOURCE_LABELS[voice.source] ?? voice.source,
+    voice.id,
+  ].filter((k): k is string => Boolean(k));
+
+  const detail = [
+    GENDER_LABELS[voice.gender] ?? voice.gender,
+    voice.country ? voice.country.toUpperCase() : undefined,
+    SOURCE_LABELS[voice.source] ?? voice.source,
+  ].filter((k): k is string => Boolean(k));
+
+  return (
+    <CommandItem
+      value={voice.name}
+      keywords={keywords}
+      onSelect={onSelect}
+      className="flex items-center gap-3"
+    >
+      <VoiceGlyph className="size-8" />
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate font-medium">{voice.name}</span>
+        {detail.length > 0 && (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {detail.map((part, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && <span>•</span>}
+                <span className="capitalize">{part}</span>
+              </React.Fragment>
+            ))}
+          </span>
+        )}
+      </div>
+      <svg
+        className={cn('ml-auto size-4 shrink-0', isSelected ? 'opacity-100' : 'opacity-0')}
+        viewBox="0 0 16 16"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden
+      >
+        <path
+          d="M3.5 8.5l2.5 2.5 6-6.5"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </CommandItem>
   );
 }

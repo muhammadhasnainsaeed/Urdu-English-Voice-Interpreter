@@ -3,6 +3,29 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-09-03 — Voice picker restyled to ElevenLabs UI + search by gender/country/source
+
+- **Rewrote `VoicePicker.tsx` to mirror the ElevenLabs UI `voice-picker`
+  design** (using the project's own `TtsVoice[]` data, not the ElevenLabs
+  registry component): a combobox trigger with a round voice avatar + selected
+  name, and a searchable dropdown where each voice row shows a round CSS
+  gradient glyph (the ElevenLabs WebGL orb would pull in react-three; a
+  lightweight avatar preserves the look), the **name**, a muted metadata line of
+  `Gender • Country • Source`, and a **check** on the selected voice.
+- **Faceted search via cmdk `keywords`** — typing matches voice **name, gender,
+  country, or source** (e.g. "prabhat", "female", "GB", "macOS"). All 206 voices
+  are listed with no gender filter.
+- **Added `TtsVoice.country`** (`packages/shared/index.ts`) derived in
+  `voices.ts`: `countryFromAzureId()` reads the Azure id locale prefix
+  (`en-IN-PrabhatNeural` → `IN`); `parseSayVoices()` derives it from the macOS
+  `_YY` region (`en_GB` → `GB`) and `unknown` when no locale is present.
+- **Tests**: `tests/voices.test.ts` +3 (macOS country derivation, unknown
+  country, `countryFromAzureId`). Suite **83/83**.
+- **Verified via CDP**: round avatars (206) render; metadata line shows e.g.
+  "Prabhat (IN) Male • IN • Azure"; search "female" → 26, "male" → male,
+  "GB" → GB Azure + macOS, "macOS" → system voices, "prabhat" → only
+  `Prabhat (IN)`. type-check / build / eslint / prettier clean.
+
 ## 2026-09-03 — Searchable Voice picker replaces the gender + voice selects
 
 - **Removed the Voice gender (Female/Male) Select and the gender-filtered Voice

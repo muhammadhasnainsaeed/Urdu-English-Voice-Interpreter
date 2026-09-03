@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   AZURE_VOICE_IDS,
   DEFAULT_TTS_VOICE_ID,
+  countryFromAzureId,
   normalizeSelectedVoiceId,
   parseSayVoices,
   voiceIsAzure,
@@ -17,7 +18,13 @@ test('parseSayVoices parses simple voices', () => {
 
   const voices = parseSayVoices(out);
   assert.equal(voices.length, 3);
-  assert.deepEqual(voices[0], { id: 'Albert', name: 'Albert', gender: 'unknown', source: 'system' });
+  assert.deepEqual(voices[0], {
+    id: 'Albert',
+    name: 'Albert',
+    gender: 'unknown',
+    source: 'system',
+    country: 'US',
+  });
   assert.equal(voices[1].id, 'Samantha');
   assert.equal(voices[2].id, 'Daniel');
 });
@@ -59,6 +66,26 @@ test('parseSayVoices marks gender unknown because macOS does not advertise it', 
   const voices = parseSayVoices('Samantha      en_US    # Hello!');
   assert.equal(voices[0].gender, 'unknown');
   assert.equal(voices[0].source, 'system');
+});
+
+test('parseSayVoices derives country from the macOS locale region', () => {
+  const voices = parseSayVoices(
+    ['Samantha  en_US  # hi', 'Daniel    en_GB  # hi', 'Kyoko     ja_JP  # hi'].join('\n'),
+  );
+  assert.deepEqual(
+    voices.map((v) => v.country),
+    ['US', 'GB', 'JP'],
+  );
+});
+
+test('parseSayVoices country is unknown when no locale is present', () => {
+  assert.equal(parseSayVoices('MysteryVoice # hi')[0].country, 'unknown');
+});
+
+test('countryFromAzureId extracts the country from an Azure voice id', () => {
+  assert.equal(countryFromAzureId('en-US-JennyNeural'), 'US');
+  assert.equal(countryFromAzureId('en-IN-PrabhatNeural'), 'IN');
+  assert.equal(countryFromAzureId('en-CA-LiamNeural'), 'CA');
 });
 
 test('every Azure catalog voice has a known gender and a real id', () => {

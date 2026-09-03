@@ -51,6 +51,15 @@ const AZURE_VOICES: Array<{ id: string; gender: Exclude<VoiceGender, 'unknown'>;
   { id: 'en-CA-LiamNeural', gender: 'male', name: 'Liam (CA)' },
 ];
 
+/**
+ * Derive the country/region from an Azure voice id's locale prefix
+ * (`en-US-JennyNeural` → "US", `en-IN-PrabhatNeural` → "IN").
+ */
+export function countryFromAzureId(id: string): string {
+  const match = /^en-([A-Z]{2})-/.exec(id);
+  return match ? match[1] : 'unknown';
+}
+
 /** The app's safe default voice id (also the historical env/baked default). */
 export const DEFAULT_TTS_VOICE_ID = 'en-US-JennyNeural';
 
@@ -84,7 +93,12 @@ export function parseSayVoices(output: string): TtsVoice[] {
     seen.add(name);
 
     // macOS `say` does not advertise gender, so this cannot be known reliably.
-    voices.push({ id: name, name, gender: 'unknown', source: 'system' });
+    // Country is derived from the region portion of the locale token (xx_YY).
+    const country =
+      localeIndex >= 0 && /^[a-z]{2}_([A-Z]{2})$/.exec(tokens[localeIndex])
+        ? tokens[localeIndex].slice(3)
+        : 'unknown';
+    voices.push({ id: name, name, gender: 'unknown', source: 'system', country });
   }
   return voices;
 }
@@ -110,6 +124,7 @@ export async function listVoices(
     name: v.name,
     gender: v.gender,
     source: 'azure',
+    country: countryFromAzureId(v.id),
   }));
 
   if (development) {

@@ -109,7 +109,11 @@ export interface TtsVoice {
   /** Human-friendly label for the dropdown. */
   name: string;
   gender: VoiceGender;
+  /** Source/type of the voice. */
   source: TtsVoiceSource;
+  /** Country/region (e.g. "US", "GB", "IN"). Derivable from azure locale or
+   *  macOS `_YY` region; may be `unknown` when the source does not advertise it. */
+  country?: string;
 }
 
 export interface ListVoicesResult {

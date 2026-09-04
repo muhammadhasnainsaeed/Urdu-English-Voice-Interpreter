@@ -3,6 +3,104 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-09-03 — TTS voice listing provider-aware + Settings cleanup (Start TTS, Speech & Translation, mic-selector, Test My Microphone)
+
+- **TTS voice listing is now provider-aware.** `listVoices(development, provider)`
+  in `src/main/services/tts/voices.ts` returns the catalog matching the active
+  synthesizer: `TTS_PROVIDER=say` → only macOS/system voices (Azure ids are
+  never listed because `say` cannot speak them); `TTS_PROVIDER=azure` → Azure
+  voices always + macOS system voices in dev; `mock` → Azure only; unknown →
+  none. New pure helper `resolveTtsProviderName()` reads `TTS_PROVIDER` from the
+  env (default `mock`) and is unit-tested.
+- **`tts:list-voices` IPC threads the resolved provider** into `listVoices` and
+  returns it in `ListVoicesResult.provider` (`packages/shared/index.ts`),
+  so the catalog the UI shows always matches the runtime synthesizer.
+- **`resolveTtsVoiceId()` is provider-aware too**: with `TTS_PROVIDER=say` a
+  persisted Azure id is rejected (falls back to the `say` provider default)
+  because `say` cannot synthesize it; azure/mock keeps the existing
+  `normalizeSelectedVoiceId()` behavior. This prevents listing an Azure voice
+  under `say` or trying to speak an Azure voice with `say`.
+- **Removed the redundant "Start TTS" / "Stop TTS" button** in Settings → Voice.
+  Audited: it only enabled `translationActive`, was duplicated by the
+  SessionManager during a meeting, and overlapped with the existing **Test Voice**
+  button (independent, self-terminating `tts:test`). `TtsPanel` now keeps voice
+  selection + Test Voice + status/current-text display. `handleTtsStart` and the
+  `onTtsStart`/`onTtsStop` props were removed end-to-end.
+- **Removed the "Speech & Translation" Settings section** and its dead manual
+  control surface: `SttPanel.tsx` and `TranslationPanel.tsx` were deleted; the
+  `speech` nav entry, and the `SttPanel`/`TranslationPanel` renders and their
+  props were removed from `SettingsScreen.tsx`. Dead `handleSttStart` /
+  `handleSttStop` and the `onSttStart`/`onSttStop`/`onTranslationStart`/
+  `onTranslationStop` props were removed from `App.tsx`. The shared `stt`/
+  `translation` hooks and the meeting pipeline are untouched (STT/translation
+  still run via `/ Start Meeting`).
+- **Fixed `MicSelector` sound-check playback** ("couldn't hear recorded sound"):
+  the `<audio>` element (`HTMLAudioElement`) cannot decode **any** audio format
+  in this AVMedia Chromium build (conclusive: WAV, webm, and via
+  `createMediaElementSource` all yield `networkState=3` /
+  `MEDIA_ERR_SRC_NOT_SUPPORTED`). Rewrote the capture and playback to use the
+  repo's own raw-PCM path: the mic stream is tapped with a second
+  `AudioContext` + `ScriptProcessorNode` at 24 kHz, accumulating sequential,
+  non-overlapping PCM frames into a Float32 array via event-driven capture.
+  Playback uses `AudioContext.createBuffer(source).connect(destination).start()`
+  (the same pattern `useAudioOutput` uses, proven audible in this build). Pause/
+  resume tracks elapsed frames via a poll timer and re-creates a sub-buffer from
+  the paused offset on resume. Duplicate `handleStreamEnd` calls (LiveWaveform
+  cleanup) are guarded by a `scriptProcessorRef !== null` check.
+  `src/renderer/components/MicSelector.tsx`.
+
+- **Fixed `MicSelector` sound-check audio quality** (distorted/laggy playback):
+  the previous implementation used `AnalyserNode.getFloatTimeDomainData()` polled
+  via `setInterval(30ms)` to capture PCM. This is fundamentally broken for
+  sequential capture: `getFloatTimeDomainData` returns a sliding window of the
+  last `fftSize` samples, not sequential non-overlapping chunks. At 24 kHz with
+  `fftSize=1024`, the analyser refreshes every ~42 ms, but 30 ms polls land
+  between frame boundaries — causing overlapping reads (~300 duplicate samples per
+  read), which produces pitch-shifted, distorted playback. CDP-verified:
+  `getFloatTimeDomainData` at 5 ms apart returns 100% identical data (analyser
+  hasn't refreshed), at 42 ms apart returns 0% overlap. Replaced with
+  `ScriptProcessorNode` (`createScriptProcessor(4096, 1, 1)`) which fires
+  `onaudioprocess` once per buffer with guaranteed sequential, non-overlapping
+  `Float32Array` chunks. CDP timing: 3 s recording → ~2.79 s playback (delta is
+  ScriptProcessorNode startup + React teardown latency, not sample-rate error).
+  `src/renderer/components/MicSelector.tsx`.
+
+- **Fixed the `MicSelector` sound-check Play → Pause flow.** The `LiveWaveform`
+  was rendered with `key={checkState}`, which remounted the component on every
+  state change (`idle → recording → recorded → playing`). Each remount
+  re-ran the microphone setup/teardown effect — tearing the stream down,
+  re-fetching the mic, and churning `audio.onended`/playback state so the
+  `playing` state wouldn't hold and the Play→Pause transition failed.
+  Removed the `key` so a single stable `LiveWaveform` instance persists; it now
+  clears its own history on teardown (`active=false`), and recording
+  stop/`onStreamEnd` sealing works once. `src/renderer/components/MicSelector.tsx`.
+
+- **Replaced the microphone UI with an ElevenLabs-styled `MicSelector`**
+  (`src/renderer/components/MicSelector.tsx`). The ElevenLabs registry is
+  rate-limited (HTTP 429 — `npx @elevenlabs/cli@latest components add
+  mic-selector` and the `shadcn` fallback both fail), so — consistent with how
+  `VoicePicker` and the vendored `LiveWaveform` were handled — a local component
+  mirrors the ElevenLabs DevLab `mic-selector` **sound-check card**: a live
+  `LiveWaveform` (barWidth 3, scrolling, fade edges), a microphone device
+  dropdown (popover with mic glyph + check), and a record / pause / play / trash
+  control row plus a mute toggle. Record/play is a device test only: the
+  `LiveWaveform` opens ONE stream and hands it to a `MediaRecorder` via
+  `onStreamReady`, so capture is never duplicated with the meeting pipeline
+  (which still owns real recording). Wired through the existing `useMicrophone`
+  device state (`micDevices`/`selectedDeviceId`/`permission`/`error`/
+  `onSelectDevice`); the `level` prop and `AudioLevelMeter` were dropped.
+  Old `MicrophonePanel.tsx` and its now-unconsumed `onMicStart`/`onMicStop`
+  props were deleted.
+- **Removed the "Test My Microphone" diagnostics button** (dead — it re-ran
+  `microphone.start`, duplicating the meeting path) and its `onDeviceTest`
+  prop. Diagnostics now lists mic / TTS / audio-output / current-stage status
+  (STT and Translation rows removed with the Speech & Translation section).
+- **Validation**: `npm run type-check` clean; `npm test` **88/88** (5 new:
+  `resolveTtsProviderName`, per-provider `listVoices` for azure/mock/say/
+  unknown); `npm run build` OK (`dist/renderer/index.html` present); `npm run
+  format:check` clean; `npm run lint` **0 errors** (13 pre-existing warnings
+  unchanged, incl. hook/`no-unused-vars` in App/useSetup/tests).
+
 ## 2026-09-03 — Voice picker restyled to ElevenLabs UI + search by gender/country/source
 
 - **Rewrote `VoicePicker.tsx` to mirror the ElevenLabs UI `voice-picker`

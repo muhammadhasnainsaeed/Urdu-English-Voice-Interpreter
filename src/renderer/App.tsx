@@ -104,42 +104,6 @@ export default function App() {
     setView(preferences.onboardingCompleted ? 'home' : 'onboarding');
   }, [preferences.loaded, preferences.onboardingCompleted]);
 
-  const handleSttStart = async () => {
-    const capture = await microphone.start();
-    if (!capture.ok) return;
-    if (capture.stream && capture.audioContext) {
-      await stt.start(capture.stream, capture.audioContext);
-    }
-  };
-
-  const handleSttStop = async () => {
-    try {
-      if (tts.status === 'active') {
-        await tts.stop();
-      }
-    } finally {
-      try {
-        if (translation.status === 'active') {
-          await translation.stop();
-        }
-      } finally {
-        try {
-          await stt.stop();
-        } finally {
-          microphone.stop();
-        }
-      }
-    }
-  };
-
-  const handleTtsStart = async () => {
-    if (audioOutput.status !== 'active') {
-      await audioOutput.start();
-    }
-    await tts.start();
-  };
-
-  /** Unified meeting start: session + mic + STT */
   const handleMeetingStart = async () => {
     const result = await session.start();
     if (!result.ok) return;
@@ -284,30 +248,12 @@ export default function App() {
       micStatus={microphone.status}
       micDevices={microphone.devices}
       selectedDeviceId={microphone.selectedDeviceId}
-      level={microphone.level}
       micError={microphone.error}
       onSelectMicrophone={microphone.selectDevice}
-      onMicStart={microphone.start}
-      onMicStop={microphone.stop}
       audioOutputStatus={audioOutput.status}
       audioOutputDevices={audioOutput.devices}
       audioOutputSelectedId={audioOutput.selectedDeviceId}
       onSelectAudioOutput={audioOutput.selectDevice}
-      onSttStart={handleSttStart}
-      onSttStop={handleSttStop}
-      sttStatus={stt.status}
-      sttPartialText={stt.partialText}
-      sttFinalText={stt.finalText}
-      sttError={stt.error}
-      sttProvider={stt.provider}
-      onTranslationStart={translation.start}
-      onTranslationStop={translation.stop}
-      translationStatus={translation.status}
-      finalEnglish={translation.finalEnglish}
-      translationError={translation.error}
-      translationProvider={translation.provider}
-      onTtsStart={handleTtsStart}
-      onTtsStop={tts.stop}
       ttsStatus={tts.status}
       ttsError={tts.error}
       ttsProvider={tts.provider}
@@ -319,7 +265,6 @@ export default function App() {
       onSelectVoice={handleSelectVoice}
       onTestVoice={handleTestVoice}
       currentStage={currentStage}
-      onDeviceTest={microphone.start}
     />
   );
 }

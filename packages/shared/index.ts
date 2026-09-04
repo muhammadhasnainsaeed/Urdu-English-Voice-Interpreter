@@ -122,6 +122,11 @@ export interface ListVoicesResult {
   voices: TtsVoice[];
   /** True when the app is running unpackaged (macOS system voices available). */
   development: boolean;
+  /**
+   * The active TTS provider that produced this catalog — `say` lists only
+   * macOS system voices; `azure`/`mock` list Azure voices (system in dev).
+   */
+  provider?: 'azure' | 'say' | 'mock' | 'none';
   message?: string;
 }
 

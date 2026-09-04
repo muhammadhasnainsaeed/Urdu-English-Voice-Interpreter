@@ -19,7 +19,12 @@
 import { ipcMain, BrowserWindow, app } from 'electron';
 import { TtsManager } from '../services/tts/manager';
 import type { AudioOutputManager } from '../services/audio-output/manager';
-import { listVoices, normalizeSelectedVoiceId } from '../services/tts/voices';
+import {
+  listVoices,
+  normalizeSelectedVoiceId,
+  resolveTtsProviderName,
+  voiceIsAzure,
+} from '../services/tts/voices';
 import { loadPreferences } from './preferences';
 
 const TEST_TEXT = 'Hello, this is a test of the selected voice.';
@@ -34,10 +39,24 @@ export function isTtsDevelopment(): boolean {
   return !app.isPackaged;
 }
 
-/** The provider id currently selected by the user, resolved for this environment. */
+/**
+ * The voice id currently selected by the user, resolved for this environment
+ * AND the active TTS provider. A persisted id that the active provider cannot
+ * synthesize is dropped so the provider falls back to its own default voice:
+ *   - `say`:   only macOS system voices are usable (an Azure id is rejected).
+ *   - azure/mock: only curated Azure ids in production (system voices in dev).
+ */
 export function resolveTtsVoiceId(): string | null {
   const preferences = loadPreferences();
-  return normalizeSelectedVoiceId(preferences.ttsVoiceId, isTtsDevelopment());
+  const stored = preferences.ttsVoiceId?.trim();
+  const provider = resolveTtsProviderName();
+
+  if (provider === 'say') {
+    if (!stored || voiceIsAzure(stored)) return null;
+    return stored;
+  }
+
+  return normalizeSelectedVoiceId(stored, isTtsDevelopment());
 }
 
 export function registerTtsIpc(getWindow: () => BrowserWindow | null, audioOutput: AudioOutputManager): void {
@@ -57,8 +76,13 @@ export function registerTtsIpc(getWindow: () => BrowserWindow | null, audioOutpu
 
   ipcMain.handle('tts:list-voices', async (): Promise<import('@shared/index').ListVoicesResult> => {
     try {
-      const { voices, development } = await listVoices(isTtsDevelopment());
-      return { ok: true, voices, development };
+      const provider = resolveTtsProviderName();
+      const {
+        voices,
+        development,
+        provider: resolvedProvider,
+      } = await listVoices(isTtsDevelopment(), provider);
+      return { ok: true, voices, development, provider: resolvedProvider };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return { ok: false, voices: [], development: isTtsDevelopment(), message: msg };

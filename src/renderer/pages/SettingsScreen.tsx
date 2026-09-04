@@ -19,7 +19,6 @@
 import React, { useState } from 'react';
 import {
   ArrowLeft,
-  AudioLines,
   Gauge,
   Mic,
   Settings as SettingsIcon,
@@ -33,27 +32,22 @@ import type {
   AudioOutputDevice,
   AudioOutputStatus,
   PermissionStatus,
-  SttStatus,
-  TranslationStatus,
   TtsStatus,
   TtsVoice,
 } from '@shared/index';
 import { Button } from '../components/ui/button';
 import { Separator } from '../components/ui/separator';
 import { cn } from '@/lib/utils';
-import MicrophonePanel from '../components/MicrophonePanel';
+import MicSelector from '../components/MicSelector';
 import AudioOutputPanel from '../components/AudioOutputPanel';
 import TtsPanel from '../components/TtsPanel';
-import SttPanel from '../components/SttPanel';
-import TranslationPanel from '../components/TranslationPanel';
 import PipelinePanel from '../components/PipelinePanel';
 import SetupPanel from '../components/SetupPanel';
 import type { SetupState } from '../setup/setupState';
 import { useTheme } from '../components/theme-provider';
 import { useErrorHandling } from '../errors/ErrorProvider';
 
-export type SettingsSectionId =
-  'audio' | 'voice' | 'speech' | 'appearance' | 'performance' | 'diagnostics' | 'setup';
+export type SettingsSectionId = 'audio' | 'voice' | 'appearance' | 'performance' | 'diagnostics' | 'setup';
 
 interface SettingsSection {
   id: SettingsSectionId;
@@ -64,7 +58,6 @@ interface SettingsSection {
 const SECTIONS: SettingsSection[] = [
   { id: 'audio', label: 'Audio', icon: Mic },
   { id: 'voice', label: 'Voice', icon: UserRound },
-  { id: 'speech', label: 'Speech & Translation', icon: AudioLines },
   { id: 'appearance', label: 'Appearance', icon: SettingsIcon },
   { id: 'performance', label: 'Performance', icon: Gauge },
   { id: 'diagnostics', label: 'Diagnostics', icon: Stethoscope },
@@ -111,30 +104,12 @@ interface SettingsScreenProps {
   micStatus: ApplicationStatus;
   micDevices: AudioDevice[];
   selectedDeviceId: string | null;
-  level: number;
   micError: string | null;
   onSelectMicrophone: (deviceId: string) => void;
-  onMicStart: () => void;
-  onMicStop: () => void;
   audioOutputStatus: AudioOutputStatus;
   audioOutputDevices: AudioOutputDevice[];
   audioOutputSelectedId: string;
   onSelectAudioOutput: (deviceId: string) => void;
-  onSttStart: () => void;
-  onSttStop: () => void;
-  sttStatus: SttStatus;
-  sttPartialText: string;
-  sttFinalText: string;
-  sttError: string | null;
-  sttProvider: string | null;
-  onTranslationStart: () => void;
-  onTranslationStop: () => void;
-  translationStatus: TranslationStatus;
-  finalEnglish: string;
-  translationError: string | null;
-  translationProvider: string | null;
-  onTtsStart: () => void;
-  onTtsStop: () => void;
   ttsStatus: TtsStatus;
   ttsError: string | null;
   ttsProvider: string | null;
@@ -146,7 +121,6 @@ interface SettingsScreenProps {
   onSelectVoice: (voiceId: string) => void;
   onTestVoice: () => void;
   currentStage: string;
-  onDeviceTest: () => void;
 }
 
 export default function SettingsScreen(props: SettingsScreenProps) {
@@ -204,16 +178,13 @@ export default function SettingsScreen(props: SettingsScreenProps) {
                 title="Audio"
                 description="Choose where to capture your voice and where English audio plays."
               />
-              <MicrophonePanel
+              <MicSelector
                 permission={props.permission}
                 status={props.micStatus}
                 devices={props.micDevices}
                 selectedDeviceId={props.selectedDeviceId}
-                level={props.level}
                 error={props.micError}
                 onSelectDevice={props.onSelectMicrophone}
-                onStart={props.onMicStart}
-                onStop={props.onMicStop}
               />
               <AudioOutputPanel
                 status={props.audioOutputStatus}
@@ -235,44 +206,12 @@ export default function SettingsScreen(props: SettingsScreenProps) {
                 error={props.ttsError}
                 provider={props.ttsProvider}
                 currentText={props.ttsCurrentText}
-                translationActive={
-                  props.translationStatus === 'active' || props.translationStatus === 'starting'
-                }
-                onStart={props.onTtsStart}
-                onStop={props.onTtsStop}
                 voices={props.ttsVoices}
                 voicesLoading={props.ttsVoicesLoading}
                 development={props.ttsDevelopment}
                 selectedVoiceId={props.ttsVoiceId}
                 onSelectVoice={props.onSelectVoice}
                 onTestVoice={props.onTestVoice}
-              />
-            </div>
-          )}
-
-          {activeSection === 'speech' && (
-            <div className="flex flex-col gap-3">
-              <SectionHeading
-                title="Speech & Translation"
-                description="Configure how your Urdu speech is recognized and translated."
-              />
-              <SttPanel
-                status={props.sttStatus}
-                partialText={props.sttPartialText}
-                finalText={props.sttFinalText}
-                error={props.sttError}
-                provider={props.sttProvider}
-                onStart={props.onSttStart}
-                onStop={props.onSttStop}
-              />
-              <TranslationPanel
-                status={props.translationStatus}
-                finalEnglish={props.finalEnglish}
-                error={props.translationError}
-                provider={props.translationProvider}
-                sttListening={props.sttStatus === 'listening' || props.sttStatus === 'processing'}
-                onStart={props.onTranslationStart}
-                onStop={props.onTranslationStop}
               />
             </div>
           )}
@@ -319,8 +258,6 @@ export default function SettingsScreen(props: SettingsScreenProps) {
               <DiagnosticsView
                 items={[
                   { label: 'Microphone status', value: props.micStatus },
-                  { label: 'Speech-to-text', value: props.sttStatus },
-                  { label: 'Translation', value: props.translationStatus },
                   { label: 'Text-to-speech', value: props.ttsStatus },
                   { label: 'Audio output', value: props.audioOutputStatus },
                   { label: 'Current stage', value: props.currentStage },
@@ -340,9 +277,6 @@ export default function SettingsScreen(props: SettingsScreenProps) {
                   />
                 </>
               )}
-              <Button variant="secondary" size="sm" onClick={props.onDeviceTest}>
-                Test my microphone
-              </Button>
             </div>
           )}
 

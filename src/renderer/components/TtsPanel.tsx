@@ -30,9 +30,6 @@ interface TtsPanelProps {
   error: string | null;
   provider: string | null;
   currentText: string;
-  translationActive: boolean;
-  onStart: () => void;
-  onStop: () => void;
   voices: TtsVoice[];
   voicesLoading: boolean;
   development: boolean;
@@ -59,9 +56,6 @@ export default function TtsPanel({
   error,
   provider,
   currentText,
-  translationActive,
-  onStart,
-  onStop,
   voices,
   voicesLoading,
   development,
@@ -69,9 +63,6 @@ export default function TtsPanel({
   onSelectVoice,
   onTestVoice,
 }: TtsPanelProps) {
-  const active = status === 'active' || status === 'starting';
-  const canToggle = translationActive;
-
   const variant =
     status === 'active'
       ? 'success'
@@ -128,24 +119,6 @@ export default function TtsPanel({
             <div className="text-foreground">{currentText}</div>
           </div>
         )}
-
-        <div className="flex items-center gap-2">
-          {active ? (
-            <Button variant="outline" size="sm" onClick={onStop} disabled={status === 'starting'}>
-              Stop TTS
-            </Button>
-          ) : (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={onStart}
-              disabled={!canToggle}
-              title={!canToggle ? 'Start translation first' : undefined}
-            >
-              Start TTS
-            </Button>
-          )}
-        </div>
 
         {error && <Alert variant="destructive">{error}</Alert>}
       </CardContent>

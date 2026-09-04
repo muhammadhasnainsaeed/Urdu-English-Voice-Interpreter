@@ -4,8 +4,10 @@ import {
   AZURE_VOICE_IDS,
   DEFAULT_TTS_VOICE_ID,
   countryFromAzureId,
+  listVoices,
   normalizeSelectedVoiceId,
   parseSayVoices,
+  resolveTtsProviderName,
   voiceIsAzure,
 } from '../src/main/services/tts/voices';
 
@@ -131,4 +133,49 @@ test('normalizeSelectedVoiceId restricts production to curated Azure ids only', 
   // A stale development system voice must never flow into production.
   assert.equal(normalizeSelectedVoiceId('Samantha', false), DEFAULT_TTS_VOICE_ID);
   assert.equal(normalizeSelectedVoiceId('not-a-real-voice', false), DEFAULT_TTS_VOICE_ID);
+});
+
+test('resolveTtsProviderName reads the TTS_PROVIDER env and defaults to mock', () => {
+  assert.equal(resolveTtsProviderName({}), 'mock');
+  assert.equal(resolveTtsProviderName({ TTS_PROVIDER: 'azure' }), 'azure');
+  assert.equal(resolveTtsProviderName({ TTS_PROVIDER: 'say' }), 'say');
+  assert.equal(resolveTtsProviderName({ TTS_PROVIDER: 'AZURE' }), 'azure');
+  assert.equal(resolveTtsProviderName({ TTS_PROVIDER: 'mock' }), 'mock');
+  assert.equal(resolveTtsProviderName({ TTS_PROVIDER: 'whisper' }), 'none');
+});
+
+test('listVoices for azure in production lists only curated Azure voices', async () => {
+  const result = await listVoices(false, 'azure');
+  assert.equal(result.provider, 'azure');
+  assert.equal(result.development, false);
+  assert.deepEqual(
+    result.voices.map((v) => v.id),
+    AZURE_VOICE_IDS,
+  );
+  assert.ok(result.voices.every((v) => v.source === 'azure'));
+});
+
+test('listVoices for mock lists only Azure voices in any mode', async () => {
+  const result = await listVoices(true, 'mock');
+  assert.equal(result.provider, 'mock');
+  assert.deepEqual(
+    result.voices.map((v) => v.id),
+    AZURE_VOICE_IDS,
+  );
+});
+
+test('listVoices for say never includes Azure voice ids', async () => {
+  const result = await listVoices(false, 'say');
+  assert.equal(result.provider, 'say');
+  assert.ok(result.voices.length >= 0);
+  assert.ok(
+    result.voices.every((v) => v.source === 'system' && !voiceIsAzure(v.id)),
+    'say catalog must contain only macOS system voices',
+  );
+});
+
+test('listVoices for an unknown provider returns no voices', async () => {
+  const result = await listVoices(false, 'none');
+  assert.equal(result.provider, 'none');
+  assert.deepEqual(result.voices, []);
 });

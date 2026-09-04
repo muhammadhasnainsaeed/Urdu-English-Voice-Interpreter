@@ -45,7 +45,7 @@ Electron
           ├── services/useTranslation.ts (translation events → english text)
           ├── services/useTts.ts (TTS state)
           ├── services/useAudioOutput.ts (WebAudio playback, device selection)
-          ├── components/ (MicrophonePanel, AudioLevelMeter, SttPanel)
+          ├── components/ (MicSelector, AudioOutputPanel, VoicePicker, TtsPanel, PipelinePanel, SetupPanel, AudioLevelMeter)
           ├── pages/ (HomeScreen; LiveTranslationScreen = subtitle stub)
           └── styles/ (App.css)
 

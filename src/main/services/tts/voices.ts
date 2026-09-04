@@ -115,28 +115,83 @@ function runSayList(): Promise<string> {
   });
 }
 
-/** List all voices for the current environment. */
+/** TTS providers that can map a selected voice onto a playable synthesizer. */
+export type TtsProviderName = 'azure' | 'say' | 'mock' | 'none';
+
+/**
+ * Resolve the configured TTS provider name for the current process. Mirrors the
+ * source of truth used by `createTtsProvider` so the voice catalog stays in
+ * lock-step with the synthesizer actually used at runtime.
+ */
+export function resolveTtsProviderName(
+  env: Record<string, string | undefined> = process.env,
+): TtsProviderName {
+  const name = (env.TTS_PROVIDER || 'mock').toLowerCase();
+  return name === 'azure' || name === 'say' || name === 'mock' ? name : 'none';
+}
+
+/**
+ * List all voices for the current environment, filtered to the active TTS
+ * provider. Because a picked voice must always be audible with the synthesizer
+ * that runs in this process:
+ *   - `say`:   only macOS system voices (no Azure ids — they are not `say` voices).
+ *   - `azure`: Azure voices always, plus macOS system voices in dev only.
+ *   - `mock`:  Azure voices only (mock produces no real audio; used in dev/tests).
+ *   - `none`:  no voices (unknown provider).
+ */
 export async function listVoices(
   development: boolean,
-): Promise<{ voices: TtsVoice[]; development: boolean }> {
-  const voices: TtsVoice[] = AZURE_VOICES.map((v) => ({
-    id: v.id,
-    name: v.name,
-    gender: v.gender,
-    source: 'azure',
-    country: countryFromAzureId(v.id),
-  }));
+  provider: TtsProviderName,
+): Promise<{ voices: TtsVoice[]; development: boolean; provider: TtsProviderName }> {
+  const voices: TtsVoice[] = [];
 
-  if (development) {
+  if (provider === 'say') {
+    // macOS system voices are the only voices the `say` synthesizer can use.
     try {
       const system = await runSayList();
       voices.push(...parseSayVoices(system));
     } catch {
-      // macOS `say` enumeration failed — Azures voices still enumerated.
+      // macOS `say` enumeration failed — return an empty system list.
     }
+    return { voices, development, provider };
   }
 
-  return { voices, development };
+  if (provider === 'azure') {
+    voices.push(
+      ...AZURE_VOICES.map((v) => ({
+        id: v.id,
+        name: v.name,
+        gender: v.gender,
+        source: 'azure' as const,
+        country: countryFromAzureId(v.id),
+      })),
+    );
+    if (development) {
+      try {
+        const system = await runSayList();
+        voices.push(...parseSayVoices(system));
+      } catch {
+        // macOS `say` enumeration failed — Azure voices still enumerated.
+      }
+    }
+    return { voices, development, provider };
+  }
+
+  // mock: Azure voices only (mock is a dev/testing synthesizer with no audio).
+  if (provider === 'mock') {
+    voices.push(
+      ...AZURE_VOICES.map((v) => ({
+        id: v.id,
+        name: v.name,
+        gender: v.gender,
+        source: 'azure' as const,
+        country: countryFromAzureId(v.id),
+      })),
+    );
+    return { voices, development, provider };
+  }
+
+  return { voices, development, provider };
 }
 
 /**

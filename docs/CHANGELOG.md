@@ -3,6 +3,21 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-09-04 — Pipeline telemetry enabled-flag timing fix
+
+- **Fixed Performance → Pipeline panel regression.** `PipelineTelemetry`'s
+  `enabled` field was a class field evaluated at construction. Because the
+  singleton is created at module load (before `dotenv.config()` in
+  `main/index.ts`), `process.env.PIPELINE_DEBUG` was still `undefined` →
+  `enabled = false` forever. Every `emit()` call silently returned, so no
+  `pipeline:event` IPC reached the renderer and PipelinePanel showed empty
+  placeholders.
+- **Fix**: replaced the cached field with a getter
+  (`private get enabled(): boolean { return process.env.PIPELINE_DEBUG === '1'; }`)
+  so the env is read at call time (after dotenv has loaded).
+- **Files changed**: `src/main/services/telemetry/pipeline-telemetry.ts`
+  (line 85: field → getter), `docs/CURRENT_STATE.md`, `docs/CHANGELOG.md`.
+
 ## 2026-09-03 — TTS voice listing provider-aware + Settings cleanup (Start TTS, Speech & Translation, mic-selector, Test My Microphone)
 
 - **TTS voice listing is now provider-aware.** `listVoices(development, provider)`

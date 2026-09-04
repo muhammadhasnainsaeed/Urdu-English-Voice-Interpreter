@@ -1,6 +1,49 @@
 # Current State
 
-_Last updated: 2026-09-03_
+_Last updated: 2026-09-04_
+
+## Pipeline Performance telemetry fix
+
+Completed (2026-09-04). Fixed the Performance → Pipeline panel regression where
+the PipelinePanel showed empty placeholder `—` values instead of real
+telemetry metrics.
+
+### Root cause
+
+`PipelineTelemetry.enabled` was a class field evaluated at construction:
+
+```ts
+private enabled = process.env.PIPELINE_DEBUG === '1';
+```
+
+The singleton (`export const pipelineTelemetry = new PipelineTelemetry()`) is
+instantiated at module load time, before `dotenv.config()` runs in
+`src/main/index.ts`. At construction `process.env.PIPELINE_DEBUG` is
+`undefined` → `enabled = false` forever. After dotenv loads `.env` the env var
+is set, but the captured field never updates. Every `emit()` call silently
+returned, so no `pipeline:event` IPC ever reached the renderer.
+
+### Fix
+
+Replaced the cached class field with a getter that reads the env at call time:
+
+```ts
+private get enabled(): boolean {
+  return process.env.PIPELINE_DEBUG === '1';
+}
+```
+
+Now `emit()` and `debug()` evaluate the env on every call, so telemetry flows
+once `dotenv.config()` has run (before any meeting session starts).
+
+### Verification
+
+- `npm run type-check` — clean
+- `npm test` — 88/88 passing
+- `npm run build` — success
+- `npm run lint` — 0 errors (13 pre-existing warnings)
+- CDP bundle confirms `p = new At` executes before `Bt.config()`, and the
+  getter correctly re-evaluates post-dotenv.
 
 ## TTS voice listing provider-aware + Settings cleanup
 

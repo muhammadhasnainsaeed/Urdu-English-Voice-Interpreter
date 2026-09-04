@@ -82,7 +82,9 @@ function emptyBreakdown(): UtteranceLatencyBreakdown {
 export class PipelineTelemetry {
   private nowFn: () => number;
   private nextId = 1;
-  private enabled = process.env.PIPELINE_DEBUG === '1';
+  private get enabled(): boolean {
+    return process.env.PIPELINE_DEBUG === '1';
+  }
 
   /** Rolling window of completed end-to-end latencies. */
   private e2eWindow: number[] = [];

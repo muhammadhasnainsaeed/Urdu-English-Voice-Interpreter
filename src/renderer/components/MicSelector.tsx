@@ -17,7 +17,7 @@
  */
 
 import * as React from 'react';
-import { Disc, MicOff, Pause, Play, Trash2 } from 'lucide-react';
+import { ChevronsUpDown, Disc, Mic, MicOff, Pause, Play, Trash2 } from 'lucide-react';
 import type { ApplicationStatus, AudioDevice, PermissionStatus } from '@shared/index';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -349,10 +349,11 @@ export default function MicSelector({
                 aria-expanded={open}
                 disabled={devices.length === 0 || recording}
                 title={selected ? selected.label : 'No microphone found'}
-                className="h-9 max-w-[160px] justify-start gap-1 px-2 text-sm font-normal text-foreground/70"
+                className="h-9 max-w-[200px] justify-start gap-1 px-2 text-sm font-normal"
               >
-                <MicGlyph className="size-5" />
+                <Mic className="size-5" />
                 <span className="truncate">{selected ? selected.label : 'Select mic'}</span>
+                <ChevronsUpDown className="size-5" />
               </Button>
             </PopoverTrigger>
             <PopoverContent
@@ -374,7 +375,6 @@ export default function MicSelector({
                         }}
                         className="flex items-center gap-3"
                       >
-                        <MicGlyph className="size-5" />
                         <span className="min-w-0 flex-1 truncate">{device.label}</span>
                         <svg
                           className={cn(
@@ -484,33 +484,5 @@ export default function MicSelector({
         </Alert>
       )}
     </Card>
-  );
-}
-
-function MicGlyph({ className }: { className?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#CADCFC] to-[#A0B9D1]',
-        className,
-      )}
-    >
-      <svg
-        className="h-[60%] w-[60%]"
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-hidden
-      >
-        <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
-        <path
-          d="M5 11a7 7 0 0 0 14 0M12 18v3"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
-      </svg>
-    </span>
   );
 }

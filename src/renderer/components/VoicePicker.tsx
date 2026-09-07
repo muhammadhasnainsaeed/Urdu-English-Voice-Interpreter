@@ -23,44 +23,6 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
 import { cn } from '@/lib/utils';
 
-/**
- * Searchable voice picker styled after the ElevenLabs UI `voice-picker`
- * (combobox trigger with a voice avatar + name, and a searchable list where
- * each voice shows a round glyph, its name, and a metadata line
- * `gender • country • source`, with a check on the selected voice). It uses the
- * project's own `TtsVoice[]` data (Azure + macOS system voices). Search matches
- * any facet — voice name, gender, country, and source.
- */
-
-/** A small CSS round "voice" glyph that stands in for the ElevenLabs WebGL orb. */
-function VoiceGlyph({ className }: { className?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#CADCFC] to-[#A0B9D1]',
-        className,
-      )}
-    >
-      <svg
-        className="h-[55%] w-[55%] text-primary-foreground"
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-hidden
-      >
-        <circle cx="12" cy="8.5" r="3.25" fill="currentColor" />
-        <path
-          d="M5.5 18.5c.6-3 3-4.5 6.5-4.5s5.9 1.5 6.5 4.5"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
-      </svg>
-    </span>
-  );
-}
-
 const GENDER_LABELS: Record<string, string> = {
   female: 'Female',
   male: 'Male',
@@ -102,7 +64,12 @@ export default function VoicePicker({
         >
           {selected ? (
             <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-              <VoiceGlyph className="size-6" />
+              <img
+                src={`https://api.dicebear.com/10.x/glass/svg?tags=animation&seed=${encodeURIComponent(selected.name)}`}
+                alt={`Voice avatar for ${selected.name}`}
+                loading="lazy"
+                className="inline-flex shrink-0 items-center justify-center rounded-full size-6"
+              />
               <span className="truncate">{selected.name}</span>
             </span>
           ) : (
@@ -180,7 +147,12 @@ function VoicePickerItem({ voice, isSelected, onSelect }: VoicePickerItemProps) 
       onSelect={onSelect}
       className="flex items-center gap-3"
     >
-      <VoiceGlyph className="size-8" />
+      <img
+        src={`https://api.dicebear.com/10.x/glass/svg?tags=animation&seed=${encodeURIComponent(voice.name)}`}
+        alt={`Voice avatar for ${voice.name}`}
+        loading="lazy"
+        className="inline-flex shrink-0 items-center justify-center rounded-full size-8"
+      />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate font-medium">{voice.name}</span>
         {detail.length > 0 && (

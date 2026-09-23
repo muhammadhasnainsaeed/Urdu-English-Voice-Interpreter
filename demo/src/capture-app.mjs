@@ -48,7 +48,7 @@ const START_HEIGHT = 760;
 const MODES = [
   {
     id: 'overview',
-    crops: [{ name: 'app-overview', from: 'meeting', to: 'mic', pad: 12 }],
+    crops: [{ name: 'app-overview', from: 'meeting', to: 'stt', pad: 12 }],
   },
   {
     id: 'live',
@@ -218,9 +218,9 @@ async function captureMode(mode) {
     const info = await waitForReady(win);
 
     const texts = await execRegionTexts(win, [
-      '.meeting-section',
-      '.mic-panel',
-      mode.id === 'telemetry' ? '.pipeline-panel' : '.translation-section',
+      '[data-demo="meeting-card"]',
+      '[data-demo="stt-card"]',
+      mode.id === 'telemetry' ? '[data-demo="pipeline-panel"]' : '[data-demo="translation-card"]',
     ]);
     for (const [sel, text] of Object.entries(texts)) {
       console.log(`${tag} text[${sel}] → ${text}`);

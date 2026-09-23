@@ -3,6 +3,88 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-09-19 — Packaged-app Test Voice silent: TTS production default was mock
+
+- **Bug**: "Test Voice" in Settings → Voice was inaudible in the packaged DMG
+  app (worked in `npm run dev`). `createTtsProvider()` +
+  `resolveTtsProviderName()` defaulted `TTS_PROVIDER` to **`mock`**, which
+  returns exactly 200 ms of silence. Dev overrode it via the repo `.env`
+  (`TTS_PROVIDER=say`); the packaged app had no `TTS_PROVIDER` → silence.
+- **Fix**: `src/main/index.ts` now defaults `TTS_PROVIDER=azure` in packaged
+  builds when unset (same credentials as STT from the runtime config);
+  development keeps the `mock` default. Added a startup
+  `[CONFIG] text-to-speech provider:` diagnostic.
+- **Verified**: DMG rebuilt + reinstalled; startup logs provider `azure`;
+  Test Voice now streams 18 real speech chunks (~40 KB PCM) vs the previous
+  single 9,600-byte silence buffer. type-check / 98 tests / lint (0 errors,
+  13 pre-existing warnings) / build all clean.
+- **Files**: `src/main/index.ts`, `dist_electron/…arm64.dmg` (rebuilt),
+  `docs/CURRENT_STATE.md`, `docs/CHANGELOG.md`.
+
+## 2026-09-18 — DMG install test + truthful "not configured" toast
+
+- **Tested the real DMG → /Applications install flow** (the way a user does).
+  User-reported "No speech-to-text provider is configured…" from an installed
+  app was traced to a **stale DMG**: DMG + installed app were byte-identical
+  (`app.asar` hash `f5a3981c…`) and predated the runtime-config fix
+  (`src/main/config.ts`/`index.ts`). No config code change was needed.
+- **Clean rebuild + fresh install verified on the installed app** (Finder
+  launch via `open` + CDP): no config → session Active + STT card names
+  `~/.urdu-english-interpreter/.env`; real Azure config → provider `azure`,
+  STT Listening with live Urdu transcription; `STT_PROVIDER=mock` → mock flows.
+  No secrets in `dist/` or the packaged asar; confirmed the only stale-string
+  hit in an asar was in `dist/main/index.js.map` (source map, never executed).
+- **Fix: misleading STT toast when the cause is a missing config.** The generic
+  `stt/failed` copy ("Speech recognition failed. Please try again.") fired even
+  when the true cause was missing credentials. Added `code?: 'not-configured'`
+  to `SttStartResult` (shared), returned it from `sttSession.start()`
+  (`src/main/services/stt/manager.ts`), surfaced it via `useStt.errorCode`, and
+  `App.tsx` now toasts "Speech-to-text is not configured. Check the Speech to
+  Text card for details." (warning severity) for that code. STT card copy and
+  generic failure copy are unchanged.
+- **Verification.** `npm run type-check` clean; `npm test` **98 pass / 0 fail**;
+  `npm run lint` 0 errors (13 pre-existing warnings); `npm run build` OK; DMG
+  rebuilt (`npm run package`), installed-app asar hash matches the DMG, and all
+  three scenarios re-verified on the installed app with the fix.
+- **Files**: `packages/shared/index.ts`, `src/main/services/stt/manager.ts`,
+  `src/renderer/services/useStt.ts`, `src/renderer/App.tsx`,
+  `dist_electron/Urdu English Interpreter-1.0.0-arm64.dmg` (rebuilt),
+  `docs/CURRENT_STATE.md`, `docs/CHANGELOG.md`.
+
+## 2026-09-09 — v1.0.0 release prep: packaged runtime config + packaging cleanup + demo asset refresh
+
+- **Packaged-app STT configuration fixed.** New pure module `src/main/config.ts`
+  (`getUserConfigDir()/getUserConfigPath()/loadRuntimeConfig(devPaths)`,
+  `sttProviderName()`, `describeSttConfig()`, `SttConfigStatus`) reads the real
+  production config at `~/.urdu-english-interpreter/.env` in packaged builds
+  (never overrides process env). Removed `dotenv`/`os` from `src/main/index.ts`;
+  `if (app.isPackaged)` now logs `[CONFIG] runtime config:` and
+  `[CONFIG] speech-to-text provider/not ready:` at startup. STT manager builds
+  its provider through `describeSttConfig()` and reports its actionable message.
+- **Packaging cleanup.** `package.json`: real `author` object and
+  `build.mac.icon: "packaging/icon.png"`; `scripts/generate-icon.mjs` generates
+  the 1024×1024 icon; `update-browserslist-db` cleared the browserslist warning.
+  `package:dir` embeds `icon.icns` (CFBundleIconFile) in the `mac-arm64` app.
+- **Demo assets regenerated for the current UI.** `data-demo` anchors
+  (`meeting-card`, `stt-card`, `translation-card`, `pipeline-panel`); demo
+  preload rewritten (fake completed onboarding + full bridge stubs + overview /
+  live / telemetry scenarios); capture regions updated; screenshots, poster,
+  and 48 s 1080p video rebuilt.
+- **Docs.** `demo/README.md`, `README.md`, `docs/releases/v1.0.0.md` (new
+  "Production configuration" section), `docs/CURRENT_STATE.md` updated.
+- **Verification.** 98 tests pass; type-check/build/lint clean; packaged `.app`
+  launched via CDP and confirmed (no-config error names the exact file, env
+  `STT_PROVIDER=mock` and config-file `~/.urdu-english-interpreter/.env` both
+  initialize the mock provider and run the meeting). Test artifacts removed.
+- **Files**: `src/main/config.ts` (new), `src/main/index.ts`,
+  `src/main/services/stt/manager.ts`, `tests/config.test.ts` (new),
+  `package.json`, `scripts/generate-icon.mjs` (new), `packaging/icon.png` (new),
+  `demo/preload/demo-preload.js`, `demo/src/capture-app.mjs`,
+  `src/renderer/pages/HomeScreen.tsx`, `src/renderer/components/PipelinePanel.tsx`,
+  regenerated `docs/images/*` + `docs/demo/demo-v1.0.0.mp4`, `demo/README.md`,
+  `README.md`, `docs/releases/v1.0.0.md`, `docs/CURRENT_STATE.md`,
+  `docs/CHANGELOG.md`.
+
 ## 2026-09-04 — Pipeline telemetry enabled-flag timing fix
 
 - **Fixed Performance → Pipeline panel regression.** `PipelineTelemetry`'s

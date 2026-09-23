@@ -16,29 +16,30 @@ This is the first public open-source release of the project.
   routing to a selectable output device (including BlackHole). Azure STT →
   Azure Translator → Azure streaming TTS is the production path; deterministic
   Mock and macOS `say` providers are preserved for local testing.
-- **Validation status:** build, type-check, and 43 automated tests pass. The M10
-  Phase 2 acoustic streaming benchmark is pending/manual and full real Google
-  Meet / Zoom / Teams validation is pending/manual.
+- **Validation status:** build, type-check, and 98 automated tests pass. The
+  packaged `mac-arm64` app is verified (runtime config, STT provider init). The
+  M10 Phase 2 acoustic streaming benchmark is pending/manual and full real
+  Google Meet / Zoom / Teams validation is pending/manual.
 - **Demo:** [▶ Watch the 48-second demo](https://github.com/muhammadhasnainsaeed/Urdu-English-Voice-Interpreter/releases/tag/v1.0.0) — the MP4 is attached to the v1.0.0 release (see [below](#demo)).
 - **Release notes:** [`docs/releases/v1.0.0.md`](docs/releases/v1.0.0.md)
 
 ## Demo
 
 A 48-second, silent, 1080p product walkthrough of the real app. It starts with
-the overview screen, then shows live Urdu → English translation in action
-(meeting mode, mock provider, deterministic demo harness), the system
-architecture, how translated audio routes through BlackHole into a meeting app,
-what works today, and the v1.0.0 open-source details.
+the Home screen (Meeting Mode ready), then shows live Urdu → English translation
+in action (active meeting, mock provider, deterministic demo harness), the
+system architecture, how translated audio routes through BlackHole into a
+meeting app, what works today, and the v1.0.0 open-source details.
 
 - **Video:** [`docs/demo/demo-v1.0.0.mp4`](docs/demo/demo-v1.0.0.mp4) — 1920×1080, 30 fps (also attached to the v1.0.0 release assets)
 - **Poster:** [`docs/images/demo-poster.png`](docs/images/demo-poster.png)
-- **Screenshots:** [overview](docs/images/app-overview.png) · [live translation](docs/images/live-translation.png) · [performance telemetry](docs/images/telemetry.png)
+- **Screenshots:** [Home / Meeting Mode](docs/images/app-overview.png) · [live translation](docs/images/live-translation.png) · [settings performance telemetry](docs/images/telemetry.png)
 - **Architecture diagram:** [`docs/images/architecture.png`](docs/images/architecture.png)
 
 The demo screenshots are taken from the real built renderer, driven by the
-deterministic demo harness in [`demo/`](demo/README.md). Provider badges say
-**Mock (dev)** because the demo build runs the local mock provider; production
-backends (Azure, whisper.cpp, macOS `say`) plug in behind the same interfaces.
+deterministic demo harness in [`demo/`](demo/README.md). The demo build runs the
+local mock provider (no cloud credentials), and production backends (Azure,
+whisper.cpp, macOS `say`) plug in behind the same provider interfaces.
 
 ## Project status
 

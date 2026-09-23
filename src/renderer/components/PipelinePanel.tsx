@@ -64,7 +64,7 @@ export default function PipelinePanel({ currentStage }: PipelinePanelProps) {
   );
 
   return (
-    <Card>
+    <Card data-demo="pipeline-panel">
       <CardHeader className="flex-row items-center justify-between p-4 pb-2">
         <CardTitle className="text-[13px]">Pipeline Performance</CardTitle>
         <Badge variant="warning">DEV</Badge>

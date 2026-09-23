@@ -16,12 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import * as dotenv from 'dotenv';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import type { ApplicationStatus, PipelineEvent, PlaybackTelemetryEvent } from '@shared/index';
+import { describeSttConfig, getUserConfigPath, loadRuntimeConfig } from './config';
 import { registerAudioIpc } from './ipc/audio';
 import { registerAudioOutputIpc, audioOutputManager } from './ipc/audio-output';
 import { registerSttIpc } from './ipc/stt';
@@ -30,17 +29,25 @@ import { registerTtsIpc, ttsManager } from './ipc/tts';
 import { registerSessionIpc, sessionManager } from './ipc/session';
 import { registerSystemIpc } from './ipc/system';
 import { registerPreferencesIpc } from './ipc/preferences';
+import { resolveTtsProviderName } from './services/tts/voices';
 import { pipelineTelemetry } from './services/telemetry/pipeline-telemetry';
 
 // Configuration loading.
 //
-// Development: `.env` in the current working directory (repository root).
+// Development: the repository `.env` (resolved via app.getAppPath(), which is
+// the repo root when running unpackaged).
 // Production: the packaged app never contains `.env` / credentials. If the
 // user supplies a runtime config, it is loaded from the user-owned path
 // `~/.urdu-english-interpreter/.env` (documented). Shell environment
 // variables always take precedence and are never overridden by dotenv.
-dotenv.config();
-dotenv.config({ path: path.join(os.homedir(), '.urdu-english-interpreter', '.env'), quiet: true });
+loadRuntimeConfig([path.join(app.getAppPath(), '.env')]);
+
+// Production defaults to the real Azure provider (consistent with STT);
+// development defaults to mock so a first run works with no credentials.
+// Users override this with TTS_PROVIDER=say|azure|mock in the runtime config.
+if (app.isPackaged && !process.env.TTS_PROVIDER) {
+  process.env.TTS_PROVIDER = 'azure';
+}
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -159,6 +166,23 @@ app.whenReady().then(() => {
       pipelineTelemetry.reportPlayback(payload);
     }
   });
+
+  // Packaged-app startup diagnostics: surface where runtime config is read
+  // from and whether speech-to-text is usable, so first-run failures are
+  // diagnosable from the terminal even before the UI is interacted with.
+  if (app.isPackaged) {
+    const configPath = getUserConfigPath();
+    console.log(
+      `[CONFIG] runtime config: ${configPath}${fs.existsSync(configPath) ? '' : ' (not found — optional)'}`,
+    );
+    const stt = describeSttConfig();
+    if (stt.ok) {
+      console.log(`[CONFIG] speech-to-text provider: ${stt.provider}`);
+    } else {
+      console.log(`[CONFIG] speech-to-text not ready: ${stt.message}`);
+    }
+    console.log(`[CONFIG] text-to-speech provider: ${resolveTtsProviderName()}`);
+  }
 
   createWindow();
 

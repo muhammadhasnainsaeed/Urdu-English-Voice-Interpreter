@@ -60,6 +60,7 @@ export function useStt() {
   const [partialText, setPartialText] = useState('');
   const [finalText, setFinalText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
 
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -151,6 +152,7 @@ export function useStt() {
   const start = useCallback(
     async (stream: MediaStream, audioContext: AudioContext): Promise<boolean> => {
       setError(null);
+      setErrorCode(null);
       setPartialText('');
       setStatus('starting');
 
@@ -182,6 +184,7 @@ export function useStt() {
       const result = await window.electron.startStt();
       if (!result.ok) {
         setError(result.message ?? 'Could not start speech recognition.');
+        setErrorCode(result.code ?? null);
         setStatus('error');
         stopFeeding();
         return false;
@@ -219,6 +222,7 @@ export function useStt() {
     partialText,
     finalText,
     error,
+    errorCode,
     provider,
     isActive,
     start,

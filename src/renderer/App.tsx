@@ -73,7 +73,11 @@ export default function App() {
     {
       category: 'stt',
       error: stt.error,
-      message: 'Speech recognition failed. Please try again.',
+      message:
+        stt.errorCode === 'not-configured'
+          ? 'Speech-to-text is not configured. Check the Speech to Text card for details.'
+          : 'Speech recognition failed. Please try again.',
+      options: stt.errorCode === 'not-configured' ? { severity: 'warning' } : undefined,
     },
     {
       category: 'translation',

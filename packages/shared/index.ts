@@ -57,6 +57,12 @@ export interface SttStartResult {
   ok: boolean;
   message?: string;
   provider?: string;
+  /**
+   * Stable reason code so the renderer can pick accurate copy. Currently only
+   * emitted when no provider could be created because the configuration is
+   * incomplete (typically missing credentials).
+   */
+  code?: 'not-configured';
 }
 
 export type TranslationEvent =

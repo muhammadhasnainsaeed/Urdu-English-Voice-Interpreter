@@ -2,6 +2,10 @@
   "name": "urdu-english-interpreter",
   "version": "1.0.0",
   "description": "Real-time Urdu-to-English voice interpreter for macOS meetings",
+  "author": {
+    "name": "Muhammad Hasnain Saeed",
+    "url": "https://github.com/muhammadhasnainsaeed"
+  },
   "main": "dist/main/index.js",
   "private": true,
   "license": "GPL-3.0-only",
@@ -69,6 +73,7 @@
       "package.json"
     ],
     "mac": {
+      "icon": "packaging/icon.png",
       "target": [
         "dmg"
       ],

@@ -115,7 +115,7 @@ export default function HomeScreen(props: HomeScreenProps) {
 
       <div className="flex flex-col gap-3">
         {/* 1. Meeting Mode — primary/focal */}
-        <Card>
+        <Card data-demo="meeting-card">
           <CardHeader className="flex-row items-center justify-between p-4 pb-2">
             <CardTitle className="text-lg font-semibold">Meeting Mode</CardTitle>
             <Badge variant={sessionBadge.variant} dot>
@@ -166,7 +166,7 @@ export default function HomeScreen(props: HomeScreenProps) {
         </Card>
 
         {/* 2. Speech to Text — readable Urdu subtitle output */}
-        <Card>
+        <Card data-demo="stt-card">
           <CardHeader className="flex-row items-center justify-between p-4 pb-2">
             <CardTitle className="text-[13px]">Speech to Text</CardTitle>
             {sttStatusShown(props.sttStatus) && <Badge variant="outline">{STT_LABEL[props.sttStatus]}</Badge>}
@@ -194,7 +194,7 @@ export default function HomeScreen(props: HomeScreenProps) {
         </Card>
 
         {/* 3. Translation — readable English output */}
-        <Card>
+        <Card data-demo="translation-card">
           <CardHeader className="flex-row items-center justify-between p-4 pb-2">
             <CardTitle className="text-[13px]">Translation</CardTitle>
             {translationStatusShown(props.translationStatus) && (

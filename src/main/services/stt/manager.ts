@@ -19,6 +19,7 @@
 import type { SttEvent, SttStartResult } from '@shared/index';
 import type { SttHandlers, SttProvider } from './provider';
 import { createMockSttProvider } from './providers/mock';
+import { describeSttConfig } from '../../config';
 import { pipelineTelemetry } from '../telemetry/pipeline-telemetry';
 
 function errMessage(err: unknown): string {
@@ -27,13 +28,14 @@ function errMessage(err: unknown): string {
 }
 
 async function createConfiguredProvider(): Promise<SttProvider | null> {
-  const providerName = (process.env.STT_PROVIDER || 'azure').toLowerCase();
+  const config = describeSttConfig();
+  if (!config.ok) return null;
 
-  if (providerName === 'mock') {
+  if (config.provider === 'mock') {
     return createMockSttProvider();
   }
 
-  if (providerName === 'azure') {
+  if (config.provider === 'azure') {
     const key = process.env.AZURE_SPEECH_KEY;
     const region = process.env.AZURE_SPEECH_REGION;
     if (!key || !region) return null;
@@ -43,7 +45,7 @@ async function createConfiguredProvider(): Promise<SttProvider | null> {
     return createAzureSttProvider(key, region, 'ur-IN');
   }
 
-  if (providerName === 'whisper') {
+  if (config.provider === 'whisper') {
     const { createWhisperSttProvider } = await import('./providers/whisper');
     return createWhisperSttProvider();
   }
@@ -64,12 +66,13 @@ class SttSession {
       return { ok: false, message: 'Speech recognition is already running.' };
     }
 
-    const provider = await createConfiguredProvider();
+    const config = describeSttConfig();
+    const provider = config.ok ? await createConfiguredProvider() : null;
     if (!provider) {
       return {
         ok: false,
-        message:
-          'No speech-to-text provider is configured. Set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION in .env (Azure), set STT_PROVIDER=whisper for local Whisper, or set STT_PROVIDER=mock for development.',
+        code: 'not-configured',
+        message: config.message ?? 'No speech-to-text provider is configured.',
       };
     }
 

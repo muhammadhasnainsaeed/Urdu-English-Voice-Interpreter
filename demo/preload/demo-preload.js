@@ -7,9 +7,13 @@
  * microphone tone so the real useMicrophone analyser + level meter animate).
  *
  * URLs:
- *   index.html?demo=overview   → idle product state
+ *   index.html?demo=overview   → idle Home (meeting mode ready)
  *   index.html?demo=live       → active meeting with Urdu transcript + English
- *   index.html?demo=telemetry  → PIPELINE_DEBUG dev panel (real M10 Phase 2 data)
+ *   index.html?demo=telemetry  → Settings → Performance PIPELINE_DEBUG panel
+ *
+ * The demo-Home UI is reached by faking an already-completed onboarding
+ * (getPreferences → onboardingCompleted:true) and the current UI is driven with
+ * stable `data-demo` anchors added to HomeScreen / PipelinePanel.
  *
  * contextIsolation:false, sandbox:false, nodeIntegration:false (dev tooling only).
  */
@@ -48,9 +52,18 @@
   const audioDataSubs = new Set();
   const audioCancelSubs = new Set();
 
-  /* ---------- window.electron contract ---------- */
+  /* ---------- window.electron contract (exact production surface) ---------- */
+  const prefs = { onboardingCompleted: true, ttsVoiceId: null };
+
   const api = {
     getAppStatus: async () => 'idle',
+
+    getPreferences: async () => ({ ok: true, preferences: { ...prefs } }),
+    setPreferences: async (patch) => {
+      Object.assign(prefs, patch);
+      return { ok: true, preferences: { ...prefs } };
+    },
+    openExternal: async () => ({ ok: true }),
 
     getMicPermission: async () => 'granted',
     requestMicPermission: async () => 'granted',
@@ -82,6 +95,18 @@
       ttsBus.emit({ type: 'tts:stopped' });
     },
     onTtsEvent: (h) => ttsBus.subscribe(h),
+
+    getTtsVoices: async () => ({
+      ok: true,
+      voices: [
+        { id: 'en-US-JennyNeural', name: 'Jenny — Natural', gender: 'female', source: 'azure', country: 'US' },
+        { id: 'en-GB-SoniaNeural', name: 'Sonia — Natural', gender: 'female', source: 'azure', country: 'GB' },
+        { id: 'en-IN-PrabhatNeural', name: 'Prabhat — Natural', gender: 'male', source: 'azure', country: 'IN' },
+      ],
+      development: false,
+      provider: 'mock',
+    }),
+    testTtsVoice: async () => ({ ok: true, provider: 'mock' }),
 
     getAudioOutputDevices: async () => [
       { id: 'default', label: 'System Default', isDefault: true },
@@ -205,38 +230,14 @@
   }
 
   function collectRects() {
-    const pipeline = rectFor('.pipeline-panel');
     return {
       docHeight: document.documentElement.scrollHeight,
       innerWidth: window.innerWidth,
-      meeting: rectFor('.meeting-section'),
-      mic: rectFor('.mic-panel'),
-      stt: rectFor('.stt-panel'),
-      translation: rectFor('.translation-section'),
-      tts: rectFor('.tts-section'),
-      audioOutput: rectFor('.audio-output-section'),
-      pipeline,
+      meeting: rectFor('[data-demo="meeting-card"]'),
+      stt: rectFor('[data-demo="stt-card"]'),
+      translation: rectFor('[data-demo="translation-card"]'),
+      pipeline: rectFor('[data-demo="pipeline-panel"]'),
     };
-  }
-
-  function setAudioOutputToBlackHole() {
-    const select = document.querySelector('.audio-output-section .device-select');
-    if (!select) return false;
-    const option = [...select.options].find((o) => /blackhole/i.test(o.textContent || ''));
-    if (!option) return false;
-    select.value = option.value;
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-    return true;
-  }
-
-  function clickStartMeeting() {
-    const btn = document.querySelector('.start-meeting-btn');
-    if (btn) btn.click();
-    return !!btn;
-  }
-
-  function hasMockProvider() {
-    return /Mock \(dev\)/.test(document.body.innerText);
   }
 
   function publishReady() {
@@ -255,9 +256,14 @@
     enumerable: true,
   });
 
-  /* ---------- scenarios ---------- */
+  /* ---------- UI helpers ---------- */
+  function buttonByText(text, selector = 'button') {
+    return [...document.querySelectorAll(selector)].find(
+      (el) => (el.textContent || '').trim() === text,
+    );
+  }
 
-  async function waitFor(cond, timeoutMs = 15000) {
+  async function waitFor(cond, timeoutMs = 25000) {
     const started = Date.now();
     for (;;) {
       if (cond()) return true;
@@ -266,39 +272,48 @@
     }
   }
 
+  /** Wait for the Home view (onboarding is faked as already completed). */
+  async function waitForHome() {
+    return waitFor(
+      () => document.querySelector('[data-demo="meeting-card"]') && document.querySelector('.home-screen'),
+    );
+  }
+
+  /* ---------- scenarios ---------- */
+
   async function overviewScenario() {
-    // Idle product state: ready mic, BlackHole preselected as the target output device.
-    await waitFor(() => document.querySelector('.mic-panel') && document.querySelector('.meeting-section'));
-    await delay(350);
-    setAudioOutputToBlackHole();
+    // Idle Home: meeting mode ready, STT/Translation cards empty.
+    await waitForHome();
     await delay(450);
     publishReady();
   }
 
   async function liveScenario() {
     const SCENARIO = [
-      { at: 0, fn: () => setAudioOutputToBlackHole() },
-      { at: 400, fn: () => sttBus.emit({ type: 'partial', text: 'السلام علیکم' }) },
-      { at: 1000, fn: () => sttBus.emit({ type: 'partial', text: 'السلام علیکم، آج کی میٹنگ میں خوش آمدید' }) },
-      { at: 1100, fn: () => translationBus.emit({ type: 'translation:text', urdu: 'السلام علیکم، آج کی میٹنگ میں خوش آمدید', english: 'Welcome,', interim: true }) },
-      { at: 1700, fn: () => sttBus.emit({ type: 'final', text: 'السلام علیکم، آج کی میٹنگ میں خوش آمدید' }) },
-      { at: 1850, fn: () => translationBus.emit({ type: 'translation:text', urdu: 'السلام علیکم، آج کی میٹنگ میں خوش آمدید', english: 'Welcome, thank you for joining today\'s meeting.' }) },
-      { at: 2000, fn: () => ttsBus.emit({ type: 'tts:speaking', text: 'Welcome, thank you for joining today\'s meeting.' }) },
-      { at: 2400, fn: () => sttBus.emit({ type: 'partial', text: 'ہم اس پروڈکٹ کے لیے' }) },
-      { at: 3000, fn: () => sttBus.emit({ type: 'partial', text: 'ہم اس پروڈکٹ کے لیے نئی فیچرز پر کام کر رہے ہیں' }) },
-      { at: 3100, fn: () => translationBus.emit({ type: 'translation:text', urdu: 'ہم اس پروڈکٹ کے لیے نئی فیچرز پر کام کر رہے ہیں', english: 'We are working on new features for this product.' }) },
-      { at: 3600, fn: () => sttBus.emit({ type: 'final', text: 'ہم اس پروڈکٹ کے لیے نئی فیچرز پر کام کر رہے ہیں' }) },
-      { at: 3700, fn: () => ttsBus.emit({ type: 'tts:speaking', text: 'We are working on new features for this product.' }) },
-      { at: 4100, fn: () => sttBus.emit({ type: 'partial', text: 'براہ کرم اپنی رائے شیئر کریں' }) },
-      { at: 4600, fn: () => publishReady() },
+      { at: 300, fn: () => sttBus.emit({ type: 'partial', text: 'السلام علیکم' }) },
+      { at: 900, fn: () => sttBus.emit({ type: 'partial', text: 'السلام علیکم، آج کی میٹنگ میں خوش آمدید' }) },
+      { at: 1000, fn: () => translationBus.emit({ type: 'translation:text', urdu: 'السلام علیکم، آج کی میٹنگ میں خوش آمدید', english: 'Welcome,', interim: true }) },
+      { at: 1600, fn: () => sttBus.emit({ type: 'final', text: 'السلام علیکم، آج کی میٹنگ میں خوش آمدید' }) },
+      { at: 1750, fn: () => translationBus.emit({ type: 'translation:text', urdu: 'السلام علیکم، آج کی میٹنگ میں خوش آمدید', english: 'Welcome, thank you for joining today\'s meeting.' }) },
+      { at: 1900, fn: () => ttsBus.emit({ type: 'tts:speaking', text: 'Welcome, thank you for joining today\'s meeting.' }) },
+      { at: 2300, fn: () => sttBus.emit({ type: 'partial', text: 'ہم اس پروڈکٹ کے لیے' }) },
+      { at: 2900, fn: () => sttBus.emit({ type: 'partial', text: 'ہم اس پروڈکٹ کے لیے نئی فیچرز پر کام کر رہے ہیں' }) },
+      { at: 3000, fn: () => translationBus.emit({ type: 'translation:text', urdu: 'ہم اس پروڈکٹ کے لیے نئی فیچرز پر کام کر رہے ہیں', english: 'We are working on new features for this product.' }) },
+      { at: 3500, fn: () => sttBus.emit({ type: 'final', text: 'ہم اس پروڈکٹ کے لیے نئی فیچرز پر کام کر رہے ہیں' }) },
+      { at: 3600, fn: () => ttsBus.emit({ type: 'tts:speaking', text: 'We are working on new features for this product.' }) },
+      { at: 4000, fn: () => sttBus.emit({ type: 'partial', text: 'براہ کرم اپنی رائے شیئر کریں' }) },
+      { at: 4500, fn: () => publishReady() },
     ];
 
-    await waitFor(() => document.querySelector('.start-meeting-btn'));
-    clickStartMeeting();
-
-    if (!(await waitFor(hasMockProvider, 20000))) {
-      console.warn('[demo-preload] provider rows never became visible (STT/mic did not start)');
+    await waitForHome();
+    const startBtn = buttonByText('Start Meeting');
+    if (!startBtn) {
+      console.warn('[demo-preload] Start Meeting button not found');
+      return publishReady();
     }
+    startBtn.click();
+
+    await waitFor(() => (document.querySelector('[data-demo="meeting-card"]')?.innerText || '').includes('Active'));
 
     const t0 = Date.now();
     for (const step of SCENARIO) {
@@ -313,7 +328,7 @@
       id: 1,
       outcome: 'completed',
       speechStartApprox: false,
-      urdu: "آج کی میٹنگ بہت اہم ہے",
+      urdu: 'آج کی میٹنگ بہت اہم ہے',
       english: "Today's meeting is very important.",
       t: {
         speechStart: 1750000000000,
@@ -350,9 +365,21 @@
       e2e: { lastMs: 5771, avgMs: 5771, minMs: null, maxMs: null },
     };
 
-    await waitFor(() => document.querySelector('.meeting-section'));
-    await delay(400);
+    // Open Settings, then the Performance section with the pipeline panel.
+    await waitForHome();
+    const gear = document.querySelector('button[aria-label="Settings"]');
+    if (!gear) {
+      console.warn('[demo-preload] Settings button not found');
+      return publishReady();
+    }
+    gear.click();
+    await waitFor(() => document.querySelector('main[aria-label*="settings"], main[aria-label]'));
 
+    const performanceBtn = buttonByText('Performance', 'button');
+    if (performanceBtn) performanceBtn.click();
+    await waitFor(() => document.querySelector('[data-demo="pipeline-panel"]'));
+
+    // Simulate an active session so the panel's "Current Stage" is meaningful.
     sessionBus.emit({ type: 'session:started' });
     sessionBus.emit({
       type: 'session:status',
@@ -367,7 +394,7 @@
     pipelineBus.emit({ type: 'pipeline:utterance', utterance });
     pipelineBus.emit({ type: 'pipeline:summary', summary });
 
-    await delay(350);
+    await delay(500);
     publishReady();
   }
 

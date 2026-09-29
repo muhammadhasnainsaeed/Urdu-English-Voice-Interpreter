@@ -20,7 +20,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ApplicationStatus, PipelineEvent, PlaybackTelemetryEvent } from '@shared/index';
-import { describeSttConfig, getUserConfigPath, loadRuntimeConfig } from './config';
+import { describeSttConfig, describeTranslationConfig, getUserConfigPath, loadRuntimeConfig } from './config';
 import { registerAudioIpc } from './ipc/audio';
 import { registerAudioOutputIpc, audioOutputManager } from './ipc/audio-output';
 import { registerSttIpc } from './ipc/stt';
@@ -42,9 +42,13 @@ import { pipelineTelemetry } from './services/telemetry/pipeline-telemetry';
 // variables always take precedence and are never overridden by dotenv.
 loadRuntimeConfig([path.join(app.getAppPath(), '.env')]);
 
-// Production defaults to the real Azure provider (consistent with STT);
-// development defaults to mock so a first run works with no credentials.
-// Users override this with TTS_PROVIDER=say|azure|mock in the runtime config.
+// Production defaults to the real Azure providers (consistent across the
+// pipeline: STT azure, translation azure, TTS azure); development defaults to
+// mock so a first run works with no credentials. Users override these with
+// STT_PROVIDER / TRANSLATION_PROVIDER / TTS_PROVIDER in the runtime config.
+if (app.isPackaged && !process.env.TRANSLATION_PROVIDER) {
+  process.env.TRANSLATION_PROVIDER = 'azure';
+}
 if (app.isPackaged && !process.env.TTS_PROVIDER) {
   process.env.TTS_PROVIDER = 'azure';
 }
@@ -182,6 +186,12 @@ app.whenReady().then(() => {
       console.log(`[CONFIG] speech-to-text not ready: ${stt.message}`);
     }
     console.log(`[CONFIG] text-to-speech provider: ${resolveTtsProviderName()}`);
+    const translation = describeTranslationConfig();
+    if (translation.ok) {
+      console.log(`[CONFIG] translation provider: ${translation.provider}`);
+    } else {
+      console.log(`[CONFIG] translation not ready: ${translation.message}`);
+    }
   }
 
   createWindow();

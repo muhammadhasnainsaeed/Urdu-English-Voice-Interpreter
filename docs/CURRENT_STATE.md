@@ -1,6 +1,74 @@
 # Current State
 
-_Last updated: 2026-09-19_
+_Last updated: 2026-09-23_
+
+## Packaged translation showed Urdu under `[English]` label: translation defaulted to mock in production (2026-09-23)
+
+Completed (2026-09-23). Packaged builds (`npm run package` and
+`npm run package:dir`) recognized Urdu correctly but the "Translation" card
+showed `[English] کیسے ہیں آپ آپ کو میری آواز آرہی ہے` — the label said English
+while the text stayed Urdu. `npm run dev` translated correctly.
+
+### Root cause
+
+`createTranslationProvider()` (src/main/services/translation/provider.ts)
+defaults `TRANSLATION_PROVIDER` to **`mock`** when unset. The mock translation
+provider is an identity passthrough that returns `` `[English] ${text}` ``
+(src/main/services/translation/providers/mock.ts) — hence the exact observed
+output: the `[English]` prefix is part of the mock provider's returned string,
+not a renderer label.
+
+- Development: repo `.env` sets `TRANSLATION_PROVIDER=azure` +
+  `AZURE_TRANSLATOR_KEY`/`AZURE_TRANSLATOR_REGION` → real Azure Translator
+  (hardcoded `from=ur&to=en`), so dev works.
+- Packaged: the runtime config `~/.urdu-english-interpreter/.env` had no
+  `TRANSLATION_PROVIDER` and no translator credentials → mock identity output.
+  This was the same class of regression as the TTS issue fixed on 2026-09-19
+  (provider factory defaults mock; dev `.env` masks it).
+
+The translation manager, IPC, session orchestration, renderer state
+(`useTranslation` appends `event.english` verbatim) and bundled provider code
+are identical in dev and packaged — only the resolved provider name differed.
+
+### Fix
+
+- `src/main/index.ts`: in packaged builds, when `TRANSLATION_PROVIDER` is
+  unset, default it to `azure` (mirrors the TTS default; consistent STT /
+  translation / TTS = azure in production). Development keeps the `mock`
+  default so a first run needs no credentials. Startup now also logs
+  `[CONFIG] translation provider: <name>` (or the not-ready reason).
+- `src/main/config.ts`: new `translationProviderName()` (factory default
+  `mock`) + `describeTranslationConfig()` mirroring `describeSttConfig()` —
+  azure with missing creds produces an actionable message naming
+  `AZURE_TRANSLATOR_KEY`/`AZURE_TRANSLATOR_REGION` and
+  `~/.urdu-english-interpreter/.env`.
+- User runtime config: added `AZURE_TRANSLATOR_KEY`/`AZURE_TRANSLATOR_REGION`
+  (copied from the repo `.env`; values never printed/tracked).
+  `TRANSLATION_PROVIDER` deliberately left unset so the packaged default path
+  is what runs.
+- `tests/config.test.ts`: +7 hermetic tests for the translation helpers
+  (suite now **105 tests**).
+
+### Verification (all four environments)
+
+- **Exact sentence, real provider** (temporary tsx test against the packaged
+  runtime config, deleted after): input `کیسے ہیں آپ آپ کو میری آواز آرہی ہے`
+  → `How are you hearing my voice?` (English, no Urdu chars, no `[English]`
+  prefix) via `TranslationManager` + azure provider.
+- **`npm run build` + unpackaged Electron**: Start Meeting (mock STT Urdu
+  final `آپ کی آواز سنائی دے رہی ہے`) → Translation card **"Your voice is
+  being heard."**
+- **`npm run package:dir`**: packaged `.app` logs
+  `[CONFIG] translation provider: azure`; same STT Urdu final → **"Your voice
+  is being heard."**
+- **`npm run package` + DMG → /Applications install**: logs
+  `[CONFIG] translation provider: azure`; same Urdu final → **"Your voice is
+  being heard."**
+- Gates: `npm run type-check` clean; `npm test` **105 pass / 0 fail**;
+  `npm run lint` 0 errors (13 pre-existing warnings); `npm run build` OK;
+  `npm run format:check` clean.
+- Not committed/pushed (per instructions). Runtime config restored
+  (`STT_PROVIDER=azure`, `PIPELINE_DEBUG` removed).
 
 ## Packaged-app Test Voice silent: TTS defaulted to mock in production (2026-09-19)
 

@@ -103,3 +103,53 @@ export function describeSttConfig(): SttConfigStatus {
     message: `Unknown STT_PROVIDER "${provider}". Use azure, whisper, or mock.`,
   };
 }
+
+export interface TranslationConfigStatus {
+  ok: boolean;
+  provider: string;
+  message?: string;
+}
+
+/**
+ * Resolve the provider selected by `createTranslationProvider()`: when
+ * TRANSLATION_PROVIDER is unset the provider factory defaults to `mock`.
+ * (Packaged builds pin the default to `azure` in the main entrypoint before
+ * any provider is created, so this resolution matches the running app.)
+ */
+export function translationProviderName(): string {
+  const name = (process.env.TRANSLATION_PROVIDER ?? 'mock').trim().toLowerCase();
+  return name === '' ? 'mock' : name;
+}
+
+/**
+ * Resolve the translation provider selected at runtime and, when it is not
+ * usable (e.g. an azure provider without credentials), produce a precise,
+ * actionable message that names the exact config file the packaged app reads.
+ */
+export function describeTranslationConfig(): TranslationConfigStatus {
+  const provider = translationProviderName();
+
+  if (provider === 'mock' || provider === 'mymemory') return { ok: true, provider };
+
+  if (provider === 'azure') {
+    const key = process.env.AZURE_TRANSLATOR_KEY;
+    const region = process.env.AZURE_TRANSLATOR_REGION;
+    if (key && region) return { ok: true, provider };
+    return {
+      ok: false,
+      provider,
+      message:
+        'Translation is not configured. TRANSLATION_PROVIDER is azure, which requires ' +
+        `AZURE_TRANSLATOR_KEY and AZURE_TRANSLATOR_REGION. Add them to ${getUserConfigPath()} ` +
+        '(packaged app), to the repository .env (development), or export them in the environment ' +
+        'before launching. Alternatively set TRANSLATION_PROVIDER=mymemory (free tier, rate limited) ' +
+        'or TRANSLATION_PROVIDER=mock for development.',
+    };
+  }
+
+  return {
+    ok: false,
+    provider,
+    message: `Unknown TRANSLATION_PROVIDER "${provider}". Use azure, mymemory, or mock.`,
+  };
+}

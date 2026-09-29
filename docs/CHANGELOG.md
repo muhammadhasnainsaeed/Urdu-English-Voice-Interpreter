@@ -3,6 +3,42 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-09-23 — Packaged translation held Urdu under `[English]`: translation production default was mock
+
+- **Bug**: packaged builds (`npm run package` / `npm run package:dir`)
+  recognized Urdu (STT fine) but the Translation card showed the original Urdu
+  text prefixed `[English] ` — e.g. `[English] کیسے ہیں آپ آپ کو میری آواز
+  آرہی ہے`. Dev translated correctly.
+- **Root cause**: `createTranslationProvider()` defaults
+  `TRANSLATION_PROVIDER` to **`mock`** when unset, and the mock provider is an
+  identity passthrough returning `` `[English] ${text}` ``
+  (`providers/mock.ts`). Dev masks it via the repo `.env`
+  (`TRANSLATION_PROVIDER=azure` + translator credentials); the packaged runtime
+  config had neither, so packaged fell back to mock. Provider/manager/IPC/
+  renderer code is identical — only the resolved provider differed.
+- **Fix**: `src/main/index.ts` now defaults `TRANSLATION_PROVIDER=azure` in
+  packaged builds when unset (mirrors the 2026-09-19 TTS default; STT /
+  translation / TTS all azure in production). New `describeTranslationConfig()`
+  + `translationProviderName()` in `src/main/config.ts` (factory-default mock)
+  with an actionable azure-missing-credentials message; startup
+  `[CONFIG] translation provider:` diagnostic added.
+- **User runtime config**: added `AZURE_TRANSLATOR_KEY` +
+  `AZURE_TRANSLATOR_REGION` (from repo `.env`, values never printed);
+  `TRANSLATION_PROVIDER` left unset to exercise the new packaged default.
+- **Verified**: exact sentence `کیسے ہیں آپ آپ کو میری آواز آرہی ہے` →
+  **`How are you hearing my voice?`** through the real provider/manager; then
+  full pipeline in all four environments (dev/unpackaged, `package:dir`,
+  `package`+DMG install) with mock-STT Urdu final `آپ کی آواز سنائی دے رہی ہے`
+  → Translation card **"Your voice is being heard."**. All four `[CONFIG]`
+  translation provider logs report `azure`.
+- **Validation**: type-check clean; `npm test` **105 pass / 0 fail** (7 new
+  translation-config tests); lint 0 errors (13 pre-existing warnings); build +
+  `format:check` clean. Not committed/pushed.
+- **Files**: `src/main/index.ts`, `src/main/config.ts`,
+  `tests/config.test.ts`, `~/.urdu-english-interpreter/.env` (added translator
+  creds), `docs/CURRENT_STATE.md`, `docs/CHANGELOG.md`. DMG rebuilt
+  (`dist_electron/…-1.0.0-arm64.dmg`, gitignored).
+
 ## 2026-09-19 — Packaged-app Test Voice silent: TTS production default was mock
 
 - **Bug**: "Test Voice" in Settings → Voice was inaudible in the packaged DMG

@@ -3,6 +3,101 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-09-30 — v1.1.0 release prep: version bump, README rewrite, architecture refresh
+
+Release-preparation pass for **v1.1.0** (36 commits on `main` since the v1.0.0
+tag at `39c0b61`). Version bumped, user-facing documentation rewritten, stale
+architecture documentation corrected, and both the development and packaged
+translation paths re-verified. No commit/tag/push performed in this pass; tag and
+GitHub release creation is a separate maintainer step, and v1.0.0 was not
+modified.
+
+- **Version**: `package.json` `1.0.0` → `1.1.0`. Minor bump (new features and
+  fixes, no breaking change; the GPL-3.0 relicense is a legal change, not a
+  semver API break).
+- **Added**
+  - First-run onboarding gateway + "Get Ready" setup checklist (microphone
+    permission, audio output, BlackHole detection), persisted via
+    `preferences.json` and re-runnable from Settings → Setup.
+  - Focused Home screen (Meeting Mode, Speech to Text, Translation) and a
+    dedicated sidebar Settings page (Audio, Voice, Appearance, Performance,
+    Diagnostics, Setup).
+  - Searchable TTS voice picker with persisted selection wired end-to-end
+    through the session manager into the Azure / `say` providers, with
+    provider-aware voice listing and DiceBear-style glass voice avatars.
+  - ElevenLabs-styled `MicSelector` (live waveform, device dropdown, and
+    record / pause / play / trash sound-check controls) that reuses the existing
+    microphone stream instead of opening a second one.
+  - shadcn/ui primitives + Tailwind CSS v3 integration in the esbuild renderer,
+    `components.json` for the shadcn CLI, and a light/dark/system theme toggle
+    via a shadcn theme provider.
+  - Centralized renderer error handling (normalize → classify → toast) so every
+    pipeline failure surfaces a consistent, non-leaky message.
+  - Light/dark/system theming and the production packaging / first-launch
+    onboarding path.
+  - Dev tooling: ESLint 9 flat config, Prettier, `scripts/dev.js` watch runner
+    with renderer hot reload, dependable Tailwind watch.
+  - M10 Phase 2 acoustic streaming benchmark (docs, measured on this machine).
+  - Demo assets: video, screenshots, and architecture diagram under
+    `docs/images/` and `docs/demo/`.
+- **Changed**
+  - **License migrated MIT → GNU GPL-3.0** (`1a389fc`, `094ce4d`, `716011d`):
+    `LICENSE` is GPL-3.0, SPDX headers are `GPL-3.0-only`, and commercial-use /
+    redistribution terms are documented for contributors. v1.0.0 shipped under
+    MIT, so this is called out explicitly in the v1.1.0 release notes.
+  - Obsolete custom design-system implementation removed in favor of real
+    shadcn/ui + Tailwind components.
+  - Packaged runtime configuration hardened: `src/main/config.ts` reads
+    `~/.urdu-english-interpreter/.env` (packaged only, never bundled, process env
+    wins), with `[CONFIG] runtime config` / provider diagnostics at startup.
+  - Production provider defaults: packaged builds now default STT, translation,
+    and TTS all to `azure`; development keeps the credential-free `mock`
+    defaults. Missing credentials produce an actionable "not configured"
+    message that names the exact file and variables.
+  - `PipelineTelemetry` re-evaluates its `PIPELINE_DEBUG` enabled flag at call
+    time (the old class field was captured before `dotenv.config()` ran, so the
+    Performance panel never populated).
+  - TTS voice selection end-to-end; macOS system voices are never sent to the
+    Azure SDK; microphone sound-check playback is no longer distorted.
+  - Settings content pane no longer overflows horizontally with long device
+    names.
+- **Fixed**
+  - Packaged-only translation identity output (`[English] <urdu>`): the
+    translation provider factory defaulted to `mock` in packaged builds. Fixed
+    in `da6f455` (see the 2026-09-23 entry).
+  - Packaged-only silent TTS: the TTS factory defaulted to `mock` (200 ms of
+    silence), so "Test Voice" was inaudible in the DMG app. Fixed in `710c4cd`.
+  - Misleading "Speech recognition failed" toast when the real cause was missing
+    STT credentials; replaced with a `not-configured` code and a toast that
+    points at the Speech to Text card.
+- **Documentation**
+  - `README.md` rewritten as a self-contained project README: overview and
+    pipeline, features, screenshots/demo, requirements, end-user and developer
+    setup, environment configuration with a dev-vs-production provider-default
+    table, cloud vs local vs mock provider matrix, Azure/Whisper/BlackHole
+    setup, running/testing/packaging commands, packaged-app runtime config and
+    signing notes, troubleshooting, architecture and repository layout, current
+    limitations, project status, roadmap, documentation index, contributing, and
+    GPL-3.0 commercial-use terms.
+  - `docs/releases/v1.1.0.md` (new): Added/Changed/Fixed/Documentation/
+    Validation release notes with requirements.
+  - `docs/ARCHITECTURE.md` refreshed: current renderer tree (onboarding, Home,
+    Settings, shadcn/ui, error handling), runtime-config module, new IPC
+    surface (session, preferences, system, TTS voices, BlackHole detection),
+    production provider defaults, and the M11 UX decisions.
+  - `docs/CURRENT_STATE.md` updated with this prep pass and refreshed
+    next-task list.
+- **Validation**
+  - `npm run type-check` clean; `npm test` **105 pass / 0 fail**; `npm run build`
+    succeeds; `npm run format:check` clean; `npm run lint` 0 errors (13
+    pre-existing warnings); `npm run package:dir` produces a working `.app`.
+  - **Development and packaged translation both verified** as real English
+    (not mock identity output) for the same Urdu input, using the runtime
+    `~/.urdu-english-interpreter/.env` credentials; the packaged-only regression
+    class is confirmed fixed. No secrets printed or committed.
+  - Files: `package.json`, `README.md`, `docs/releases/v1.1.0.md` (new),
+    `docs/CHANGELOG.md`, `docs/CURRENT_STATE.md`, `docs/ARCHITECTURE.md`.
+
 ## 2026-09-23 — Packaged translation held Urdu under `[English]`: translation production default was mock
 
 - **Bug**: packaged builds (`npm run package` / `npm run package:dir`)

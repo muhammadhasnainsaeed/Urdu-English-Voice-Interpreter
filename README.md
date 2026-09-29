@@ -2,302 +2,346 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-Real-time Urdu-to-English voice interpretation for macOS meetings. Speak Urdu
-into your microphone, see the live transcript and English translation, and send
-the translated English voice to a selected output device such as BlackHole for
-use in Google Meet, Zoom, or Microsoft Teams.
+Real-time Urdu → English voice interpretation for macOS meetings. Speak Urdu into
+your microphone and the app shows the live Urdu transcript with its English
+translation, speaks the English translation aloud, and can route that English
+audio to a virtual microphone such as [BlackHole](https://existential.audio/blackhole/)
+so Google Meet, Zoom, or Microsoft Teams hears it as your microphone input.
 
-## Current release: v1.0.0
+Only audio captured from your selected local microphone is translated. **Audio
+from other meeting participants is never translated.**
 
-This is the first public open-source release of the project.
-
-- **What is included:** the complete M1–M10 Phase 2 pipeline — Urdu speech-to-text
-  (`ur-IN`), Urdu → English translation, live subtitles, English TTS, and audio
-  routing to a selectable output device (including BlackHole). Azure STT →
-  Azure Translator → Azure streaming TTS is the production path; deterministic
-  Mock and macOS `say` providers are preserved for local testing.
-- **Validation status:** build, type-check, and 98 automated tests pass. The
-  packaged `mac-arm64` app is verified (runtime config, STT provider init). The
-  M10 Phase 2 acoustic streaming benchmark is pending/manual and full real
-  Google Meet / Zoom / Teams validation is pending/manual.
-- **Demo:** [▶ Watch the 48-second demo](https://github.com/muhammadhasnainsaeed/Urdu-English-Voice-Interpreter/releases/tag/v1.0.0) — the MP4 is attached to the v1.0.0 release (see [below](#demo)).
-- **Release notes:** [`docs/releases/v1.0.0.md`](docs/releases/v1.0.0.md)
-
-## Demo
-
-A 48-second, silent, 1080p product walkthrough of the real app. It starts with
-the Home screen (Meeting Mode ready), then shows live Urdu → English translation
-in action (active meeting, mock provider, deterministic demo harness), the
-system architecture, how translated audio routes through BlackHole into a
-meeting app, what works today, and the v1.0.0 open-source details.
-
-- **Video:** [`docs/demo/demo-v1.0.0.mp4`](docs/demo/demo-v1.0.0.mp4) — 1920×1080, 30 fps (also attached to the v1.0.0 release assets)
-- **Poster:** [`docs/images/demo-poster.png`](docs/images/demo-poster.png)
-- **Screenshots:** [Home / Meeting Mode](docs/images/app-overview.png) · [live translation](docs/images/live-translation.png) · [settings performance telemetry](docs/images/telemetry.png)
-- **Architecture diagram:** [`docs/images/architecture.png`](docs/images/architecture.png)
-
-The demo screenshots are taken from the real built renderer, driven by the
-deterministic demo harness in [`demo/`](demo/README.md). The demo build runs the
-local mock provider (no cloud credentials), and production backends (Azure,
-whisper.cpp, macOS `say`) plug in behind the same provider interfaces.
-
-## Project status
-
-- The core M1–M10 Phase 2 implementation is complete and tested: microphone
-  capture, Urdu speech-to-text, Urdu → English translation, live subtitles,
-  English text-to-speech, and BlackHole audio-output routing.
-- M10 streaming TTS is implemented, including cancellation, interim/final
-  replacement, telemetry, and legacy-provider compatibility.
-- The M10 Phase 2 **acoustic streaming benchmark is still pending** (manual,
-  environment-dependent), so no end-to-end latency improvement is claimed yet.
-- **Full real Google Meet / Zoom / Microsoft Teams validation is still
-  pending** and is manual. No meeting-app API integration exists.
-- **Azure credentials are required** for the production cloud path (Speech,
-  Translator, and TTS keys). MyMemory is demo/fallback only. Deepgram, OpenAI,
-  and other providers are future/optional work, not current requirements.
-- BlackHole is required for virtual audio routing into a meeting app.
-- The app has **no authentication system**, no backend service, no database,
-  and no direct Google Meet/Zoom/Teams API integration.
-
-## Complete application flow
+## How it works
 
 ```text
-Mac microphone / BlackHole input
-              ↓
-Renderer microphone capture
-  (resample to 16 kHz mono Int16 PCM)
-              ↓ IPC
-Speech-to-text provider
-  Azure Speech (production) | Whisper (offline) | Mock (testing)
-              ↓ Urdu partials/finals
-Translation provider
-  Azure Translator (production) | MyMemory (demo) | Mock (testing)
-              ↓ English text
-TTS manager
-  deduplication → queue → preemption/cancellation
-              ↓
-TTS provider
-  Azure streaming PCM | macOS say | Mock
-              ↓ 24 kHz, 16-bit, mono PCM
-Audio output manager
-  device selection, BlackHole detection, routing
-              ↓ IPC
-Renderer WebAudio playback queue
-              ↓
-Selected output device
-  Mac speakers / headphones / BlackHole
-              ↓
-Meeting application microphone
-  Google Meet / Zoom / Microsoft Teams
+Microphone (your Urdu speech)
+        ↓
+Speech-to-text (Urdu partials + finals)
+        ↓
+Urdu → English translation
+        ↓
+Live subtitles (Urdu transcript + English translation)
+        ↓
+Text-to-speech (English audio)
+        ↓
+Selected audio output (speakers / headphones / BlackHole)
+        ↓
+Meeting app sees BlackHole as a microphone
 ```
-
-Client or incoming meeting audio is not translated. The app translates only
-audio captured from the selected local microphone.
 
 ## Features
 
-- Azure real-time Urdu speech recognition (`ur-IN`)
-- Offline Whisper STT and deterministic Mock STT alternatives
-- Azure Urdu → English translation with MyMemory and Mock alternatives
-- Azure streaming TTS with incremental PCM playback
-- macOS `say` and Mock TTS alternatives
-- Interim translation with authoritative final replacement
-- TTS deduplication, FIFO queueing, bounded backpressure, and preemption
-- Session-level Start/Stop orchestration with graceful cleanup
-- BlackHole detection and selectable audio output devices
-- Secure Electron preload bridge (`contextIsolation: true`, `nodeIntegration: false`)
-- Development-only pipeline latency telemetry and performance panel
-- TypeScript unit/regression test coverage for pipeline hardening
+- **Live Urdu speech-to-text** — Azure Speech (streaming, interim partials) in
+  production; offline [whisper.cpp](#local-whisper-stt-offline) and a
+  deterministic mock in development.
+- **Urdu → English translation** — Azure Translator in production; MyMemory
+  (free, no signup) as a fallback; mock for local testing.
+- **English text-to-speech** — Azure Neural TTS with streaming PCM and
+  preemption; macOS `say` offline; mock for automated tests.
+- **Live subtitles** — growing Urdu transcript plus the English translation.
+- **Incremental translation** — updates from stable partials, replaced by the
+  authoritative final translation.
+- **Playback control** — deduplication, FIFO queue, bounded backpressure, and
+  interruption of stale speech by newer speech.
+- **Selectable audio output** — route translated English to speakers, headphones,
+  or BlackHole; BlackHole is detected at runtime.
+- **First-run onboarding** — a one-time "Get Ready" checklist verifies
+  microphone permission, output device, and BlackHole (re-runnable from
+  Settings).
+- **Voice selection** — a searchable voice picker (Azure voices in production;
+  macOS `say` voices additionally in development), persisted across restarts.
+- **Focused UI** — a Home screen (Meeting Mode, Speech to Text, Translation) and
+  a sidebar Settings page (Audio, Voice, Appearance, Performance, Diagnostics,
+  Setup), light/dark/system themes, and centralized error toasts.
+- **Secure by default** — Electron `contextIsolation: true`,
+  `nodeIntegration: false`, typed `contextBridge` IPC; credentials never reach
+  the renderer.
+- **Development-only telemetry** — a Pipeline Performance panel and `[TELEMETRY]`
+  logs when `PIPELINE_DEBUG=1`.
+- **105 automated tests** covering the pipeline, providers, and UI state.
+
+## Screenshots and demo
+
+A 48-second silent walkthrough of the real app plus deterministic screenshots
+captured from the built renderer (mock provider, no cloud credentials):
+
+- **Video:** [`docs/demo/demo-v1.0.0.mp4`](docs/demo/demo-v1.0.0.mp4) (attached to the v1.0.0 release)
+- **Poster:** [`docs/images/demo-poster.png`](docs/images/demo-poster.png)
+- **Screenshots:** [Home / Meeting Mode](docs/images/app-overview.png) ·
+  [live translation](docs/images/live-translation.png) ·
+  [performance telemetry](docs/images/telemetry.png)
+- **Architecture diagram:** [`docs/images/architecture.png`](docs/images/architecture.png)
+
+The screenshots are generated by the deterministic demo harness in
+[`demo/`](demo/README.md); see that README for how they are produced.
 
 ## Requirements
 
-- macOS (Apple Silicon supported)
-- Node.js 18+ and npm
-- BlackHole 2ch for routing translated audio into a meeting app
-- Azure Speech and Translator credentials for the production cloud path
+| Requirement | Notes |
+| --- | --- |
+| **macOS (Apple Silicon / arm64)** | The packaged builds target macOS arm64. |
+| **Node.js 18+ and npm** | Development only. End users do not need Node. |
+| **Azure Speech credentials** | Production STT + TTS (`AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`). Optional if using Whisper / `say`. |
+| **Azure Translator credentials** | Production translation (`AZURE_TRANSLATOR_KEY`, `AZURE_TRANSLATOR_REGION`). Optional if using MyMemory. |
+| **BlackHole 2ch** | Optional. Needed only to route translated audio into a meeting app. |
 
-## Quick start
+The architecture is cross-platform-ready (provider abstractions, renderer-side
+WebAudio), but only macOS is implemented and packaged today.
 
-```bash
-npm install
-cp .env.example .env
-npm run type-check
-npm run lint         # ESLint
-npm run format:check # Prettier
-npm run build
-npm start
-```
-
-For development rebuilds:
-
-```bash
-npm run dev           # rebuilds on save + hot-reloads renderer, auto-restarts Electron (recommended)
-npm run watch         # rebuilds only; relaunch Electron yourself
-npm run lint          # lint (eslint .)
-npm run format        # auto-format with Prettier
-```
-
-## Install & first run (end users)
+## Installation (end users)
 
 Non-technical users do **not** need Node, npm, Terminal, or a `.env` file:
 
-1. Open `Urdu English Interpreter-1.0.0-arm64.dmg` and drag the app into
+1. Open `Urdu English Interpreter-<version>-arm64.dmg` and drag the app into
    **Applications**.
-2. Launch **Urdu English Interpreter** from Applications.
-3. The **Get set up** panel walks through three checks with plain-language
-   buttons:
-   - **Microphone** — click *Allow Microphone* when macOS asks; if it was
-     denied, click *Open System Settings* to re-enable it for the app.
-   - **Audio output** — pick the device English subtitles/audio should play on.
-   - **BlackHole (for meeting apps)** — if it isn't installed, click *Open
-     BlackHole download page* and install the free virtual microphone, then
-     restart the app. (Translation and English audio still work locally
-     without it.)
-4. When the panel says **Ready — press Start Meeting below.**, your setup is
-   complete.
+2. Launch **Urdu English Interpreter** from Applications. The build is
+   **unsigned**, so on first launch use right-click → **Open** (or System
+   Settings → Privacy & Security → **Open Anyway**).
+3. The **Get set up** panel walks through three checks:
+   - **Microphone** — click *Allow Microphone*; if denied, click *Open System
+     Settings* to re-enable it for the app.
+   - **Audio output** — choose where the English audio should play.
+   - **BlackHole** — install the free virtual microphone if you want to send the
+     English audio into a meeting app (translation works locally without it).
+4. When the panel says **Ready**, press **Start Meeting**.
 
-Cloud credentials for the translation services are read from
-`~/.urdu-english-interpreter/.env` if you received one, or from the system
-environment — you never create or edit this yourself.
+Cloud credentials for the production path are read from
+`~/.urdu-english-interpreter/.env` if provided, or from the process environment.
+End users typically never create this file.
 
-## Build & distribute (macOS)
-
-Build a production `.app` + DMG (Apple Silicon arm64) with electron-builder:
+## Development setup
 
 ```bash
-npm run package          # .app + DMG into dist_electron/
-npm run package:dir      # .app only (faster checks; GitHub release asset = `package`)
+npm install
+cp .env.example .env      # then fill in credentials (or use mock providers)
+npm run dev               # watch build + Electron with renderer hot reload
 ```
 
-The packaged app includes only `dist/`, `package.json`, and production
-dependencies — never `.env`, source, tests, or docs. Secrets stay in the main
-process; at runtime the packaged app reads a user-owned config file at
-`~/.urdu-english-interpreter/.env` (same variables as `.env.example`) or
-process environment variables. No keys are ever bundled.
+Other useful commands:
+
+```bash
+npm start                 # build + launch Electron
+npm run build             # esbuild bundle (main, preload, renderer) -> dist/
+npm run watch             # rebuild only (no relaunch)
+npm run type-check        # tsc --noEmit
+npm test                  # automated test suite (tsx --test)
+npm run lint              # ESLint (flat config)
+npm run format            # Prettier --write
+```
+
+## Configuration
+
+Configuration is read from the environment. In development, `dotenv` loads the
+repository `.env` (created from [`.env.example`](.env.example)); shell
+environment variables always take precedence and are never overwritten.
+
+### Development vs production defaults
+
+| Stage | STT | Translation | TTS |
+| --- | --- | --- | --- |
+| **Development** (`.env` absent) | `azure` | `mock` | `mock` |
+| **Packaged** (runtime `.env` absent) | `azure` | `azure` | `azure` |
+
+Development defaults to mock providers so a first run works without credentials.
+**Packaged builds default to the real Azure providers** so a base install never
+silently uses a mock; if credentials are missing, the app reports exactly what
+to add instead of failing silently.
+
+### Provider options
 
 ```dotenv
-# ~/.urdu-english-interpreter/.env  (packaged-app runtime config)
+# Speech-to-text:  azure (default) | whisper (offline) | mock
+STT_PROVIDER=azure
+# Translation:    azure (default) | mymemory | mock
+TRANSLATION_PROVIDER=azure
+# Text-to-speech: azure (default) | say (macOS offline) | mock
+TTS_PROVIDER=azure
+```
+
+- **Cloud (production):** `azure` for all three providers.
+- **Local / demo:** `whisper` (offline STT), `say` (offline TTS), `mymemory`
+  (free translation), or `mock` for any stage.
+
+### Azure configuration
+
+Production uses the Azure Speech service for **STT and TTS** (one key + region)
+and Azure Translator for **translation** (a separate key + region):
+
+```dotenv
+AZURE_SPEECH_KEY=...
+AZURE_SPEECH_REGION=eastus
+AZURE_TRANSLATOR_KEY=...
+AZURE_TRANSLATOR_REGION=eastus
+
+# Optional
+# AZURE_TTS_VOICE=en-US-JennyNeural
+# AZURE_STT_SEGMENTATION_SILENCE_MS=300
+```
+
+- **Speech** (STT + TTS): create a Speech resource in the Azure portal. The
+  free F0 tier includes 5 audio hours/month (STT) and 5M characters/month (TTS).
+  STT locale is `ur-IN`.
+- **Translator**: create a Translator resource (separate key/region). The free
+  F0 tier includes 2M characters/month.
+- MyMemory needs no key but is aggressively rate-limited — use it for
+  development/fallback only, not sustained meeting traffic.
+
+See [`.env.example`](.env.example) for every option (deduplication windows,
+partial-translation tuning, telemetry, packaging/signing). **Never commit real
+credentials.**
+
+### Local Whisper STT (offline)
+
+Fully offline Urdu STT with no API key or network, backed by whisper.cpp:
+
+```bash
+npm run setup:whisper     # builds whisper-cli and downloads the base model
+# then set STT_PROVIDER=whisper
+```
+
+Whisper is not truly streaming — it decodes ~2-second windows — so it is slower
+than Azure (first partial ~3.3–4.0 s with the base model) but needs no
+credentials. Model and engine live under `~/.cache/urdu-english-interpreter/`.
+
+### Both providers at once
+
+A common setup: `STT_PROVIDER=whisper` (offline transcription) +
+`TRANSLATION_PROVIDER=azure` (cloud translation) + `TTS_PROVIDER=azure`.
+
+## BlackHole and meeting setup
+
+1. Install **BlackHole 2ch**.
+2. Launch the app and complete the **Get set up** panel (it verifies the
+   microphone, output device, and BlackHole).
+3. In Settings → Audio, select **BlackHole 2ch** as the audio output.
+4. In Google Meet / Zoom / Teams, select **BlackHole 2ch** as the microphone.
+5. Press **Start Meeting** and speak Urdu.
+
+Translated English audio then reaches the meeting app through BlackHole. The
+app performs device-based routing only — there is no meeting-app API
+integration.
+
+## Running, testing, and packaging
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Watch build + Electron with renderer hot reload (recommended for development). |
+| `npm start` | Build once and launch Electron. |
+| `npm run type-check` | TypeScript type checking (`tsc --noEmit`). |
+| `npm test` | Automated tests (`tsx --test tests/*.test.ts`). |
+| `npm run lint` / `npm run format` | ESLint / Prettier. |
+| `npm run build` | Bundle main, preload, and renderer into `dist/`. |
+| `npm run package:dir` | Production `.app` only, into `dist_electron/`. |
+| `npm run package` | Production `.app` + DMG (arm64), into `dist_electron/`. |
+
+## Production / packaged behavior
+
+The packaged app bundles **only** `dist/`, `package.json`, and production
+dependencies — never `.env`, source, tests, or docs. At runtime it reads a
+user-owned config file at:
+
+```dotenv
+# ~/.urdu-english-interpreter/.env     (same variables as .env.example)
 AZURE_SPEECH_KEY=...
 AZURE_SPEECH_REGION=...
 AZURE_TRANSLATOR_KEY=...
 AZURE_TRANSLATOR_REGION=...
 ```
 
-The app declares the microphone usage description (`NSMicrophoneUsageDescription`)
-and hardened-runtime audio-input entitlement (`packaging/entitlements.mac.plist`).
-On first launch macOS will ask for microphone access once for the app.
+Process environment variables take precedence over this file. On launch the app
+logs `[CONFIG] runtime config: …` and the resolved provider for each stage.
 
-**Code signing / notarization** are configured but require Apple Developer
-credentials and are therefore skipped in this environment (builds are
-unsigned). To enable signing, remove `"identity": null` from the `build`
-section of `package.json`, set `CSC_LINK` / `CSC_KEY_PASSWORD`, and for
-notarization also set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and
-`APPLE_TEAM_ID`. See `.env.example` for the complete packaging notes.
+**Code signing / notarization** are configured but skipped in this environment
+(builds are unsigned and require right-click → Open on first launch). To enable
+signing, remove `"identity": null` from the `build` section of `package.json`,
+set `CSC_LINK` / `CSC_KEY_PASSWORD`, and for notarization also set `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`.
 
-## Configuration
+## Troubleshooting
 
-The recommended production configuration is:
-
-```dotenv
-STT_PROVIDER=azure
-TRANSLATION_PROVIDER=azure
-TTS_PROVIDER=azure
-
-AZURE_SPEECH_KEY=your_speech_key
-AZURE_SPEECH_REGION=your_speech_region
-AZURE_TRANSLATOR_KEY=your_translator_key
-AZURE_TRANSLATOR_REGION=your_translator_region
-AZURE_STT_SEGMENTATION_SILENCE_MS=300
-PARTIAL_TRANSLATION_ENABLED=true
-PARTIAL_TRANSLATION_STABLE_MS=200
-```
-
-Useful local/testing configurations:
-
-```dotenv
-# No cloud credentials; deterministic pipeline testing
-STT_PROVIDER=mock
-TRANSLATION_PROVIDER=mock
-TTS_PROVIDER=mock
-
-# Local macOS voice output
-TTS_PROVIDER=say
-```
-
-See [`.env.example`](.env.example) for all provider, deduplication,
-segmentation, and telemetry settings. Never commit real credentials.
-
-MyMemory is intended for development or fallback testing only. Its anonymous
-service is aggressively rate-limited; use Azure Translator or another
-production-grade provider for sustained meeting traffic.
-
-## BlackHole and meeting setup
-
-1. Install BlackHole 2ch on macOS.
-2. Launch the app and follow the **Get set up** panel until it says
-   **Ready — press Start Meeting below.** (it verifies microphone access,
-   the output device, and BlackHole).
-3. Select **BlackHole 2ch** as the microphone in Google Meet, Zoom, or Teams.
-4. Start the meeting pipeline in the app.
-5. Speak Urdu into the app's selected microphone.
-6. Verify the English TTS is audible to the meeting participant.
-
-For feedback isolation during acoustic testing, route app TTS to BlackHole and
-play the Urdu test audio through MacBook speakers into the MacBook microphone.
-
-## Validation
-
-```bash
-npm run type-check
-npm run lint
-npm run format:check
-npm run build
-npm test
-```
-
-The automated suite (60 tests) covers session lifecycle, provider resilience,
-duplicate suppression, telemetry, audio routing, streaming chunk ordering,
-preemption, session-stop cancellation, interim-to-final attribution, and the
-first-launch onboarding states (mic permission, output selection, BlackHole
-detection, open-external allow-list).
-
-Manual validation is still required for:
-
-- BlackHole → Google Meet/Zoom/Teams end-to-end audio
-- Azure credentials and real Urdu speech quality
-- Start → Stop → Start session cycles
-- Renderer playback on the selected physical output device
-- The M10 Phase 2 acoustic before/after benchmark
-
-## Repository layout
-
-```text
-src/main/       Electron main process and provider managers
-src/preload/    Secure contextBridge API
-src/renderer/   React UI, microphone capture, and WebAudio playback
-packages/shared Shared TypeScript contracts
-tests/          Deterministic unit and integration-style tests
-demo/           Demo-harness: screenshot, architecture, and video generation
-docs/           Architecture, current state, and changelog
-```
+- **"Speech-to-text is not configured" / translation not configured** — the app
+  names the exact file and variables to add. For a packaged build, add the Azure
+  keys to `~/.urdu-english-interpreter/.env` and restart.
+- **Translation shows the original Urdu text** — translation resolved to the
+  mock provider (only possible if `TRANSLATION_PROVIDER=mock`). Set
+  `TRANSLATION_PROVIDER=azure` (or `mymemory`) and provide credentials.
+- **No English audio** — check `TTS_PROVIDER` and the Azure Speech
+  credentials; a packaged build defaults to `azure` and reports missing keys.
+- **BlackHole not detected** — install BlackHole 2ch, then restart the app and
+  re-check Settings → Setup.
+- **No microphone input** — grant microphone permission in System Settings →
+  Privacy & Security → Microphone, then restart the app.
+- **macOS blocks the app** — the build is unsigned; right-click → Open, or allow
+  it in System Settings → Privacy & Security.
+- **MyMemory rate limits (HTTP 429)** — expected on the free tier; the provider
+  cools down and resumes. Use Azure Translator for sustained use.
+- **`ScriptProcessorNode` deprecation warning in the console** — expected; the
+  mic tap still works and is slated for an `AudioWorklet` migration.
 
 ## Architecture
 
 ![Interpreter architecture](docs/images/architecture.png)
 
-A sandboxed React renderer captures the microphone (16 kHz mono PCM) and plays
-translated audio back through WebAudio, talking to the main process only
-through the typed `contextBridge` bridge (`window.electron`). Speech
-recognition, translation, text-to-speech, and audio-output providers run in the
-Electron main process; a session manager orchestrates them behind a single
-Start/Stop contract. Translated audio is routed to the selected output device —
-typically BlackHole — which meeting apps see as a microphone. Client and
-incoming meeting audio is never translated.
+A sandboxed React renderer captures the microphone and plays translated audio
+back through WebAudio, communicating with the Electron main process only via the
+typed `contextBridge` API (`window.electron`). Speech recognition, translation,
+text-to-speech, and audio-output providers run in the main process; a session
+manager orchestrates them behind a single Start/Stop contract. Each stage is
+behind a provider interface (`SttProvider`, `TranslationProvider`, `TtsProvider`,
+`AudioOutputProvider`) so cloud, local, and mock implementations are
+interchangeable. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for details.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design.
+### Repository layout
+
+```text
+src/main/       Electron main process: window, runtime config, IPC, provider managers
+src/preload/    Secure contextBridge API (window.electron)
+src/renderer/   React UI, microphone capture, WebAudio playback, error handling
+packages/shared Shared TypeScript contracts
+tests/          Deterministic unit and integration-style tests
+demo/           Demo harness (screenshots, architecture, video)
+docs/           Architecture, current state, changelog, release notes
+```
+
+## Current limitations
+
+- No authentication, backend service, or database.
+- No direct Google Meet / Zoom / Teams API integration — audio routing is
+  device-based via BlackHole.
+- macOS-only implementation and packaging today.
+- MyMemory is rate-limited and intended for development/fallback only.
+- Local Whisper is windowed (not streaming) and slower than Azure.
+- Real Azure Urdu speech/translation/TTS quality requires valid credentials; the
+  full real Google Meet / Zoom / Teams round-trip is manual validation.
+- The packaged build is unsigned/not notarized in this repository environment.
+
+## Project status
+
+The full pipeline is implemented and tested: microphone capture, Urdu
+speech-to-text, Urdu → English translation, live subtitles, English
+text-to-speech, and audio-output routing (including BlackHole). The UI has been
+rebuilt (onboarding, Home + Settings, voice picker, themes, error toasts) and
+the production packaging path is hardened (runtime config, production provider
+defaults, startup diagnostics).
+
+- **v1.0.0** is the latest published release (MIT-licensed at the time).
+- The repository mainline is now **v1.1.0**, which migrates the license to
+  **GPL-3.0**, rebuilds the UI, and fixes packaged-only provider-default
+  regressions. It is release-candidate ready and verified locally; creating the
+  GitHub release is a separate maintainer step.
+- Full real meeting-app validation remains manual.
+
+## Roadmap
+
+- Real Google Meet / Zoom / Microsoft Teams end-to-end validation (manual).
+- Additional providers behind the existing interfaces (e.g., Deepgram, OpenAI).
+- A resident model server for the local Whisper path (`whisper-server`) to cut
+  per-window latency.
+- Reverse direction (English → Urdu) and additional language pairs.
 
 ## Documentation
 
+- [`docs/releases/v1.1.0.md`](docs/releases/v1.1.0.md) — v1.1.0 release notes
 - [`docs/releases/v1.0.0.md`](docs/releases/v1.0.0.md) — v1.0.0 release notes
 - [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) — milestone status and remaining work
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — dated implementation history
@@ -307,33 +351,23 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design.
 - [`SECURITY.md`](SECURITY.md) — vulnerability reporting and secret handling
 - [`LICENSE`](LICENSE) — GNU General Public License v3.0
 
-## Roadmap
+## Contributing
 
-- **M10 Phase 3 (planned):** production meeting-pipeline hardening and
-  end-to-end validation of the streaming path.
-- Full real meeting-app validation in Google Meet, Zoom, and Microsoft Teams.
-- M10 Phase 2 acoustic streaming benchmark (manual, pending).
-- Future/optional provider integrations (e.g., Deepgram, OpenAI) behind the
-  existing provider abstractions.
-- Reverse-direction (English → Urdu) and additional language pairs are
-  possible future extensions.
-
-## Scope boundaries
-
-The MVP does not include authentication, a backend, a database, or native
-meeting-app integrations. Python is not part of the target architecture.
+Contributions are welcome under the terms of [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Read [`AGENTS.md`](AGENTS.md) for the repository workflow and validation
+checklist. Keep the existing architecture (Tailwind v3 + shadcn/ui, secure
+Electron IPC, provider abstractions); Python is not part of the architecture.
 
 ## License and commercial use
 
 Licensed under the [GNU General Public License v3.0](LICENSE).
 
-- **Use it commercially:** yes. You may use this software in a business, run
-  it, charge for it, and redistribute it — as long as you comply with the
-  GPL-3.0 terms below.
-- **Modify and redistribute:** if you distribute a modified/copied version to
-  others (including as part of a product), you must make the source code
-  available under GPL-3.0 and keep the license and copyright notices intact.
-- **Do not:** close it up, rebrand it, or ship a proprietary derivative without
-  releasing the source under GPL-3.0.
-- The original copyright is owned by Muhammad Hasnain Saeed. Contributors grant
-  their contributions under the same GPL-3.0 terms.
+- **Use it commercially:** yes — you may use, run, and charge for this software,
+  provided you comply with GPL-3.0.
+- **Modify and redistribute:** if you distribute a modified/copied version, you
+  must make the source available under GPL-3.0 and keep the license and
+  copyright notices intact.
+- **Do not:** ship a proprietary/closed derivative; release the source under
+  GPL-3.0 instead.
+- Original copyright: Muhammad Hasnain Saeed. Contributors license their
+  contributions under the same GPL-3.0 terms.

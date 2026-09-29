@@ -96,6 +96,26 @@ Complete. See `docs/CURRENT_STATE.md`.
 
 Complete. See `docs/CURRENT_STATE.md`.
 
+### Milestone 8–9 — Low-Latency & Streaming Pipeline
+
+Complete. See `docs/CURRENT_STATE.md`.
+
+### Milestone 10 — Latency Benchmark, Streaming TTS, Production Packaging
+
+Complete. See `docs/CURRENT_STATE.md`.
+
+### Milestone 11 — UI/UX Overhaul (shadcn/ui + Tailwind, Onboarding, Settings)
+
+Complete. See `docs/CURRENT_STATE.md` and `docs/ARCHITECTURE.md`.
+
+## Current release status
+
+- Latest published release: **v1.0.0** (tag `v1.0.0`).
+- Mainline is at **v1.1.0** (release-candidate ready: version bumped, README and
+  architecture docs refreshed, dev + packaged translation verified). Release
+  notes: `docs/releases/v1.1.0.md`. Tagging and GitHub release creation are
+  manual maintainer steps.
+
 ## Do NOT implement yet
 
 - Virtual microphone routing (actual meeting-app integration beyond device targeting)
@@ -104,6 +124,7 @@ Complete. See `docs/CURRENT_STATE.md`.
 - Database
 - Backend server
 - Python
+- Any additional UI component library (Tailwind v3 + shadcn/ui are the stack)
 
 ## Development Rules
 

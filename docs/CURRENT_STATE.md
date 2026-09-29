@@ -1,6 +1,60 @@
 # Current State
 
-_Last updated: 2026-09-23_
+_Last updated: 2026-09-30_
+
+## v1.1.0 release prep: version bump, README rewrite, architecture refresh (2026-09-30)
+
+Release-preparation pass on top of the 2026-09-23 packaged-translation fix. `main`
+is 36 commits ahead of the v1.0.0 tag (`39c0b61`). Nothing was committed, tagged,
+or pushed in this pass, and v1.0.0 was not modified.
+
+### Version decision
+
+`1.0.0` → **`1.1.0`** (minor). Rationale: the range adds substantial new
+user-facing functionality (onboarding gateway, focused Home + dedicated
+Settings, TTS voice selection, shadcn/ui + Tailwind rebuild, light/dark/system
+themes, centralized error handling, ESLint 9 + Prettier, dev hot reload) plus
+packaging hardening and bug fixes, while remaining backwards compatible — the
+provider interfaces, IPC contract shape, and environment variables are unchanged.
+The MIT → **GPL-3.0** license migration is a legal change, not a semver API
+break, so it is documented prominently instead of forcing a major bump.
+
+### What changed in this pass
+
+- `package.json`: version `1.1.0`.
+- `README.md`: rewritten as a self-contained project README (overview and
+  pipeline, features, screenshots/demo, requirements, end-user and developer
+  setup, environment config with a dev-vs-production provider-default table,
+  cloud vs local vs mock provider matrix, Azure/Whisper/BlackHole setup,
+  run/test/package commands, packaged runtime config and signing notes,
+  troubleshooting, architecture and repo layout, limitations, status, roadmap,
+  docs index, contributing, GPL-3.0 commercial-use terms).
+- `docs/releases/v1.1.0.md` (new): Added/Changed/Fixed/Documentation/Validation
+  release notes.
+- `docs/ARCHITECTURE.md`: refreshed — current renderer tree (onboarding, Home,
+  Settings, shadcn/ui, error handling), `src/main/config.ts` runtime config, the
+  added IPC surface (session start/stop/events, preferences, system, TTS voice
+  listing, BlackHole detection), production provider defaults, and the M11 UX
+  decisions. Removed references to files deleted during the M11 migration
+  (`LiveTranslationScreen.tsx`, `AudioLevelMeter`, `SttPanel`, `SubtitleDisplay`,
+  `renderer/services/audio.ts`).
+- `docs/CHANGELOG.md`: dated 2026-09-30 release-prep entry.
+- Stale README facts corrected along the way: test count (was "98"/"60", now
+  105), M11 status, M10 Phase 2 acoustic benchmark (now complete), and the
+  Settings section list.
+
+### Validation
+
+- `npm run type-check` clean; `npm test` 105 pass / 0 fail; `npm run build`
+  succeeds; `npm run format:check` clean; `npm run lint` 0 errors (13
+  pre-existing warnings); `npm run package:dir` produces a working `.app`.
+- **Development and packaged translation both re-verified** as real English for
+  the same Urdu input, using the runtime `~/.urdu-english-interpreter/.env`
+  credentials (values never printed or committed). The packaged-only
+  provider-default regression class is confirmed fixed.
+- Remaining pending items are unchanged: real Google Meet / Zoom / Teams
+  validation (manual) and code signing / notarization (needs Apple Developer
+  credentials).
 
 ## Packaged translation showed Urdu under `[English]` label: translation defaulted to mock in production (2026-09-23)
 
@@ -229,12 +283,19 @@ home path, so a release build could never pick up `~/.urdu-english-interpreter/.
 
 ## Next task
 
-Nothing planned beyond the v1.0.0 release sweep. Remaining manual/pending items
-documented in the release notes: M10 Phase 2 acoustic streaming benchmark and
-real Google Meet / Zoom / Teams validation (user-side). The DMG is rebuilt and
-re-verified on 2026-09-18 (see above); final step is creating the GitHub
-Release, attaching the DMG + `docs/demo/demo-v1.0.0.mp4` (manual, no
-commit/push by agents without explicit request).
+1. **Release step (manual, requires explicit request):** tag `v1.1.0` and create
+   the GitHub Release with the `dist_electron/Urdu English Interpreter-1.1.0-arm64.dmg`
+   asset. Agents do not commit/tag/push without explicit instruction.
+2. **Real meeting validation (user-side):** live Google Meet / Zoom / Microsoft
+   Teams round-trip with BlackHole routing. Still unverified — everything above
+   is verified with mock STT plus the real Azure translation/TTS path.
+3. **Signing / notarization:** enable `"identity"` in the `build` section and set
+   `CSC_LINK` / `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID` with
+   Apple Developer credentials. Builds are currently unsigned and require
+   right-click → Open on first launch.
+
+The M10 Phase 2 acoustic streaming benchmark referenced below is now **complete**
+(2026-09-24, see `docs/CHANGELOG.md`).
 
 ## Pipeline Performance telemetry fix
 

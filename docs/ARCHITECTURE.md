@@ -3,7 +3,7 @@
 Current and planned architecture for the Real-Time Urdu → English Voice
 Interpreter (macOS).
 
-## Current architecture (Milestones 1–7 complete)
+## Current architecture (Milestones 1–7, M10 Phase 2/3, M11 complete)
 
 Node.js-only MVP. Electron + React + TypeScript. **Python is not part of the
 MVP.**
@@ -12,42 +12,46 @@ MVP.**
 Electron
    ├── Main Process        src/main/index.ts
    │     ├── BrowserWindow (secure webPreferences)
-   │     ├── services/audio.ts     (macOS mic permission via systemPreferences)
-   │     ├── services/stt/         (speech-to-text provider abstraction)
+   │     ├── config.ts               (runtime config + provider diagnostics)
+   │     ├── services/session.ts     (SessionManager: one Start/Stop contract)
+   │     ├── services/audio.ts       (macOS mic permission via systemPreferences)
+   │     ├── services/stt/           (speech-to-text provider abstraction)
    │     │     ├── provider.ts          (SttProvider interface)
    │     │     ├── manager.ts           (session lifecycle + provider selection)
    │     │     └── providers/{azure,mock,whisper}.ts
    │     ├── services/translation/  (urdu→english translation abstraction)
    │     │     ├── provider.ts          (TranslationProvider interface)
+   │     │     ├── config.ts            (translation tuning constants)
    │     │     ├── manager.ts           (session lifecycle + provider selection)
    │     │     └── providers/{azure,mock,mymemory}.ts
    │     ├── services/tts/           (text-to-speech provider abstraction)
    │     │     ├── provider.ts          (TtsProvider interface — synthesize())
    │     │     ├── manager.ts           (session lifecycle, dedup, queue)
+   │     │     ├── voices.ts            (voice listing per provider)
    │     │     └── providers/{azure,mock,say}.ts
    │     ├── services/audio-output/   (audio output routing abstraction)
    │     │     ├── provider.ts          (AudioOutputProvider interface)
    │     │     ├── manager.ts           (device detection, BlackHole)
    │     │     └── providers/speaker.ts (IPC → renderer WebAudio playback)
-   │     ├── ipc/audio.ts          (mic:get-permission, mic:request-permission)
-   │     ├── ipc/stt.ts            (stt:start, stt:audio-data, stt:stop, stt:event)
-   │     ├── ipc/translation.ts    (translation:start, translation:stop, translation:event)
-   │     ├── ipc/tts.ts            (tts:start, tts:stop, tts:event)
-   │     └── ipc/audio-output.ts   (audio-output:start, :stop, :select, :list-devices)
+   │     ├── services/telemetry/      (pipeline-telemetry.ts, dev-only)
+   │     └── ipc/ (audio, stt, translation, tts, audio-output,
+   │                session, preferences, system)
    │
    ├── Preload             src/preload/index.ts
    │     └── contextBridge.exposeInMainWorld('electron', ...)
    │
    └── React Renderer      src/renderer/
-          ├── App.tsx (owns useMicrophone + useStt + useTranslation + useTts + useAudioOutput hooks)
-          ├── services/useMicrophone.ts (devices, capture, level)
-          ├── services/useStt.ts (resample 48k→16k, Int16 PCM → IPC, events)
-          ├── services/useTranslation.ts (translation events → english text)
-          ├── services/useTts.ts (TTS state)
-          ├── services/useAudioOutput.ts (WebAudio playback, device selection)
-          ├── components/ (MicSelector, AudioOutputPanel, VoicePicker, TtsPanel, PipelinePanel, SetupPanel, AudioLevelMeter)
-          ├── pages/ (HomeScreen; LiveTranslationScreen = subtitle stub)
-          └── styles/ (App.css)
+         ├── App.tsx (view routing: onboarding | home | settings)
+         ├── errors/ (ErrorProvider, errorModel, toast, useReportedErrors)
+         ├── setup/ (useSetup, setupState — mic/output/BlackHole checklist)
+         ├── services/ (useMicrophone, useSession, useStt, useTranslation,
+         │              useTts, useTtsVoices, useAudioOutput,
+         │              usePreferences, usePipelineStats)
+         ├── components/ (MicSelector, AudioOutputPanel, VoicePicker,
+         │                 TtsPanel, PipelinePanel, SetupPanel,
+         │                 theme-provider, theme-selector, ui/*)
+         ├── pages/ (OnboardingScreen, HomeScreen, SettingsScreen)
+         └── styles/ (globals.css, Tailwind + shadcn/ui tokens)
 
 Shared types: packages/shared/index.ts
 Build: esbuild -> dist/  (main, preload, renderer bundle + index.html)
@@ -57,7 +61,7 @@ Build: esbuild -> dist/  (main, preload, renderer bundle + index.html)
 
 | Process | Responsibility |
 | --- | --- |
-| Main | Window lifecycle, secure config, IPC handlers, macOS microphone permission (via `systemPreferences`), speech-to-text session (Azure Speech SDK), text-to-speech session (Azure TTS SDK or macOS `say`) |
+| Main | Window lifecycle, secure runtime config, IPC handlers, macOS microphone permission (via `systemPreferences`), session orchestration (Start/Stop across STT + translation + TTS + audio output), speech-to-text session (Azure Speech SDK), text-to-speech session (Azure TTS SDK or macOS `say`) |
 | Preload | Only safe bridge between renderer and main; exposes `window.electron` |
 | Renderer | React UI + local microphone capture (Chromium WebRTC) + PCM resampling/encoding. Has no direct Node.js / fs / process access |
 
@@ -92,6 +96,19 @@ interface ElectronAPI {
   stopAudioOutput: () => Promise<void>;
   onAudioOutputEvent: (handler: (event: AudioOutputEvent) => void) => () => void;
   onAudioData: (handler: (chunk: { data: ArrayBuffer; format: AudioFormat }) => void) => () => void;
+  onAudioCancel: (handler: () => void) => () => void;
+  getTtsVoices: () => Promise<ListVoicesResult>;
+  testTtsVoice: () => Promise<TtsStartResult>;
+  detectBlackHole: () => Promise<boolean>;
+  startSession: () => Promise<SessionStartResult>;
+  stopSession: () => Promise<void>;
+  onSessionEvent: (handler: (event: SessionEvent) => void) => () => void;
+  getPreferences: () => Promise<GetPreferencesResult>;
+  setPreferences: (preferences: Partial<AppPreferences>) => Promise<void>;
+  openExternal: (url: string) => Promise<void>;
+  pipelineDebugEnabled: boolean;
+  onPipelineEvent: (handler: (event: PipelineEvent) => void) => () => void;
+  reportPlaybackEvent: (event: PlaybackTelemetryEvent) => void;
 }
 ```
 
@@ -118,6 +135,16 @@ Channels:
 | `audio-output:list-devices` | renderer → main (invoke) | returns `AudioOutputDevice[]` |
 | `audio-output:event` | main → renderer | `audio-output:started` / `audio-output:devices` / `audio-output:error` / `audio-output:stopped` |
 | `audio-output:audio` | main → renderer (send) | raw PCM audio chunks `{data, format}` for playback |
+| `audio-output:cancel` | main → renderer | playback preemption — renderer drops the current utterance |
+| `audio-output:detect-blackhole` | renderer → main (invoke) | returns `true` when a BlackHole device is present |
+| `tts:list-voices` | renderer → main (invoke) | returns the voices available for the active TTS provider |
+| `tts:test` | renderer → main (invoke) | synthesizes the selected voice as a one-off test |
+| `session:start` / `session:stop` | renderer → main (invoke) | one Start/Stop contract orchestrating STT + translation + TTS + audio output |
+| `session:event` | main → renderer | session lifecycle/state notifications |
+| `preferences:get` / `preferences:set` | renderer ↔ main (invoke) | persisted `AppPreferences` (theme, TTS voice, onboarding state) |
+| `system:open-external` | renderer → main (invoke) | opens an external URL in the default browser (e.g. BlackHole download) |
+| `telemetry:playback` | renderer → main (send) | dev-only renderer playback metrics |
+| `pipeline:event` | main → renderer | dev-only pipeline metrics (`PIPELINE_DEBUG=1` only) |
 
 ### Application state
 
@@ -462,8 +489,9 @@ changing the TTS pipeline. The renderer-side `setSinkId` approach is
 cross-platform by design.
 
 **Security model (TTS)** — same as STT/Translation: Azure keys stay in the
-main process, loaded by `dotenv` from `.env`, consumed inside the Azure provider.
-The renderer never receives keys.
+main process, loaded by `src/main/config.ts` (packaged: `~/.urdu-english-interpreter/.env`;
+development: repo `.env`), consumed inside the Azure provider. The renderer
+never receives keys.
 
 **Cost / free tier** — Azure Speech TTS F0: 5M characters/month free
 (neural voices), then ~$16/1M characters. A 1-hour meeting at ~150 WPM
@@ -472,6 +500,65 @@ generates ~9,000 characters — well within the free tier.
 **Platform strategy** — the `say` provider is isolated behind `TtsProvider` so
 Windows (`PowerShell` `System.Speech.Synthesis`) and Linux (`espeak`/`piper`)
 equivalents can be added later without touching business logic.
+
+### Runtime configuration & production provider defaults
+
+`src/main/config.ts` is the single place that resolves configuration and is
+loaded **before** any provider is constructed.
+
+- **Packaged builds** read the user-owned `~/.urdu-english-interpreter/.env`
+  via `loadRuntimeConfig()`. The file is never bundled into the app (see
+  `build.files` in `package.json`), and the process environment always wins —
+  the loader never overwrites an already-set variable.
+- **Development** additionally loads the repository `.env`
+  (`app.getAppPath()/.env`) so contributors keep a single local file.
+- **Diagnostics**: `describeSttConfig()` / `describeTranslationConfig()` return
+  the resolved provider plus an actionable "not ready" message naming the exact
+  file and variables; `sttProviderName()` / `translationProviderName()` report
+  the resolved provider name. `src/main/index.ts` logs `[CONFIG] …` lines at
+  startup so a packaged-only misconfiguration is diagnosable from the log alone.
+
+**Provider defaults differ by environment on purpose:**
+
+| Stage | STT | Translation | TTS |
+| --- | --- | --- | --- |
+| Development (no `.env`) | `azure` | `mock` | `mock` |
+| Packaged (no runtime `.env`) | `azure` | `azure` | `azure` |
+
+Development defaults to the credential-free `mock` providers so a first run
+works offline. Packaged builds default to the real Azure providers, set
+explicitly in `src/main/index.ts`, so a shipped app never silently degrades to
+mock output (the historical failure modes: a `[English] <urdu>` identity
+translation and a silent "Test Voice"). When a provider is unconfigured the app
+reports exactly what to add instead of failing silently or hiding the error.
+
+## M11 — UI architecture (complete)
+
+- **First-run onboarding as a gateway.** `App.tsx` routes to
+  `OnboardingScreen` until `preferences.onboardingCompleted` is set.
+  `setup/useSetup.ts` + `setup/setupState.ts` model a three-step checklist
+  (microphone permission, audio output device, BlackHole detection) that is also
+  reused in Settings → Setup, so setup logic exists in exactly one place.
+- **Focused Home + dedicated Settings.** `HomeScreen` holds the live pipeline
+  (Meeting Mode, Speech to Text, Translation). Configuration moved to
+  `SettingsScreen` with sidebar sections Audio, Voice, Appearance, Performance,
+  Diagnostics, and Setup. Home is no longer a settings surface.
+- **Session orchestration in main.** `services/session.ts` (`SessionManager`)
+  owns Start/Stop across STT + translation + TTS + audio output, so the renderer's
+  single button maps to one main-process contract instead of four independent
+  lifecycles.
+- **shadcn/ui + Tailwind CSS v3** replace the custom design system. Primitives
+  live in `components/ui/`; `components.json` is the shadcn CLI config; Tailwind
+  is compiled by the esbuild renderer build (`watch=always` during dev). The
+  vendored component set is kept small on purpose — no second UI library.
+- **Centralized error handling.** `errors/errorModel.ts` normalizes raw provider
+  and IPC failures into a classified, user-safe shape; `ErrorProvider` +
+  `toast.tsx` surface them once. No raw provider error text reaches the UI.
+- **Voice selection is provider-aware.** `services/tts/voices.ts` lists only
+  voices valid for the active provider, and the renderer's `VoicePicker` filters
+  and persists the selection; macOS `say` voices are never sent to the Azure SDK.
+- **Dev-only telemetry.** `pipelineDebugEnabled` is exposed by the preload and
+  gates the Pipeline Performance panel, so the panel is absent in production.
 
 ### Build & tooling
 
@@ -485,7 +572,7 @@ equivalents can be added later without touching business logic.
 - Module alias `@shared/*` → `packages/shared/*` (tsconfig `paths`, honored by
   esbuild).
 
-## Pipeline (Milestones 1–6 complete)
+## Pipeline (complete)
 
 ```text
 Microphone
@@ -508,7 +595,8 @@ Zoom / Google Meet / Microsoft Teams
 - Client/incoming audio (from other meeting participants) must NOT be
   translated.
 - Main-process services live under `src/main/services/` and IPC handlers under
-  `src/main/ipc/` (`audio.ts`, `audio-output.ts`, `stt.ts`, `translation.ts`, `tts.ts`).
+  `src/main/ipc/` (`audio.ts`, `audio-output.ts`, `stt.ts`, `translation.ts`,
+  `tts.ts`, `session.ts`, `preferences.ts`, `system.ts`).
 - Future packages: `packages/audio/`, `packages/ai/` for provider-specific
   logic (not created yet; avoid premature abstraction).
 
@@ -523,6 +611,13 @@ Zoom / Google Meet / Microsoft Teams
 | 5 | Text-to-speech | Complete |
 | 6 | Audio output routing / virtual microphone | Complete |
 | 7 | Production meeting pipeline & end-to-end hardening | Complete |
+| 8–9 | Low-latency + streaming pipeline | Complete |
+| 10 | Latency benchmark (Phase 2), streaming TTS, production packaging (Phase 3) | Complete |
+| 11 | UI/UX overhaul (shadcn/ui + Tailwind, onboarding, Settings, error handling) | Complete |
+
+Not started / intentionally excluded: authentication, backend server, database,
+meeting-app API integration, and any Python component. Real Google Meet / Zoom /
+Teams validation and signed + notarized distribution remain manual steps.
 
 ## Architectural decisions
 

@@ -110,11 +110,12 @@ Complete. See `docs/CURRENT_STATE.md` and `docs/ARCHITECTURE.md`.
 
 ## Current release status
 
-- Latest published release: **v1.0.0** (tag `v1.0.0`).
-- Mainline is at **v1.1.0** (release-candidate ready: version bumped, README and
-  architecture docs refreshed, dev + packaged translation verified). Release
-  notes: `docs/releases/v1.1.0.md`. Tagging and GitHub release creation are
-  manual maintainer steps.
+- Latest published release: **v1.1.0** (tag `v1.1.0`, tagged and pushed); its
+  GitHub Release is published with the arm64 DMG attached. Release notes:
+  `docs/releases/v1.1.0.md`.
+- Previous release: **v1.0.0** (tag `v1.0.0`), which shipped under MIT.
+- Tagging and GitHub release creation are manual maintainer steps; never
+  performed without explicit instruction.
 
 ## Do NOT implement yet
 

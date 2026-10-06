@@ -1,6 +1,96 @@
 # Current State
 
-_Last updated: 2026-09-30_
+_Last updated: 2026-10-05_
+
+## Improvement pass: overlay window, transcript export, device persistence, AudioWorklet, validation prep (2026-10-05)
+
+Five approved items implemented in one pass (execution order 3 → 2 → 4 → 1 →
+5). No new npm dependencies; all gates green. Nothing was committed, tagged, or
+pushed.
+
+### 1. Floating captions overlay
+
+- New `src/main/windows.ts`: main/overlay window registry +
+  **channel-aware routing** — `stt:event` / `translation:event` /
+  `session:event` broadcast to every live window; TTS/audio/telemetry/overlay
+  control go to the main window only. `ipc/stt.ts`, `ipc/translation.ts`,
+  `ipc/session.ts`, and `services/session.ts` (new `setSender()`) all send
+  through it, so a new window can never double-play speech.
+- New `src/main/ipc/overlay.ts` (`overlay:status`/`overlay:toggle`/
+  `overlay:close` → `{open}`) + `overlay:event` state broadcast; shared
+  `OverlayStatus`/`OverlayStateEvent` types and four preload bridge methods.
+- Overlay window: frameless, transparent, fixed size centered above the Dock
+  (`overlayGeometry()` pure + tested), `alwaysOnTop('screen-saver')`,
+  `visibleOnAllWorkspaces`, **`focusable: false`** (never steals focus from
+  the meeting), loads `index.html` with hash `overlay`.
+- Renderer: `index.tsx` branches on `#overlay` → renders `OverlayScreen`
+  (**never `App`** — `useStt` unmount cleanup calls `stopStt()` and would
+  fight the main window for the mic) with `body.overlay-mode` making the page
+  background transparent. Overlay shows last paired Urdu/English entries +
+  live partial (auto-scroll), listening dot, drag header, ✕ close.
+- Home header gains a `Captions` toggle (`aria-pressed`), state mirrored from
+  `getOverlayStatus()` + `onOverlayEvent` in `App.tsx`.
+- `app.on('activate')` now reopens the main window whenever it is missing
+  (not only when zero windows exist) so a lingering overlay can't strand the
+  user.
+
+### 2. Transcript history + TXT/JSON export
+
+- Pure `src/renderer/transcript/transcriptModel.ts` (pairing rules,
+  `appendSttFinal`/`applyTranslation`, `toTxt`, `toJsonDocument`,
+  `suggestedTranscriptFileName`) + `useTranscript()` hook.
+- Home header: Export dropdown (`.txt`/`.json`, disabled when empty) and
+  Clear (clears transcript + `stt` + `translation` history) with success/
+  failure toasts in `App.tsx`.
+- Main: `src/main/transcript/saveRequest.ts` (pure validation — format, UTF-8
+  ≤ 5 MB, control-char/leading-dot filename sanitization) +
+  `src/main/ipc/transcript.ts` (`transcript:save` → native save dialog →
+  write). The renderer never chooses filesystem paths.
+
+### 3. Mic/output device persistence
+
+- `AppPreferences` += `micDeviceId` / `outputDeviceId`; new pure
+  `src/main/preferences/model.ts` (defaults, `parseStoredPreferences`,
+  `mergePreferences`, Array guard) behind the existing preferences IPC.
+- `App.tsx`: restores each selection **once** after the first preferences
+  read (`devicesRestoredRef`); persists **only on explicit user selection**
+  (`handleSelectMicrophone`/`handleSelectOutputDevice`) — automatic
+  devicechange fallbacks never write back. Wired to Onboarding + Settings.
+
+### 4. AudioWorklet capture (ScriptProcessorNode retired)
+
+- New `src/renderer/audio/pcm-processor.js` worklet (128-frame transferable
+  blocks; `esbuild.config.js` `copyAudioWorklet()` →
+  `dist/renderer/pcm-processor.js`) and `src/renderer/audio/pcmTap.ts`
+  (`createPcmTap` = AudioWorklet with **ScriptProcessorNode fallback** on
+  `addModule` failure, e.g. CSP; `FrameBatcher` regroups 128-frame blocks to
+  the original 4096-frame cadence; `createResampler`, `toInt16Pcm`).
+- `useStt` and `MicSelector`'s sound-check both use `createPcmTap`; capture
+  lifecycle behavior unchanged.
+
+### 5. Meeting round-trip validation preparation
+
+- New `docs/meeting-validation.md`: environment matrix (dev / packaged /
+  mock-STT), 4-phase protocol (setup → round trip → overlay & transcript →
+  regression probes), pass criteria per stage, latency table, failure-triage
+  table, evidence list, and frequency.
+- New `npm run preflight` (`scripts/preflight.ts`): pure
+  `evaluatePreflight()` over injected inputs checks the five build artifacts
+  (incl. the worklet), macOS host, `describeSttConfig()` /
+  `describeTranslationConfig()`, TTS provider (mock → warn), and BlackHole
+  (missing → warn); runner loads the same runtime config as the app and
+  exits non-zero on any failure.
+
+### Validation
+
+- `npm run type-check` clean; `npm test` **166 pass / 0 fail** (was 160);
+  `npm run lint` 0 errors (14 pre-existing warnings);
+  `npm run build` OK (`dist/renderer/pcm-processor.js` present);
+  `npm run format:check` clean; `npm run preflight` all PASS / exit 0.
+- New tests: `preferences` (15), `transcript` (22), `pcm-tap` (13),
+  `overlay-window` (5), `preflight` (6).
+- Demo harness: `demo/preload/demo-preload.js` gained `saveTranscript` +
+  overlay API stubs so the harness keeps its exact-surface guarantee.
 
 ## v1.1.0 release prep: version bump, README rewrite, architecture refresh (2026-09-30)
 
@@ -287,7 +377,9 @@ home path, so a release build could never pick up `~/.urdu-english-interpreter/.
    the GitHub Release with the `dist_electron/Urdu English Interpreter-1.1.0-arm64.dmg`
    asset. Agents do not commit/tag/push without explicit instruction.
 2. **Real meeting validation (user-side):** live Google Meet / Zoom / Microsoft
-   Teams round-trip with BlackHole routing. Still unverified — everything above
+   Teams round-trip with BlackHole routing — now fully specified in
+   `docs/meeting-validation.md` (run `npm run preflight` first; it must end
+   with "Ready for the round-trip protocol"). Still unverified — everything above
    is verified with mock STT plus the real Azure translation/TTS path.
 3. **Signing / notarization:** enable `"identity"` in the `build` section and set
    `CSC_LINK` / `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID` with

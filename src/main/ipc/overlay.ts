@@ -17,25 +17,16 @@
  */
 
 import { ipcMain } from 'electron';
-import { TranslationManager } from '../services/translation/manager';
-import { sendToRenderer } from '../windows';
+import type { OverlayStatus } from '@shared/index';
+import { closeOverlay, isOverlayOpen, toggleOverlay } from '../windows';
 
-export const translationManager = new TranslationManager();
+export function registerOverlayIpc(): void {
+  ipcMain.handle('overlay:status', (): OverlayStatus => ({ open: isOverlayOpen() }));
 
-export function registerTranslationIpc(
-  onTranslationText?: (english: string, interim: boolean) => void,
-): void {
-  ipcMain.handle('translation:start', () => {
-    const emit = (event: import('@shared/index').TranslationEvent) => {
-      sendToRenderer('translation:event', event);
-      if (onTranslationText && event.type === 'translation:text') {
-        onTranslationText(event.english, event.interim === true);
-      }
-    };
-    return translationManager.start(emit);
-  });
+  ipcMain.handle('overlay:toggle', (): OverlayStatus => ({ open: toggleOverlay() }));
 
-  ipcMain.handle('translation:stop', () => {
-    translationManager.stop();
+  ipcMain.handle('overlay:close', (): OverlayStatus => {
+    closeOverlay();
+    return { open: false };
   });
 }

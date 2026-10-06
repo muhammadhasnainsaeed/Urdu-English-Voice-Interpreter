@@ -78,6 +78,13 @@
   font-size: 1.0625rem;
 }
 
+/* Floating overlay mode (#overlay window): the BrowserWindow itself is
+   transparent, so the page must not paint an opaque background. */
+body.overlay-mode,
+body.overlay-mode #root {
+  background: transparent;
+}
+
 /* Thin scrollbars for transcript/pipeline regions. */
 .textbox::-webkit-scrollbar,
 .home-screen::-webkit-scrollbar {

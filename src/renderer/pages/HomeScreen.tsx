@@ -17,11 +17,17 @@
  */
 
 import React from 'react';
-import { Settings } from 'lucide-react';
-import type { SessionStatus, SttStatus, TranslationStatus } from '@shared/index';
+import { Captions, Download, Settings, Trash2 } from 'lucide-react';
+import type { SessionStatus, SttStatus, TranscriptFormat, TranslationStatus } from '@shared/index';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu';
 import { LiveWaveform } from '../components/ui/live-waveform';
 import { ThemeSelector } from '../components/theme-selector';
 
@@ -41,6 +47,13 @@ interface HomeScreenProps {
   translationStatus: TranslationStatus;
   finalEnglish: string;
   translationError: string | null;
+  /** Paired transcript export / clear */
+  transcriptEmpty: boolean;
+  onExportTranscript: (format: TranscriptFormat) => void;
+  onClearTranscript: () => void;
+  /** Floating captions overlay */
+  overlayOpen: boolean;
+  onToggleOverlay: () => void;
   /** Navigation */
   onOpenSettings: () => void;
 }
@@ -100,6 +113,47 @@ export default function HomeScreen(props: HomeScreenProps) {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant={props.overlayOpen ? 'default' : 'outline'}
+            size="icon"
+            aria-label="Toggle captions overlay"
+            aria-pressed={props.overlayOpen}
+            onClick={props.onToggleOverlay}
+            className="h-7 w-7"
+          >
+            <Captions className="h-[15px] w-[15px]" />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Export transcript"
+                disabled={props.transcriptEmpty}
+                className="h-7 w-7"
+              >
+                <Download className="h-[15px] w-[15px]" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => props.onExportTranscript('txt')}>
+                Transcript (.txt)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => props.onExportTranscript('json')}>
+                Transcript (.json)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Clear transcript"
+            disabled={props.transcriptEmpty}
+            onClick={props.onClearTranscript}
+            className="h-7 w-7"
+          >
+            <Trash2 className="h-[15px] w-[15px]" />
+          </Button>
           <ThemeSelector />
           <Button
             variant="outline"

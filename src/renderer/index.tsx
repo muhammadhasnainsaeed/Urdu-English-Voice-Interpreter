@@ -19,8 +19,18 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import OverlayScreen from './pages/OverlayScreen';
 import { ThemeProvider } from './components/theme-provider';
 import { ErrorProvider } from './errors/ErrorProvider';
+
+// The floating caption window loads the same bundle with `#overlay`.
+// It renders a standalone screen (never `App`) so it can't capture the
+// microphone or own session lifecycle, and it clears the page background so
+// the transparent BrowserWindow shows the meeting underneath.
+const isOverlay = window.location.hash === '#overlay';
+if (isOverlay) {
+  document.body.classList.add('overlay-mode');
+}
 
 const container = document.getElementById('root');
 if (container) {
@@ -28,9 +38,7 @@ if (container) {
   root.render(
     <React.StrictMode>
       <ErrorProvider>
-        <ThemeProvider>
-          <App />
-        </ThemeProvider>
+        <ThemeProvider>{isOverlay ? <OverlayScreen /> : <App />}</ThemeProvider>
       </ErrorProvider>
     </React.StrictMode>,
   );

@@ -49,6 +49,8 @@
   const audioOutputBus = makeBus();
   const sessionBus = makeBus();
   const pipelineBus = makeBus();
+  const overlayBus = makeBus();
+  let overlayOpen = false;
   const audioDataSubs = new Set();
   const audioCancelSubs = new Set();
 
@@ -107,6 +109,25 @@
       provider: 'mock',
     }),
     testTtsVoice: async () => ({ ok: true, provider: 'mock' }),
+
+    saveTranscript: async () => ({
+      ok: false,
+      message: 'Transcript export is not available in the demo harness.',
+    }),
+
+    /* Floating captions overlay (demo only flips state — no real window). */
+    getOverlayStatus: async () => ({ open: overlayOpen }),
+    toggleOverlay: async () => {
+      overlayOpen = !overlayOpen;
+      overlayBus.emit({ type: 'overlay:state', open: overlayOpen });
+      return { open: overlayOpen };
+    },
+    closeOverlay: async () => {
+      overlayOpen = false;
+      overlayBus.emit({ type: 'overlay:state', open: false });
+      return { open: false };
+    },
+    onOverlayEvent: (h) => overlayBus.subscribe(h),
 
     getAudioOutputDevices: async () => [
       { id: 'default', label: 'System Default', isDefault: true },

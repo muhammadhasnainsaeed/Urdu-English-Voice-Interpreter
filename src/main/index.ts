@@ -29,6 +29,9 @@ import { registerTtsIpc, ttsManager } from './ipc/tts';
 import { registerSessionIpc, sessionManager } from './ipc/session';
 import { registerSystemIpc } from './ipc/system';
 import { registerPreferencesIpc } from './ipc/preferences';
+import { registerTranscriptIpc } from './ipc/transcript';
+import { registerOverlayIpc } from './ipc/overlay';
+import { getMainWindow, setMainWindow } from './windows';
 import { resolveTtsProviderName } from './services/tts/voices';
 import { pipelineTelemetry } from './services/telemetry/pipeline-telemetry';
 
@@ -122,9 +125,11 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  setMainWindow(mainWindow);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    setMainWindow(null);
   });
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
@@ -138,24 +143,20 @@ function createWindow() {
 
 app.whenReady().then(() => {
   registerAudioIpc();
-  registerAudioOutputIpc(() => mainWindow);
-  registerSttIpc(
-    () => mainWindow,
-    (text, isFinal) => translationManager.onSttText(text, isFinal),
-  );
-  registerTranslationIpc(
-    () => mainWindow,
-    (english, interim) => ttsManager.onTranslationText(english, interim),
-  );
-  registerTtsIpc(() => mainWindow, audioOutputManager);
-  registerSessionIpc(() => mainWindow);
+  registerAudioOutputIpc(getMainWindow);
+  registerSttIpc((text, isFinal) => translationManager.onSttText(text, isFinal));
+  registerTranslationIpc((english, interim) => ttsManager.onTranslationText(english, interim));
+  registerTtsIpc(getMainWindow, audioOutputManager);
+  registerSessionIpc(getMainWindow);
   registerSystemIpc();
   registerPreferencesIpc();
+  registerTranscriptIpc(getMainWindow);
+  registerOverlayIpc();
 
   // Pipeline telemetry (development-only): forward events to the renderer
   // and accept playback lifecycle reports for output latency timing.
   pipelineTelemetry.setListener((event: PipelineEvent) => {
-    const win = mainWindow;
+    const win = getMainWindow();
     if (win && !win.isDestroyed()) {
       win.webContents.send('pipeline:event', event);
     }
@@ -197,7 +198,8 @@ app.whenReady().then(() => {
   createWindow();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    // Reopen the main window even when the overlay is still alive.
+    if (getMainWindow() === null) createWindow();
   });
 });
 

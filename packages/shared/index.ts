@@ -350,6 +350,17 @@ export interface AppPreferences {
   onboardingCompleted: boolean;
   /** Selected TTS voice id (provider-specific). Absent/null → provider default. */
   ttsVoiceId?: string | null;
+  /**
+   * Explicitly selected microphone deviceId. Absent/null → first available
+   * device. Only ever written for a deliberate user selection — automatic
+   * devicechange fallbacks must not overwrite it.
+   */
+  micDeviceId?: string | null;
+  /**
+   * Explicitly selected audio output deviceId. Absent/null → system default.
+   * Same explicit-selection rule as `micDeviceId`.
+   */
+  outputDeviceId?: string | null;
 }
 
 export interface GetPreferencesResult {
@@ -362,6 +373,40 @@ export interface SetPreferencesResult {
   ok: boolean;
   preferences?: AppPreferences;
   message?: string;
+}
+
+/* ---- Transcript export (paired Urdu → English history) ---- */
+
+export type TranscriptFormat = 'txt' | 'json';
+
+/** Renderer → main save request. The renderer never chooses a path itself. */
+export interface SaveTranscriptRequest {
+  format: TranscriptFormat;
+  /** Serialized transcript (already produced by the renderer). */
+  content: string;
+  /** Basename suggestion only — main sanitizes and enforces the extension. */
+  suggestedName: string;
+}
+
+export interface SaveTranscriptResult {
+  ok: boolean;
+  /** True when the user dismissed the native save dialog. */
+  canceled?: boolean;
+  /** Absolute path written (only when ok). */
+  path?: string;
+  message?: string;
+}
+
+/* ---- Floating subtitle overlay ---- */
+
+export interface OverlayStatus {
+  open: boolean;
+}
+
+/** Main → renderer broadcast: overlay window was opened or closed. */
+export interface OverlayStateEvent {
+  type: 'overlay:state';
+  open: boolean;
 }
 
 /* ---- Electron API bridge ---- */
@@ -385,6 +430,13 @@ export interface ElectronAPI {
   onTtsEvent: (handler: (event: TtsEvent) => void) => () => void;
   getTtsVoices: () => Promise<ListVoicesResult>;
   testTtsVoice: () => Promise<TtsStartResult>;
+  /** Save a serialized transcript via the native save dialog. */
+  saveTranscript: (request: SaveTranscriptRequest) => Promise<SaveTranscriptResult>;
+  /** Current overlay window state (main window uses it to sync its toggle). */
+  getOverlayStatus: () => Promise<OverlayStatus>;
+  toggleOverlay: () => Promise<OverlayStatus>;
+  closeOverlay: () => Promise<OverlayStatus>;
+  onOverlayEvent: (handler: (event: OverlayStateEvent) => void) => () => void;
   getAudioOutputDevices: () => Promise<AudioOutputDevice[]>;
   selectAudioOutput: (deviceId: string) => Promise<void>;
   startAudioOutput: () => Promise<AudioOutputStartResult>;

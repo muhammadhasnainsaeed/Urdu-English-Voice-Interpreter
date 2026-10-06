@@ -17,10 +17,11 @@
     "setup:whisper": "bash scripts/setup-whisper.sh",
     "type-check": "tsc --noEmit",
     "test": "npx tsx --test tests/*.test.ts",
+    "preflight": "npx tsx scripts/preflight.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\" \"tests/**/*.ts\" \"packages/**/*.ts\" *.config.js *.config.mjs",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\" \"tests/**/*.ts\" \"packages/**/*.ts\" *.config.js *.config.mjs",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.{js,ts}\" \"tests/**/*.ts\" \"packages/**/*.ts\" *.config.js *.config.mjs",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.{js,ts}\" \"tests/**/*.ts\" \"packages/**/*.ts\" *.config.js *.config.mjs",
     "package": "npm run build && electron-builder --mac --arm64",
     "package:dir": "npm run build && electron-builder --mac --arm64 --dir"
   },

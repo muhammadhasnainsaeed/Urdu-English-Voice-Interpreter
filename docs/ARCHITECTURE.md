@@ -12,6 +12,8 @@ MVP.**
 Electron
    ├── Main Process        src/main/index.ts
    │     ├── BrowserWindow (secure webPreferences)
+   │     ├── windows.ts              (main + overlay window registry,
+   │     │                             channel-aware sendToRenderer/broadcast)
    │     ├── config.ts               (runtime config + provider diagnostics)
    │     ├── services/session.ts     (SessionManager: one Start/Stop contract)
    │     ├── services/audio.ts       (macOS mic permission via systemPreferences)
@@ -34,8 +36,9 @@ Electron
    │     │     ├── manager.ts           (device detection, BlackHole)
    │     │     └── providers/speaker.ts (IPC → renderer WebAudio playback)
    │     ├── services/telemetry/      (pipeline-telemetry.ts, dev-only)
+   │     ├── transcript/saveRequest.ts (pure export validation/sanitization)
    │     └── ipc/ (audio, stt, translation, tts, audio-output,
-   │                session, preferences, system)
+   │                session, preferences, system, transcript, overlay)
    │
    ├── Preload             src/preload/index.ts
    │     └── contextBridge.exposeInMainWorld('electron', ...)
@@ -44,17 +47,21 @@ Electron
          ├── App.tsx (view routing: onboarding | home | settings)
          ├── errors/ (ErrorProvider, errorModel, toast, useReportedErrors)
          ├── setup/ (useSetup, setupState — mic/output/BlackHole checklist)
+         ├── audio/ (createPcmTap: AudioWorklet capture + ScriptProcessor fallback)
+         ├── transcript/ (transcriptModel — paired entries, TXT/JSON export)
          ├── services/ (useMicrophone, useSession, useStt, useTranslation,
          │              useTts, useTtsVoices, useAudioOutput,
-         │              usePreferences, usePipelineStats)
+         │              usePreferences, usePipelineStats, useTranscript)
          ├── components/ (MicSelector, AudioOutputPanel, VoicePicker,
          │                 TtsPanel, PipelinePanel, SetupPanel,
          │                 theme-provider, theme-selector, ui/*)
-         ├── pages/ (OnboardingScreen, HomeScreen, SettingsScreen)
+         ├── pages/ (OnboardingScreen, HomeScreen, SettingsScreen,
+         │            OverlayScreen — #overlay floating captions window)
          └── styles/ (globals.css, Tailwind + shadcn/ui tokens)
 
 Shared types: packages/shared/index.ts
-Build: esbuild -> dist/  (main, preload, renderer bundle + index.html)
+Build: esbuild -> dist/  (main, preload, renderer bundle + index.html
+        + pcm-processor.js AudioWorklet)
 ```
 
 ### Process roles
@@ -99,6 +106,11 @@ interface ElectronAPI {
   onAudioCancel: (handler: () => void) => () => void;
   getTtsVoices: () => Promise<ListVoicesResult>;
   testTtsVoice: () => Promise<TtsStartResult>;
+  saveTranscript: (request: SaveTranscriptRequest) => Promise<SaveTranscriptResult>;
+  getOverlayStatus: () => Promise<OverlayStatus>;
+  toggleOverlay: () => Promise<OverlayStatus>;
+  closeOverlay: () => Promise<OverlayStatus>;
+  onOverlayEvent: (handler: (event: OverlayStateEvent) => void) => () => void;
   detectBlackHole: () => Promise<boolean>;
   startSession: () => Promise<SessionStartResult>;
   stopSession: () => Promise<void>;
@@ -141,10 +153,47 @@ Channels:
 | `tts:test` | renderer → main (invoke) | synthesizes the selected voice as a one-off test |
 | `session:start` / `session:stop` | renderer → main (invoke) | one Start/Stop contract orchestrating STT + translation + TTS + audio output |
 | `session:event` | main → renderer | session lifecycle/state notifications |
-| `preferences:get` / `preferences:set` | renderer ↔ main (invoke) | persisted `AppPreferences` (theme, TTS voice, onboarding state) |
+| `transcript:save` | renderer → main (invoke) | validates + saves a serialized transcript via the native save dialog (TXT/JSON, ≤ 5 MB) |
+| `overlay:status` / `overlay:toggle` / `overlay:close` | renderer → main (invoke) | floating captions window lifecycle; returns `{open}` |
+| `overlay:event` | main → renderer | `{type:'overlay:state', open}` — keeps the Home toggle in sync |
+| `preferences:get` / `preferences:set` | renderer ↔ main (invoke) | persisted `AppPreferences` (theme, TTS voice, onboarding state, mic/output device) |
 | `system:open-external` | renderer → main (invoke) | opens an external URL in the default browser (e.g. BlackHole download) |
 | `telemetry:playback` | renderer → main (send) | dev-only renderer playback metrics |
 | `pipeline:event` | main → renderer | dev-only pipeline metrics (`PIPELINE_DEBUG=1` only) |
+
+**Event routing rule** (`src/main/windows.ts`): main → renderer events for
+`stt:event`, `translation:event`, and `session:event` are broadcast to **every**
+live window (main + captions overlay); all other channels (TTS, audio playback,
+telemetry, overlay control) target the **main window only**, so the overlay can
+never double-play audio or drive pipeline control.
+
+### Floating subtitle overlay (2026-10-05)
+
+A separate frameless `BrowserWindow` shows captions on top of the meeting app:
+
+```text
+main window ──► windows.ts sendToRenderer() ──► broadcast to both windows
+                   (stt:event, translation:event, session:event only)
+
+overlay window: loadFile(index.html, { hash: 'overlay' })
+   └─ renderer/index.tsx hashes #overlay → renders <OverlayScreen/> (never <App/>)
+   └─ frameless, transparent, alwaysOnTop('screen-saver'), focusable:false
+   └─ drag by header strip; own ✕ close button (overlay:close IPC)
+```
+
+- **Never mounts `App`**: `useStt` unmount cleanup calls `stopStt()`, so a
+  second `App` would fight the main window over the microphone. The overlay
+  only subscribes to the broadcast channels (via `useTranscript` + local
+  listeners).
+- **Audio stays main-window-only**: TTS/audio/telemetry channels never reach
+  the overlay (see the routing rule above), so captions cannot double-play
+  speech.
+- **Non-focusable** (`focusable: false` + `setAlwaysOnTop('screen-saver')` +
+  `setVisibleOnAllWorkspaces`): opening/closing captions never steals focus
+  from the meeting app. Fixed size, centered above the Dock
+  (`overlayGeometry()` is pure and unit-tested).
+- State sync: the overlay reports open/close through `overlay:event`, so the
+  Home header toggle and the overlay's own ✕ button always agree.
 
 ### Application state
 
@@ -196,11 +245,14 @@ permission lives in the main process.** Rationale:
 ```text
 Renderer                                        Main
 useMicrophone → getUserMedia stream
-   └─ ScriptProcessorNode (taps the live stream,
-      via a zero-gain node — no audible feedback)
-      └─ resample audioContext.sampleRate → 16 kHz (linear interp)
-         └─ Float32 [-1,1] → Int16 PCM
-            └─ window.electron.sendSttAudio(chunk)   ──IPC──►  stt:audio-data
+   └─ AudioWorkletNode (pcm-processor.js taps the
+      live stream via a zero-gain node — no audible
+      feedback; ScriptProcessorNode fallback when
+      addModule fails, e.g. CSP)
+      └─ 128-frame blocks → FrameBatcher → 4096-frame cadence
+         └─ resample audioContext.sampleRate → 16 kHz (linear interp)
+            └─ Float32 [-1,1] → Int16 PCM
+               └─ window.electron.sendSttAudio(chunk)   ──IPC──►  stt:audio-data
                                                               │
                                     sttSession (manager.ts)  │
                                     └─ SttProvider.pushAudio │
@@ -762,3 +814,34 @@ Teams validation and signed + notarized distribution remain manual steps.
   do not include `setSinkId` (experimental API). A type declaration in
   `src/renderer/types/electron.d.ts` augments the global `AudioContext`
   interface. Feature detection at runtime ensures graceful fallback.
+- **Channel-aware window routing** (added 2026-10-05): all main → renderer
+  sends go through `sendToRenderer()` in `src/main/windows.ts`, which decides
+  per channel whether to broadcast (subtitle channels: `stt:event`,
+  `translation:event`, `session:event`) or target the main window only
+  (everything else). Single source of truth — individual IPC handlers never
+  pick windows themselves, so a new window cannot silently receive audio
+  control events.
+- **Captions overlay as a separate BrowserWindow** (added 2026-10-05): a
+  frameless, transparent, non-focusable `#overlay` window renders
+  `OverlayScreen` from the same bundle. Rationale: a floating always-on-top
+  caption bar is impossible inside the main window, and rendering it in a
+  second window keeps `App` (mic/session ownership) single-instance. The
+  overlay never mounts `App` because `useStt`'s unmount cleanup stops STT.
+  See "Floating subtitle overlay" above.
+- **AudioWorklet over ScriptProcessorNode** (added 2026-10-05): mic capture
+  taps use `AudioWorkletNode` (`pcm-processor.js`, copied to
+  `dist/renderer/` by the build) running on the audio thread, with
+  `FrameBatcher` restoring the 4096-frame IPC cadence on the main thread.
+  `ScriptProcessorNode` remains only as a fallback when `addModule()` fails
+  (deprecation, CSP). Pure pieces (`createResampler`, `toInt16Pcm`,
+  `FrameBatcher`) live in `src/renderer/audio/pcmTap.ts` and are unit-tested.
+- **Transcript export validation in main** (added 2026-10-05): the renderer
+  serializes paired Urdu/English entries and sends the content to
+  `transcript:save`; main validates shape, UTF-8 size (≤ 5 MB), and filename
+  (`src/main/transcript/saveRequest.ts`, pure) before showing the native save
+  dialog. The renderer never chooses filesystem paths.
+- **Manual round-trip validation protocol + preflight** (added 2026-10-05):
+  `docs/meeting-validation.md` defines the pass criteria and failure triage
+  for a live meeting test; `npm run preflight` (scripts/preflight.ts, pure
+  `evaluatePreflight()`) automates the environment half (build artifacts,
+  provider config, macOS host, BlackHole) and must be green before running it.

@@ -80,6 +80,11 @@ export class SessionManager {
   private status: SessionStatus = 'idle';
   private emitFn: ((event: SessionEvent) => void) | null = null;
   private getWindow: (() => BrowserWindow | null) | null = null;
+  /**
+   * Channel-aware sender injected by the IPC layer (routes subtitle channels
+   * to every window, pipeline/audio channels to the main window only).
+   */
+  private sender: ((channel: string, event: unknown) => void) | null = null;
   /** Resolves the persisted TTS voice for the current environment. Injected by the IPC layer. */
   private voiceIdResolver: () => string | null = () => null;
 
@@ -93,6 +98,10 @@ export class SessionManager {
 
   setWindowGetter(getWindow: () => BrowserWindow | null): void {
     this.getWindow = getWindow;
+  }
+
+  setSender(sender: (channel: string, event: unknown) => void): void {
+    this.sender = sender;
   }
 
   setTtsVoiceIdResolver(resolver: () => string | null): void {
@@ -112,6 +121,10 @@ export class SessionManager {
   }
 
   private sendToRenderer(channel: string, event: unknown): void {
+    if (this.sender) {
+      this.sender(channel, event);
+      return;
+    }
     const win = this.getWindow?.();
     if (win && !win.isDestroyed()) {
       win.webContents.send(channel, event);

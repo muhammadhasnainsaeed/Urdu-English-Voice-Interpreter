@@ -32,6 +32,19 @@ function copyIndexHtml() {
   fs.copyFileSync(src, path.join(destDir, 'index.html'));
 }
 
+/**
+ * The AudioWorklet processor is a standalone script loaded by
+ * `audioContext.audioWorklet.addModule('pcm-processor.js')` (relative to
+ * dist/renderer/index.html). It must NOT be part of the app bundle — worklets
+ * cannot resolve bundle imports — so it is copied verbatim like index.html.
+ */
+function copyAudioWorklet() {
+  const src = path.join(root, 'src/renderer/audio/pcm-processor.js');
+  const destDir = path.join(root, 'dist/renderer');
+  fs.mkdirSync(destDir, { recursive: true });
+  fs.copyFileSync(src, path.join(destDir, 'pcm-processor.js'));
+}
+
 const tailwindBinary = path.join(root, 'node_modules/.bin/tailwindcss');
 const tailwindCssInput = path.join(root, 'src/renderer/styles/globals.css');
 const tailwindCssOutput = path.join(root, 'dist/renderer/tailwind.css');
@@ -115,6 +128,7 @@ async function build() {
   });
 
   copyIndexHtml();
+  copyAudioWorklet();
 
   if (watch) {
     compileTailwind(false);

@@ -20,17 +20,15 @@ import { app, ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { AppPreferences, GetPreferencesResult, SetPreferencesResult } from '@shared/index';
-
-/** Defaults used when no persisted preferences file exists yet. */
-const DEFAULT_PREFERENCES: AppPreferences = {
-  onboardingCompleted: false,
-  ttsVoiceId: null,
-};
+import { DEFAULT_PREFERENCES, mergePreferences, parseStoredPreferences } from '../preferences/model';
 
 /**
  * Writes and reads a tiny JSON "preferences" store under the user-data
  * directory so first-launch onboarding survives relaunches. Kept dependency
  * free and deliberately small — it is not the app's config store.
+ *
+ * Validation/merge rules live in `preferences/model.ts` (pure, unit-tested);
+ * this file only owns the file I/O and the IPC surface.
  */
 function preferencesFile(): string {
   return path.join(app.getPath('userData'), 'preferences.json');
@@ -39,17 +37,7 @@ function preferencesFile(): string {
 export function loadPreferences(): AppPreferences {
   try {
     const raw = fs.readFileSync(preferencesFile(), 'utf8');
-    const parsed = JSON.parse(raw) as Partial<AppPreferences>;
-    return {
-      onboardingCompleted:
-        typeof parsed.onboardingCompleted === 'boolean' ? parsed.onboardingCompleted : false,
-      ttsVoiceId:
-        parsed.ttsVoiceId === undefined || parsed.ttsVoiceId === null
-          ? null
-          : typeof parsed.ttsVoiceId === 'string' && parsed.ttsVoiceId.trim() !== ''
-            ? parsed.ttsVoiceId.trim()
-            : null,
-    };
+    return parseStoredPreferences(raw);
   } catch {
     return { ...DEFAULT_PREFERENCES };
   }
@@ -81,18 +69,8 @@ export function registerPreferencesIpc() {
     if (typeof patch !== 'object' || patch === null) {
       return { ok: false, message: 'Invalid preferences payload.' };
     }
-    const incoming = patch as Partial<AppPreferences>;
     try {
-      const next = loadPreferences();
-      if (typeof incoming.onboardingCompleted === 'boolean') {
-        next.onboardingCompleted = incoming.onboardingCompleted;
-      }
-      if (incoming.ttsVoiceId !== undefined) {
-        next.ttsVoiceId =
-          typeof incoming.ttsVoiceId === 'string' && incoming.ttsVoiceId.trim() !== ''
-            ? incoming.ttsVoiceId.trim()
-            : null;
-      }
+      const next = mergePreferences(loadPreferences(), patch as Partial<AppPreferences>);
       persistPreferences(next);
       return { ok: true, preferences: next };
     } catch (err) {

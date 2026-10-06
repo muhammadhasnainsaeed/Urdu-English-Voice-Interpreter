@@ -3,6 +3,77 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-10-05 — floating captions overlay, transcript export, device persistence, AudioWorklet capture, meeting validation protocol
+
+Five-item improvement pass (execution order 3 → 2 → 4 → 1 → 5). No new npm
+dependencies; provider interfaces, IPC conventions, and the renderer's
+Node-free sandbox are unchanged.
+
+- **Added**
+  - **Floating captions overlay (Item 1)** — a frameless, transparent,
+    always-on-top, non-focusable `BrowserWindow` (`loadFile(..., { hash:
+    'overlay' })`) renders the new `src/renderer/pages/OverlayScreen.tsx`
+    from the same bundle; `renderer/index.tsx` branches on `#overlay` and
+    never mounts `App` (its `useStt` cleanup would stop STT). Shows the last
+    paired Urdu/English entries + live partial with auto-scroll, a listening
+    dot, drag-to-move header, and its own ✕ close. Toggled from a new Home
+    header button (`Captions` icon, `aria-pressed`), synced through
+    `overlay:event`.
+  - **Window registry + channel-aware routing** — new `src/main/windows.ts`
+    holds the main/overlay refs and is now the single place that decides
+    event fan-out: `stt:event` / `translation:event` / `session:event`
+    broadcast to every live window; TTS, audio playback, telemetry, and
+    overlay-control channels stay main-window-only (so the overlay can never
+    double-play speech). `ipc/stt.ts`, `ipc/translation.ts`, `ipc/session.ts`,
+    and `services/session.ts` (new `setSender()` injection) all route through
+    it; new `src/main/ipc/overlay.ts` (`overlay:status|toggle|close`).
+  - **Transcript history export (Item 2)** — pure
+    `src/renderer/transcript/transcriptModel.ts` (pairing rules, `toTxt`,
+    `toJsonDocument`, suggested file names) + `useTranscript()` hook feeding
+    Home's new Export (`.txt`/`.json`) and Clear controls. Main validates
+    every request in the pure `src/main/transcript/saveRequest.ts` (shape,
+    UTF-8 ≤ 5 MB, sanitized basename) and writes only after the native save
+    dialog (`src/main/ipc/transcript.ts`, `transcript:save`).
+  - **Device persistence (Item 3)** — `AppPreferences` gains `micDeviceId` /
+    `outputDeviceId`; `src/main/preferences/model.ts` provides pure
+    defaults/parse/merge validation; the mic and output selections restore
+    once after the first preferences read and persist on explicit user
+    selection only (automatic devicechange fallbacks never write back).
+  - **AudioWorklet capture (Item 4)** — new `src/renderer/audio/pcm-processor.js`
+    worklet (copied to `dist/renderer/pcm-processor.js` by esbuild) and
+    `src/renderer/audio/pcmTap.ts` (`createPcmTap` = worklet → ScriptProcessor
+    fallback, `FrameBatcher` restoring 4096-frame cadence, resampler, Int16
+    conversion). `useStt` and `MicSelector`'s sound-check now share this path;
+    the deprecated ScriptProcessorNode remains only as fallback.
+  - **Meeting round-trip validation prep (Item 5)** — new
+    `docs/meeting-validation.md` (environment matrix, 4-phase protocol, pass
+    criteria, latency table, failure triage, evidence list) and
+    `npm run preflight` (`scripts/preflight.ts`): pure `evaluatePreflight()`
+    checks build artifacts (incl. the worklet), macOS host, STT/translation
+    config readiness, TTS provider, and BlackHole; exits non-zero on failures.
+  - Demo harness parity: `demo/preload/demo-preload.js` gains
+    `saveTranscript` + overlay API stubs (overlay toggles state only).
+  - Tests: `tests/preferences.test.ts` (15), `tests/transcript.test.ts` (22),
+    `tests/pcm-tap.test.ts` (13), `tests/overlay-window.test.ts` (5),
+    `tests/preflight.test.ts` (6). Suite **160 → 166**.
+- **Changed**
+  - `esbuild.config.js` copies the AudioWorklet processor beside the renderer
+    bundle; Prettier globs now include `scripts/**/*.{js,ts}` so
+    `scripts/preflight.ts` is formatted too.
+  - `app.on('activate')` reopens the main window whenever it is gone (not
+    only when *no* windows exist), so closing the main window with the
+    overlay still open can no longer strand the user.
+  - `saveRequest` filename sanitization filters control characters by code
+    point instead of a control-character regex (same behavior, no
+    `no-control-regex` lint error).
+- **Validation**
+  - `npm run type-check` clean; `npm test` **166 pass / 0 fail**;
+    `npm run lint` 0 errors (14 pre-existing warnings); `npm run build` OK
+    (`dist/renderer/pcm-processor.js` present); `npm run format:check` clean;
+    `npm run preflight` → all PASS, exit 0.
+  - Live meeting round-trip itself remains manual — execute
+    `docs/meeting-validation.md` before release.
+
 ## 2026-09-30 — v1.1.0 release prep: version bump, README rewrite, architecture refresh
 
 Release-preparation pass for **v1.1.0** (36 commits on `main` since the v1.0.0

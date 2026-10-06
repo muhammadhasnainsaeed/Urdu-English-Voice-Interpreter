@@ -29,8 +29,11 @@ import { useAudioOutput } from './services/useAudioOutput';
 import { useSession } from './services/useSession';
 import { useSetup } from './setup/useSetup';
 import { usePreferences } from './services/usePreferences';
+import { useTranscript } from './services/useTranscript';
 import { useReportedErrors } from './errors/useReportedErrors';
+import { useToast } from './errors/toast';
 import { RENDERER_OPEN_EXTERNAL_LINKS } from '@shared/index';
+import type { TranscriptFormat } from '@shared/index';
 
 type View = 'loading' | 'onboarding' | 'home' | 'settings';
 
@@ -43,6 +46,8 @@ export default function App() {
   const audioOutput = useAudioOutput();
   const session = useSession();
   const preferences = usePreferences();
+  const transcript = useTranscript();
+  const { toast } = useToast();
 
   const [view, setView] = useState<View>('loading');
 
@@ -108,6 +113,30 @@ export default function App() {
     setView(preferences.onboardingCompleted ? 'home' : 'onboarding');
   }, [preferences.loaded, preferences.onboardingCompleted]);
 
+  // Restore the persisted microphone/output selections exactly once, after
+  // the initial preferences read. Automatic devicechange fallbacks keep their
+  // existing behavior and never write back — only explicit user selections
+  // are persisted (see handleSelectMicrophone / handleSelectOutputDevice).
+  const devicesRestoredRef = React.useRef(false);
+  useEffect(() => {
+    if (!preferences.loaded || devicesRestoredRef.current) return;
+    devicesRestoredRef.current = true;
+    const micDeviceId = preferences.preferences?.micDeviceId ?? null;
+    const outputDeviceId = preferences.preferences?.outputDeviceId ?? null;
+    if (micDeviceId) microphone.selectDevice(micDeviceId);
+    if (outputDeviceId) void audioOutput.selectDevice(outputDeviceId);
+  }, [preferences.loaded, preferences.preferences, microphone.selectDevice, audioOutput.selectDevice]);
+
+  const handleSelectMicrophone = async (deviceId: string) => {
+    microphone.selectDevice(deviceId);
+    await preferences.update({ micDeviceId: deviceId });
+  };
+
+  const handleSelectOutputDevice = async (deviceId: string) => {
+    await audioOutput.selectDevice(deviceId);
+    await preferences.update({ outputDeviceId: deviceId });
+  };
+
   const handleMeetingStart = async () => {
     const result = await session.start();
     if (!result.ok) return;
@@ -134,6 +163,49 @@ export default function App() {
 
   const handleSelectVoice = async (voiceId: string) => {
     await preferences.update({ ttsVoiceId: voiceId });
+  };
+
+  const handleExportTranscript = async (format: TranscriptFormat) => {
+    const result = await transcript.exportTranscript(format);
+    if (result.ok) {
+      toast({
+        variant: 'success',
+        title: 'Transcript saved',
+        description: result.path,
+      });
+    } else if (!result.canceled) {
+      toast({
+        variant: 'error',
+        title: 'Export failed',
+        description: result.message ?? 'Could not save the transcript.',
+      });
+    }
+  };
+
+  const handleClearTranscript = () => {
+    transcript.clear();
+    stt.clear();
+    translation.clearHistory();
+  };
+
+  // Floating captions overlay: mirror the main-process window state so the
+  // header toggle stays correct even when the overlay closes itself.
+  const [overlayOpen, setOverlayOpen] = React.useState(false);
+  useEffect(() => {
+    let mounted = true;
+    void window.electron.getOverlayStatus().then((status) => {
+      if (mounted) setOverlayOpen(status.open);
+    });
+    const off = window.electron.onOverlayEvent((event) => setOverlayOpen(event.open));
+    return () => {
+      mounted = false;
+      off();
+    };
+  }, []);
+
+  const handleToggleOverlay = async () => {
+    const status = await window.electron.toggleOverlay();
+    setOverlayOpen(status.open);
   };
 
   const handleTestVoice = async () => {
@@ -193,7 +265,7 @@ export default function App() {
         setup={setup.state}
         outputDevices={audioOutput.devices}
         selectedOutputDeviceId={audioOutput.selectedDeviceId}
-        onSelectOutputDevice={audioOutput.selectDevice}
+        onSelectOutputDevice={handleSelectOutputDevice}
         onRequestMicPermission={async () => {
           const granted = await microphone.requestPermission();
           if (granted) {
@@ -227,6 +299,11 @@ export default function App() {
         translationStatus={translation.status}
         finalEnglish={translation.finalEnglish}
         translationError={translation.error}
+        transcriptEmpty={transcript.isEmpty}
+        onExportTranscript={handleExportTranscript}
+        onClearTranscript={handleClearTranscript}
+        overlayOpen={overlayOpen}
+        onToggleOverlay={() => void handleToggleOverlay()}
         onOpenSettings={() => setView('settings')}
       />
     );
@@ -253,11 +330,11 @@ export default function App() {
       micDevices={microphone.devices}
       selectedDeviceId={microphone.selectedDeviceId}
       micError={microphone.error}
-      onSelectMicrophone={microphone.selectDevice}
+      onSelectMicrophone={handleSelectMicrophone}
       audioOutputStatus={audioOutput.status}
       audioOutputDevices={audioOutput.devices}
       audioOutputSelectedId={audioOutput.selectedDeviceId}
-      onSelectAudioOutput={audioOutput.selectDevice}
+      onSelectAudioOutput={handleSelectOutputDevice}
       ttsStatus={tts.status}
       ttsError={tts.error}
       ttsProvider={tts.provider}

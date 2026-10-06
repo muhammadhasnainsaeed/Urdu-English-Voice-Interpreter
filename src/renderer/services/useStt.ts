@@ -18,42 +18,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SttEvent, SttStatus } from '@shared/index';
+import { createPcmTap, createResampler, TARGET_SAMPLE_RATE, toInt16Pcm, type PcmTap } from '../audio/pcmTap';
 
-const TARGET_SAMPLE_RATE = 16000;
 const PROCESSING_RESET_MS = 350;
-
-function createResampler(fromRate: number, toRate: number) {
-  const ratio = fromRate / toRate;
-  let tail = new Float32Array(0);
-
-  return (input: Float32Array): Float32Array => {
-    const combined = new Float32Array(tail.length + input.length);
-    combined.set(tail);
-    combined.set(input, tail.length);
-
-    const outLength = Math.floor(combined.length / ratio);
-    const output = new Float32Array(outLength);
-    for (let i = 0; i < outLength; i++) {
-      const pos = i * ratio;
-      const index = Math.floor(pos);
-      const frac = pos - index;
-      const next = index + 1 < combined.length ? combined[index + 1] : combined[index];
-      output[i] = combined[index] + (next - combined[index]) * frac;
-    }
-
-    tail = combined.slice(Math.floor(outLength * ratio));
-    return output;
-  };
-}
-
-function toInt16Pcm(float: Float32Array): ArrayBuffer {
-  const pcm = new Int16Array(float.length);
-  for (let i = 0; i < float.length; i++) {
-    const s = Math.max(-1, Math.min(1, float[i]));
-    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-  return pcm.buffer;
-}
 
 export function useStt() {
   const [status, setStatus] = useState<SttStatus>('idle');
@@ -63,9 +30,9 @@ export function useStt() {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
 
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
+  const tapRef = useRef<PcmTap | null>(null);
+  const startGenerationRef = useRef(0);
+  const pendingStartGenerationRef = useRef<number | null>(null);
   const statusRef = useRef<SttStatus>('idle');
   const processingTimerRef = useRef<number | null>(null);
 
@@ -76,35 +43,11 @@ export function useStt() {
   const isActive = status === 'starting' || status === 'listening' || status === 'processing';
 
   const stopFeeding = useCallback(() => {
-    const processor = processorRef.current;
-    const source = sourceRef.current;
-    const gain = gainNodeRef.current;
-
-    if (processor) {
-      processor.onaudioprocess = null;
-      try {
-        processor.disconnect();
-      } catch {
-        // ignore
-      }
+    const tap = tapRef.current;
+    if (tap) {
+      tap.disconnect();
+      tapRef.current = null;
     }
-    if (source) {
-      try {
-        source.disconnect();
-      } catch {
-        // ignore
-      }
-    }
-    if (gain) {
-      try {
-        gain.disconnect();
-      } catch {
-        // ignore
-      }
-    }
-    sourceRef.current = null;
-    processorRef.current = null;
-    gainNodeRef.current = null;
   }, []);
 
   const onEvent = useCallback(
@@ -151,37 +94,68 @@ export function useStt() {
 
   const start = useCallback(
     async (stream: MediaStream, audioContext: AudioContext): Promise<boolean> => {
+      const generation = ++startGenerationRef.current;
+      pendingStartGenerationRef.current = generation;
       setError(null);
       setErrorCode(null);
       setPartialText('');
       setStatus('starting');
 
-      const source = audioContext.createMediaStreamSource(stream);
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
-      const gain = audioContext.createGain();
-      gain.gain.value = 0;
-
-      source.connect(processor);
-      processor.connect(gain);
-      gain.connect(audioContext.destination);
-
       const resampler = createResampler(audioContext.sampleRate, TARGET_SAMPLE_RATE);
 
-      processor.onaudioprocess = (event) => {
-        const activeStatus = statusRef.current;
-        if (activeStatus !== 'listening' && activeStatus !== 'processing' && activeStatus !== 'starting') {
-          return;
+      // AudioWorklet tap (ScriptProcessorNode fallback inside) → resample to
+      // 16 kHz → Int16 PCM → STT IPC. Silent graph (zero gain) keeps the
+      // context running without audible feedback.
+      let tap: PcmTap;
+      try {
+        tap = await createPcmTap(audioContext, stream, (frames) => {
+          const activeStatus = statusRef.current;
+          if (activeStatus !== 'listening' && activeStatus !== 'processing' && activeStatus !== 'starting') {
+            return;
+          }
+          const resampled = resampler(frames);
+          if (resampled.length > 0) {
+            window.electron.sendSttAudio(toInt16Pcm(resampled));
+          }
+        });
+      } catch (err) {
+        if (generation !== startGenerationRef.current) return false;
+        pendingStartGenerationRef.current = null;
+        setError(err instanceof Error ? err.message : 'Could not start microphone capture.');
+        setStatus('error');
+        return false;
+      }
+
+      // Stop/unmount may happen while addModule() is pending. Do not let that
+      // stale startup install a live tap or start recognition afterward.
+      if (generation !== startGenerationRef.current) {
+        tap.disconnect();
+        return false;
+      }
+      tapRef.current = tap;
+
+      let result;
+      try {
+        result = await window.electron.startStt();
+      } catch (err) {
+        if (generation !== startGenerationRef.current) {
+          tap.disconnect();
+          if (tapRef.current === tap) tapRef.current = null;
+          return false;
         }
-        const channel = event.inputBuffer.getChannelData(0);
-        const resampled = resampler(channel);
-        window.electron.sendSttAudio(toInt16Pcm(resampled));
-      };
-
-      sourceRef.current = source;
-      processorRef.current = processor;
-      gainNodeRef.current = gain;
-
-      const result = await window.electron.startStt();
+        pendingStartGenerationRef.current = null;
+        setError(err instanceof Error ? err.message : 'Could not start speech recognition.');
+        setStatus('error');
+        stopFeeding();
+        return false;
+      }
+      if (generation !== startGenerationRef.current) {
+        tap.disconnect();
+        if (tapRef.current === tap) tapRef.current = null;
+        if (result.ok) await window.electron.stopStt();
+        return false;
+      }
+      pendingStartGenerationRef.current = null;
       if (!result.ok) {
         setError(result.message ?? 'Could not start speech recognition.');
         setErrorCode(result.code ?? null);
@@ -196,7 +170,11 @@ export function useStt() {
   );
 
   const stop = useCallback(async () => {
-    if (statusRef.current === 'idle') return;
+    const shouldStop =
+      statusRef.current !== 'idle' || tapRef.current !== null || pendingStartGenerationRef.current !== null;
+    startGenerationRef.current += 1;
+    pendingStartGenerationRef.current = null;
+    if (!shouldStop) return;
     if (processingTimerRef.current) {
       window.clearTimeout(processingTimerRef.current);
       processingTimerRef.current = null;
@@ -210,8 +188,16 @@ export function useStt() {
     }
   }, [stopFeeding]);
 
+  /** Clear the accumulated final/partial transcript display (does not touch the session). */
+  const clear = useCallback(() => {
+    setFinalText('');
+    setPartialText('');
+  }, []);
+
   useEffect(() => {
     return () => {
+      startGenerationRef.current += 1;
+      pendingStartGenerationRef.current = null;
       stopFeeding();
       window.electron.stopStt().catch(() => undefined);
     };
@@ -221,6 +207,7 @@ export function useStt() {
     status,
     partialText,
     finalText,
+    clear,
     error,
     errorCode,
     provider,

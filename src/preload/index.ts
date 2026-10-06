@@ -28,9 +28,13 @@ import type {
   GetPreferencesResult,
   ListVoicesResult,
   OpenExternalResult,
+  OverlayStateEvent,
+  OverlayStatus,
   PermissionStatus,
   PipelineEvent,
   PlaybackTelemetryEvent,
+  SaveTranscriptRequest,
+  SaveTranscriptResult,
   SessionEvent,
   SessionStartResult,
   SetPreferencesResult,
@@ -83,6 +87,20 @@ const api: ElectronAPI = {
   },
   getTtsVoices: () => ipcRenderer.invoke('tts:list-voices') as Promise<ListVoicesResult>,
   testTtsVoice: () => ipcRenderer.invoke('tts:test') as Promise<TtsStartResult>,
+  saveTranscript: (request: SaveTranscriptRequest) =>
+    ipcRenderer.invoke('transcript:save', request) as Promise<SaveTranscriptResult>,
+
+  /* Floating subtitle overlay */
+  getOverlayStatus: () => ipcRenderer.invoke('overlay:status') as Promise<OverlayStatus>,
+  toggleOverlay: () => ipcRenderer.invoke('overlay:toggle') as Promise<OverlayStatus>,
+  closeOverlay: () => ipcRenderer.invoke('overlay:close') as Promise<OverlayStatus>,
+  onOverlayEvent: (handler: (event: OverlayStateEvent) => void) => {
+    const listener = (_event: unknown, payload: OverlayStateEvent) => handler(payload);
+    ipcRenderer.on('overlay:event', listener);
+    return () => {
+      ipcRenderer.removeListener('overlay:event', listener);
+    };
+  },
 
   /* Audio output (Milestone 6) */
   getAudioOutputDevices: () =>

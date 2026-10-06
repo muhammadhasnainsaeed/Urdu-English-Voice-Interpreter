@@ -27,6 +27,7 @@ import { Separator } from './ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from './ui/command';
 import { LiveWaveform } from './ui/live-waveform';
+import { createPcmTap, type PcmTap } from '@/audio/pcmTap';
 import { cn } from '@/lib/utils';
 
 /**
@@ -93,7 +94,9 @@ export default function MicSelector({
 
   const streamRef = React.useRef<MediaStream | null>(null);
   const captureCtxRef = React.useRef<AudioContext | null>(null);
-  const scriptProcessorRef = React.useRef<ScriptProcessorNode | null>(null);
+  const tapRef = React.useRef<PcmTap | null>(null);
+  /** True while a capture is live or being set up (tap may still be pending). */
+  const capturingRef = React.useRef(false);
   const pcmAccumRef = React.useRef<number[]>([]);
 
   const pcmRef = React.useRef<Float32Array | null>(null);
@@ -107,10 +110,10 @@ export default function MicSelector({
   const recording = checkState === 'recording';
 
   const teardownCapture = React.useCallback(() => {
-    if (scriptProcessorRef.current) {
-      scriptProcessorRef.current.onaudioprocess = null;
-      scriptProcessorRef.current.disconnect();
-      scriptProcessorRef.current = null;
+    capturingRef.current = false;
+    if (tapRef.current) {
+      tapRef.current.disconnect();
+      tapRef.current = null;
     }
     if (captureCtxRef.current && captureCtxRef.current.state !== 'closed') {
       captureCtxRef.current.close().catch(() => undefined);
@@ -136,34 +139,49 @@ export default function MicSelector({
   }, []);
 
   // The LiveWaveform opens the selected-device stream (single capture). When
-  // it becomes ready we tap the same stream with a ScriptProcessorNode to
-  // capture sequential, non-overlapping PCM frames — the only format this
-  // AVMedia build can play back through createBufferSource.
+  // it becomes ready we tap the same stream with the shared PCM tap
+  // (AudioWorkletNode, ScriptProcessorNode fallback) to capture sequential,
+  // non-overlapping PCM frames — the only format this AVMedia build can play
+  // back through createBufferSource.
   const handleStreamReady = React.useCallback(
     (stream: MediaStream) => {
       streamRef.current = stream;
       pcmAccumRef.current = [];
       teardownPlayback();
       teardownCapture();
+      capturingRef.current = true;
       try {
         const ctx = new AudioContext({ sampleRate: 24000 });
         captureCtxRef.current = ctx;
         sampleRateRef.current = ctx.sampleRate;
-        const source = ctx.createMediaStreamSource(stream);
-        const bufferSize = 4096;
-        const processor = ctx.createScriptProcessor(bufferSize, 1, 1);
-        scriptProcessorRef.current = processor;
 
-        processor.onaudioprocess = (e: AudioProcessingEvent) => {
-          const input = e.inputBuffer.getChannelData(0);
-          for (let i = 0; i < input.length; i++) {
-            pcmAccumRef.current.push(input[i]);
-          }
-        };
-
-        source.connect(processor);
-        processor.connect(ctx.destination);
-        setCheckState('recording');
+        // createPcmTap owns the graph: source → worklet → zero-gain →
+        // destination (silent; keeps the context rendering).
+        void createPcmTap(
+          ctx,
+          stream,
+          (frames) => {
+            const accum = pcmAccumRef.current;
+            for (let i = 0; i < frames.length; i++) {
+              accum.push(frames[i]);
+            }
+          },
+          { flushFrames: 4096 },
+        )
+          .then((tap) => {
+            // The waveform may have been torn down while addModule awaited.
+            if (!capturingRef.current || captureCtxRef.current !== ctx) {
+              tap.disconnect();
+              return;
+            }
+            tapRef.current = tap;
+            setCheckState('recording');
+          })
+          .catch(() => {
+            if (!capturingRef.current) return;
+            teardownCapture();
+            setCheckState('idle');
+          });
       } catch {
         teardownCapture();
         setCheckState('idle');
@@ -177,7 +195,7 @@ export default function MicSelector({
   // duplicate calls (the LiveWaveform cleanup fires its own onStreamEnd after
   // we tear the stream down here) by only finalising when still recording.
   const handleStreamEnd = React.useCallback(() => {
-    if (scriptProcessorRef.current === null) return;
+    if (!capturingRef.current) return;
     teardownCapture();
     pcmRef.current = new Float32Array(pcmAccumRef.current);
     pcmAccumRef.current = [];

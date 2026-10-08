@@ -21,6 +21,8 @@ runs with no cloud credentials.
 | Telemetry | `telemetry.png` | Settings → Performance: `PIPELINE_DEBUG` per-utterance timings |
 | Architecture | `architecture.png` (from `architecture.svg`) | Full pipeline diagram |
 | Video | `docs/demo/demo-v1.0.0.mp4` | 48 s, 1920×1080, 30 fps, silent |
+| Social launch video | `docs/demo/launch-v1.1.0-social.mp4` | 28 s, 1080×1920, 30 fps, caption-led and silent |
+| Social poster | `docs/images/launch-v1.1.0-social-poster.png` | Opening frame for the social launch video |
 
 ## How it works
 
@@ -61,3 +63,19 @@ bash demo/video/build-video.sh
 
 Outputs: `demo/out/` (git-ignored intermediates) and the committed assets in
 `docs/images/` + `docs/demo/`.
+
+## Regenerate the vertical social launch video
+
+The social launch video uses the same app assets by default. To feature a fresh
+set of locally captured release screenshots without adding the source captures
+to the repository, provide their directory at render time:
+
+```bash
+SOCIAL_SCREENSHOTS_DIR="/path/to/screenshots" npm run demo:launch-video
+```
+
+When present, the composer uses these names: `Screenshot 2026-10-08 at
+11.33.32 AM.png` (setup), `Screenshot 2026-10-08 at 11.33.47 AM.png` (live
+translation), and `Screenshot 2026-10-08 at 11.34.25 AM.png` (captions). If
+they are unavailable, it falls back to the committed demo screenshots. The
+output is silent so platform-native music can be added at posting time.

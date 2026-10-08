@@ -1,6 +1,20 @@
 # Current State
 
-_Last updated: 2026-10-05_
+_Last updated: 2026-10-08_
+
+## Launch media and meeting validation (2026-10-08)
+
+- Manual validation was completed by the maintainer in **Google Meet** and
+  **Zoom**. The next release-facing asset is now available as
+  `docs/demo/launch-v1.1.0-social.mp4`: a 28-second, 1080×1920, caption-led,
+  silent social launch video using current app screenshots. Its opening poster
+  is `docs/images/launch-v1.1.0-social-poster.png`.
+- The reusable renderer is `demo/src/compose-social-launch.mjs`; the ffmpeg
+  builder is `demo/video/build-social-launch.sh`; `npm run demo:launch-video`
+  rebuilds the asset. Release screenshots can be supplied locally through
+  `SOCIAL_SCREENSHOTS_DIR` without committing their source files.
+- No product or architecture behavior changed. The video is silent by design;
+  add a platform-native music track when publishing if wanted.
 
 ## Improvement pass: overlay window, transcript export, device persistence, AudioWorklet, validation prep (2026-10-05)
 

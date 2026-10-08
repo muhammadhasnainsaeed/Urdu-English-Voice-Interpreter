@@ -3,6 +3,22 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-10-08 — v1.1.0 vertical social launch video
+
+- **Added** `docs/demo/launch-v1.1.0-social.mp4`: a 28.2-second,
+  1080×1920, 30 fps, caption-led and silent launch video for social platforms,
+  plus `docs/images/launch-v1.1.0-social-poster.png`.
+- **Added** the reusable renderer (`demo/src/compose-social-launch.mjs`) and
+  ffmpeg builder (`demo/video/build-social-launch.sh`), exposed through
+  `npm run demo:launch-video`. `SOCIAL_SCREENSHOTS_DIR` optionally uses fresh
+  local screenshots without adding their originals to the repository;
+  committed demo assets remain the fallback.
+- **Documentation**: README, demo instructions, and current state now link to
+  the launch asset and its reproducible render path. The maintainer recorded
+  manual validation in Google Meet and Zoom.
+- **Validation**: built the video successfully with the real v1.1.0 app
+  screenshots; verified H.264 output at 1080×1920, 30 fps, duration 28.2 s.
+
 ## 2026-10-05 — floating captions overlay, transcript export, device persistence, AudioWorklet capture, meeting validation protocol
 
 Five-item improvement pass (execution order 3 → 2 → 4 → 1 → 5). No new npm

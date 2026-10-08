@@ -18,6 +18,7 @@
     "type-check": "tsc --noEmit",
     "test": "npx tsx --test tests/*.test.ts",
     "preflight": "npx tsx scripts/preflight.ts",
+    "demo:launch-video": "npm run build && ./node_modules/.bin/electron demo/src/compose-social-launch.mjs && bash demo/video/build-social-launch.sh",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.{js,ts}\" \"tests/**/*.ts\" \"packages/**/*.ts\" *.config.js *.config.mjs",

@@ -23,7 +23,7 @@ Never assume previous agent work is complete. Verify it from the code.
 
 ## Project
 
-Real-Time Urdu → English Voice Interpreter for macOS.
+Real-time multilingual voice interpreter for macOS (Urdu → English by default).
 
 User speaks Urdu during Zoom, Google Meet, Microsoft Teams, etc.
 
@@ -39,7 +39,12 @@ Microphone
 → Meeting App
 ```
 
-Client/incoming audio must NOT be translated.
+The maintainer explicitly expanded scope on 2026-10-26: selectable source/target
+languages and opt-in client/incoming translation are supported. The two audio
+directions must use independent recognition/translation/synthesis instances and
+separate virtual cables. Incoming translated audio goes only to the selected
+physical listening device; it must never enter the outgoing meeting microphone.
+See `docs/two-way-translation.md` for setup and validation limits.
 
 ## Tech Stack
 
@@ -120,7 +125,7 @@ Complete. See `docs/CURRENT_STATE.md` and `docs/ARCHITECTURE.md`.
 ## Do NOT implement yet
 
 - Virtual microphone routing (actual meeting-app integration beyond device targeting)
-- Meeting-app integration
+- Automatic meeting-app control or native meeting SDK integration (manual device routing is supported)
 - Authentication
 - Database
 - Backend server

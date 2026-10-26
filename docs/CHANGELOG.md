@@ -3,6 +3,51 @@
 Every agent working on this repository MUST append a dated entry describing
 their changes after finishing work.
 
+## 2026-10-26 — Audio disturbance fixes, language selection and opt-in two-way translation
+
+- **Fixed streaming playback gaps:** added reusable renderer
+  `audio/pcmPlayback.ts` with audio-clock scheduling, a 60 ms initial cushion,
+  per-buffer formats, split PCM-frame carry, early output preparation, complete
+  scheduled-source cancellation and async generation guards. Failed requested
+  sinks/disconnected devices produce an error instead of speaker fallback.
+- **Fixed clipped meeting speech:** actual meeting pipelines retain live
+  interim captions but speak final translations in order. The TTS conversation
+  policy counts accepted speech through playback completion and reports backlog
+  overflow without silently dropping older accepted sentences. Legacy/latest
+  policy remains available to existing diagnostic tests.
+- **Added multilingual providers:** new `packages/shared/languages.ts` defines
+  12 supported choices. STT, Translator/MyMemory, Whisper and TTS receive the
+  selected locales/pair; same-language pairs bypass translation. Voice catalogs
+  filter by target language and local `say` requires an installed matching
+  voice. `say.stop()` kills only its own children, preserving the other leg.
+- **Added independent incoming pipeline:** new `services/incoming.ts`,
+  `ipc/incoming.ts`, `useIncoming.ts`, dedicated `incoming-output:*` channels
+  and one playback queue per direction. Incoming telemetry is isolated;
+  credentials stay in main. Shared stop cleanup and startup generations protect
+  restart; failure rollback recovers the renderer Start button.
+- **Added Home controls and captions:** four independent language selectors,
+  opt-in client translation, explicit incoming cable/headphones and validation
+  of separate physical/virtual routes (`audio/conversationRouting.ts`). Settings
+  lock audio/voice/setup changes during a meeting. Start/Stop remains at the top;
+  language/audio setup follows captions. Home uses the existing mic level,
+  eliminating a second capture for its waveform.
+- **Updated preferences, transcript and overlay:** persisted language/return
+  devices, language/direction metadata, independent lane pairing, correct text
+  direction, and captions-only overlay broadcasts for incoming speech.
+- **Documentation:** updated AGENTS scope per the maintainer request, current
+  state, architecture, README and new `docs/two-way-translation.md` with device
+  mapping and the manual acoustic/meeting protocol. No release/version change,
+  installed-app replacement, driver install or device-setting change.
+- **Validation:** type-check/build/format pass; lint has 0 errors and the same
+  14 existing warnings; full direct Node test suite has **215 passing entries**.
+  `npm test`'s tsx CLI socket is disallowed in the restricted runner; identical
+  tests pass with `node --import tsx --test tests/*.test.ts`. Electron smoke
+  validates real preload/UI and failed-route recovery with fake capture.
+  Real Azure Urdu ↔ Turkish translation, non-silent streamed neural speech and
+  synthetic matching-locale STT round trips pass. Real meeting routing and
+  subjective glitch/echo acceptance still require headphones, a second isolated
+  virtual cable and another participant.
+
 ## 2026-10-08 — v1.1.0 vertical social launch video
 
 - **Added** `docs/demo/launch-v1.1.0-social.mp4`: a 28.2-second,

@@ -17,6 +17,7 @@
  */
 
 import type { SttHandlers, SttProvider } from '../provider';
+import { requireLanguage } from '@shared/languages';
 
 const SENTENCE = 'آپ کی آواز سنائی دے رہی ہے';
 const WORDS = SENTENCE.split(' ');
@@ -24,7 +25,11 @@ const WORDS = SENTENCE.split(' ');
 // STEP_MS. The full cycle (5 words) completes in ~1 s.
 const STEP_MS = 250;
 
-export function createMockSttProvider(): SttProvider {
+export function createMockSttProvider(language: string = 'ur'): SttProvider {
+  const code = requireLanguage(language).code;
+  const sentence =
+    code === 'ur' ? SENTENCE : code === 'tr' ? 'Sesinizi duyabiliyorum' : 'I can hear your voice';
+  const words = code === 'ur' ? WORDS : sentence.split(' ');
   let handlers: SttHandlers | null = null;
   let timer: NodeJS.Timeout | null = null;
   let cycleRunning = false;
@@ -64,8 +69,8 @@ export function createMockSttProvider(): SttProvider {
           return;
         }
         step += 1;
-        const text = WORDS.slice(0, step).join(' ');
-        if (step >= WORDS.length) {
+        const text = words.slice(0, step).join(' ');
+        if (step >= words.length) {
           handlers.onFinal(text);
           cycleRunning = false;
           return;

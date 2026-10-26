@@ -18,6 +18,7 @@
 
 import { execFile } from 'child_process';
 import type { TtsVoice, VoiceGender } from '@shared/index';
+import { requireLanguage, SUPPORTED_LANGUAGES, voiceMatchesLanguage } from '@shared/languages';
 
 /**
  * Curated catalog of real, documented Azure Neural voices. These are well-known
@@ -49,6 +50,13 @@ const AZURE_VOICES: Array<{ id: string; gender: Exclude<VoiceGender, 'unknown'>;
   { id: 'en-IN-PrabhatNeural', gender: 'male', name: 'Prabhat (IN)' },
   { id: 'en-CA-ClaraNeural', gender: 'female', name: 'Clara (CA)' },
   { id: 'en-CA-LiamNeural', gender: 'male', name: 'Liam (CA)' },
+  ...SUPPORTED_LANGUAGES.filter((language) => language.code !== 'en').map((language) => ({
+    id: language.defaultVoiceId,
+    gender: 'female' as const,
+    name: `${language.defaultVoiceId.split('-').slice(2).join('-').replace('Neural', '')} (${language.name})`,
+  })),
+  { id: 'tr-TR-AhmetNeural', gender: 'male', name: 'Ahmet (Turkish)' },
+  { id: 'ur-PK-AsadNeural', gender: 'male', name: 'Asad (Urdu)' },
 ];
 
 /**
@@ -56,7 +64,7 @@ const AZURE_VOICES: Array<{ id: string; gender: Exclude<VoiceGender, 'unknown'>;
  * (`en-US-JennyNeural` → "US", `en-IN-PrabhatNeural` → "IN").
  */
 export function countryFromAzureId(id: string): string {
-  const match = /^en-([A-Z]{2})-/.exec(id);
+  const match = /^[a-z]{2,3}-([A-Z]{2})-/.exec(id);
   return match ? match[1] : 'unknown';
 }
 
@@ -98,9 +106,30 @@ export function parseSayVoices(output: string): TtsVoice[] {
       localeIndex >= 0 && /^[a-z]{2}_([A-Z]{2})$/.exec(tokens[localeIndex])
         ? tokens[localeIndex].slice(3)
         : 'unknown';
-    voices.push({ id: name, name, gender: 'unknown', source: 'system', country });
+    const locale = localeIndex >= 0 ? tokens[localeIndex].replace('_', '-') : undefined;
+    voices.push({
+      id: name,
+      name,
+      gender: 'unknown',
+      source: 'system',
+      country,
+      ...(locale ? { locale } : {}),
+    });
   }
   return voices;
+}
+
+export function selectSystemVoice(voices: TtsVoice[], voiceId: string | undefined, language: string): string {
+  const code = requireLanguage(language).ttsLocale.split('-')[0];
+  const matching = voices.filter(
+    (voice) => voice.source === 'system' && voice.locale?.split('-')[0] === code,
+  );
+  const selected = matching.find((voice) => voice.id === voiceId?.trim()) ?? matching[0];
+  if (!selected)
+    throw new Error(
+      `No macOS voice is installed for ${language}. Install a matching system voice or configure TTS_PROVIDER=azure.`,
+    );
+  return selected.id;
 }
 
 function runSayList(): Promise<string> {
@@ -142,8 +171,12 @@ export function resolveTtsProviderName(
 export async function listVoices(
   development: boolean,
   provider: TtsProviderName,
+  language?: string,
 ): Promise<{ voices: TtsVoice[]; development: boolean; provider: TtsProviderName }> {
   const voices: TtsVoice[] = [];
+  const languageCode = language ? requireLanguage(language).ttsLocale.split('-')[0] : undefined;
+  const filtered = () =>
+    languageCode ? voices.filter((voice) => voice.locale?.split('-')[0] === languageCode) : voices;
 
   if (provider === 'say') {
     // macOS system voices are the only voices the `say` synthesizer can use.
@@ -153,7 +186,7 @@ export async function listVoices(
     } catch {
       // macOS `say` enumeration failed — return an empty system list.
     }
-    return { voices, development, provider };
+    return { voices: filtered(), development, provider };
   }
 
   if (provider === 'azure') {
@@ -164,6 +197,7 @@ export async function listVoices(
         gender: v.gender,
         source: 'azure' as const,
         country: countryFromAzureId(v.id),
+        locale: v.id.split('-').slice(0, 2).join('-'),
       })),
     );
     if (development) {
@@ -174,7 +208,7 @@ export async function listVoices(
         // macOS `say` enumeration failed — Azure voices still enumerated.
       }
     }
-    return { voices, development, provider };
+    return { voices: filtered(), development, provider };
   }
 
   // mock: Azure voices only (mock is a dev/testing synthesizer with no audio).
@@ -186,9 +220,10 @@ export async function listVoices(
         gender: v.gender,
         source: 'azure' as const,
         country: countryFromAzureId(v.id),
+        locale: v.id.split('-').slice(0, 2).join('-'),
       })),
     );
-    return { voices, development, provider };
+    return { voices: filtered(), development, provider };
   }
 
   return { voices, development, provider };
@@ -202,15 +237,21 @@ export async function listVoices(
  * In development the stored id is passed through so dev/testing system voices
  * work, but an unknown id still falls back to the Azure default.
  */
-export function normalizeSelectedVoiceId(storedId: string | null | undefined, development: boolean): string {
+export function normalizeSelectedVoiceId(
+  storedId: string | null | undefined,
+  development: boolean,
+  language?: string,
+): string {
+  const fallback = language ? requireLanguage(language).defaultVoiceId : DEFAULT_TTS_VOICE_ID;
   const raw = storedId?.trim();
-  if (!raw) return DEFAULT_TTS_VOICE_ID;
+  if (!raw) return fallback;
+  if (language && voiceIsAzure(raw) && !voiceMatchesLanguage(raw, language)) return fallback;
   if (development) {
     // Accept any non-empty id in dev (azure or a macOS system voice).
     return raw;
   }
   // Production: only curated Azure ids are allowed.
-  return AZURE_VOICE_IDS.includes(raw) ? raw : DEFAULT_TTS_VOICE_ID;
+  return AZURE_VOICE_IDS.includes(raw) ? raw : fallback;
 }
 
 /**

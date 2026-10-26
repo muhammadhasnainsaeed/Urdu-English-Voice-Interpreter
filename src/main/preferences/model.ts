@@ -17,6 +17,7 @@
  */
 
 import type { AppPreferences } from '@shared/index';
+import { normalizeConversationSettings } from '@shared/conversation';
 
 /**
  * Pure preferences parsing/merging helpers.
@@ -65,6 +66,9 @@ export function parseStoredPreferences(raw: string): AppPreferences {
     ttsVoiceId: normalizeId(record.ttsVoiceId),
     micDeviceId: normalizeId(record.micDeviceId),
     outputDeviceId: normalizeId(record.outputDeviceId),
+    ...(record.conversation !== undefined
+      ? { conversation: normalizeConversationSettings(record.conversation) }
+      : {}),
   };
 }
 
@@ -89,6 +93,9 @@ export function mergePreferences(current: AppPreferences, patch: Partial<AppPref
   }
   if (patch.outputDeviceId !== undefined) {
     next.outputDeviceId = normalizeId(patch.outputDeviceId);
+  }
+  if (patch.conversation !== undefined) {
+    next.conversation = normalizeConversationSettings(patch.conversation);
   }
   return next;
 }

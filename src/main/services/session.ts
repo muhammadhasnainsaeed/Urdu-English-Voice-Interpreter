@@ -32,6 +32,9 @@ import { sttSession } from './stt/manager';
 import { translationManager } from '../ipc/translation';
 import { ttsManager } from '../ipc/tts';
 import { audioOutputManager } from '../ipc/audio-output';
+import { DEFAULT_CONVERSATION } from '@shared/conversation';
+import { requireLanguage } from '@shared/languages';
+import type { ConversationSettings } from '@shared/index';
 
 function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -144,9 +147,9 @@ export class SessionManager {
         'english' in event ? (event as { english: string }).english : '',
       );
       this.sendToRenderer('translation:event', event);
-      if (event.type === 'translation:text') {
+      if (event.type === 'translation:text' && !event.interim) {
         log('TRANSLATION', 'chaining to TTS:', (event as { english: string }).english);
-        ttsManager.onTranslationText(event.english, event.interim === true);
+        ttsManager.onTranslationText(event.english, false);
       }
     };
   }
@@ -169,7 +172,7 @@ export class SessionManager {
    * Start the meeting session. Starts audio output → TTS → translation.
    * STT is started separately by the renderer (needs mic stream).
    */
-  async start(): Promise<SessionStartResult> {
+  async start(conversation: ConversationSettings = DEFAULT_CONVERSATION): Promise<SessionStartResult> {
     if (this.status === 'active' || this.status === 'starting') {
       return { ok: false, message: 'Session is already active.' };
     }
@@ -212,6 +215,7 @@ export class SessionManager {
         audioOutputManager,
         undefined,
         this.voiceIdResolver() ?? undefined,
+        requireLanguage(conversation.targetLanguage).ttsLocale,
       );
       if (!ttsResult.ok) {
         throw new Error(ttsResult.message);
@@ -237,7 +241,10 @@ export class SessionManager {
     // Stage 3: Translation
     try {
       this.emitStageChange('translation', 'starting');
-      const translationResult = await translationManager.start(this.createTranslationEmit());
+      const translationResult = await translationManager.start(this.createTranslationEmit(), {
+        sourceLanguage: conversation.sourceLanguage,
+        targetLanguage: conversation.targetLanguage,
+      });
       if (!translationResult.ok) {
         throw new Error(translationResult.message);
       }

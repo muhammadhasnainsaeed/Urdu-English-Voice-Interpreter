@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { spawn } from 'child_process';
+import { spawn, type ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -72,6 +72,8 @@ function parseWavFormat(header: Buffer): {
 
 export function createSayTtsProvider(voiceId?: string): TtsProvider {
   const voice = voiceId?.trim() || 'Samantha';
+  // Each direction owns its processes, so stopping one cannot kill another.
+  const children = new Set<ChildProcess>();
 
   return {
     name: 'say',
@@ -97,6 +99,7 @@ export function createSayTtsProvider(voiceId?: string): TtsProvider {
             text,
           ]);
 
+          children.add(child);
           const onAbort = () => {
             // Kill the synthesizer promptly; say plays nothing itself here.
             child.kill('SIGKILL');
@@ -105,10 +108,12 @@ export function createSayTtsProvider(voiceId?: string): TtsProvider {
           signal?.addEventListener('abort', onAbort, { once: true });
 
           child.on('error', (err) => {
+            children.delete(child);
             signal?.removeEventListener('abort', onAbort);
             reject(err);
           });
           child.on('close', (code) => {
+            children.delete(child);
             signal?.removeEventListener('abort', onAbort);
             if (code === 0) resolve();
             else reject(new Error(`say exited with code ${code}`));
@@ -136,15 +141,8 @@ export function createSayTtsProvider(voiceId?: string): TtsProvider {
     },
 
     async stop(): Promise<void> {
-      try {
-        await new Promise<void>((resolve) => {
-          const child = spawn('killall', ['say']);
-          child.on('close', () => resolve());
-          child.on('error', () => resolve());
-        });
-      } catch {
-        // say may not be running.
-      }
+      for (const child of children) child.kill('SIGKILL');
+      children.clear();
     },
   };
 }

@@ -19,6 +19,7 @@
 import type { TranslationProvider } from '../provider';
 import { RateLimitError } from '../provider';
 import { parseWindowMs } from '../config';
+import { resolveTranslationLanguages, type TranslationLanguages } from '@shared/languages';
 
 /**
  * Cooldown used when MyMemory returns HTTP 429 without a usable Retry-After.
@@ -32,7 +33,8 @@ function errMessage(err: unknown): string {
   return String(err);
 }
 
-export function createMyMemoryProvider(): TranslationProvider {
+export function createMyMemoryProvider(languages: TranslationLanguages = {}): TranslationProvider {
+  const { sourceLanguage, targetLanguage } = resolveTranslationLanguages(languages);
   const fallbackCooldownMs = parseWindowMs(
     process.env.MYMEMORY_429_COOLDOWN_MS,
     'MYMEMORY_429_COOLDOWN_MS',
@@ -67,7 +69,7 @@ export function createMyMemoryProvider(): TranslationProvider {
   }
 
   async function request(text: string): Promise<string> {
-    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=ur|en`;
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${encodeURIComponent(sourceLanguage)}|${encodeURIComponent(targetLanguage)}`;
 
     let resp: Response;
     try {
@@ -106,6 +108,7 @@ export function createMyMemoryProvider(): TranslationProvider {
     name: 'mymemory',
 
     async translate(text: string): Promise<string> {
+      if (sourceLanguage === targetLanguage) return text;
       const now = Date.now();
       if (now < cooldownUntil) {
         const remainingS = Math.ceil((cooldownUntil - now) / 1000);

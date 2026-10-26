@@ -21,6 +21,7 @@ import type { TranslationProvider } from './provider';
 import { RateLimitError, createTranslationProvider } from './provider';
 import { parseWindowMs } from './config';
 import { pipelineTelemetry } from '../telemetry/pipeline-telemetry';
+import { resolveTranslationLanguages, type TranslationLanguages } from '@shared/languages';
 
 function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -55,6 +56,9 @@ export class TranslationManager {
   private provider: TranslationProvider | null = null;
   private emit: ((event: TranslationEvent) => void) | null = null;
   private active: boolean = false;
+  private starting = false;
+  private generation = 0;
+  private languages = resolveTranslationLanguages();
   private processing: boolean = false;
   private pendingTexts: string[] = [];
   private pendingCount: number = 0;
@@ -94,7 +98,10 @@ export class TranslationManager {
   private interimSuperseded: boolean = false;
   private lastInterimKey: string = '';
 
-  constructor(dedupeWindowMs?: number) {
+  constructor(
+    dedupeWindowMs?: number,
+    private readonly telemetryEnabled: boolean = true,
+  ) {
     if (dedupeWindowMs !== undefined) {
       this.dedupeWindowMs = dedupeWindowMs;
     } else {
@@ -124,12 +131,24 @@ export class TranslationManager {
     return this.active;
   }
 
-  async start(emit: (event: TranslationEvent) => void): Promise<TranslationStartResult> {
-    if (this.active) {
-      return { ok: false, message: 'Translation is already running.' };
-    }
+  async start(
+    emit: (event: TranslationEvent) => void,
+    languages: TranslationLanguages = {},
+  ): Promise<TranslationStartResult> {
+    if (this.active || this.starting) return { ok: false, message: 'Translation is already running.' };
+    const generation = ++this.generation;
+    this.starting = true;
 
-    const provider = await createTranslationProvider();
+    let provider: TranslationProvider | null;
+    try {
+      this.languages = resolveTranslationLanguages(languages);
+      provider = await createTranslationProvider(this.languages);
+    } catch (err) {
+      if (generation === this.generation) this.starting = false;
+      return { ok: false, message: errMessage(err) };
+    }
+    if (generation !== this.generation) return { ok: false, message: 'Translation start was canceled.' };
+    this.starting = false;
     if (!provider) {
       return {
         ok: false,
@@ -187,7 +206,7 @@ export class TranslationManager {
       if (key === this.lastFinalKey && now - this.lastFinalTime < this.dedupeWindowMs) {
         log(`DEDUPED final (within ${this.dedupeWindowMs}ms):`, text);
         this.lastFinalTime = now;
-        pipelineTelemetry.markSttDeduped();
+        if (this.telemetryEnabled) pipelineTelemetry.markSttDeduped();
         return;
       }
       this.lastFinalKey = key;
@@ -198,7 +217,7 @@ export class TranslationManager {
     if (this.pendingCount >= TranslationManager.MAX_PENDING) {
       this.pendingTexts.shift();
       this.pendingCount--;
-      pipelineTelemetry.markBackpressureDropped();
+      if (this.telemetryEnabled) pipelineTelemetry.markBackpressureDropped();
     }
 
     this.pendingTexts.push(text);
@@ -276,7 +295,7 @@ export class TranslationManager {
       const english = await provider!.translate(text);
       log('interim result:', english);
       if (this.active && this.emit === emit && !this.interimSuperseded) {
-        emit?.({ type: 'translation:text', urdu: text, english, interim: true });
+        emit?.({ type: 'translation:text', urdu: text, english, interim: true, ...this.languages });
       } else {
         log('interim result dropped (superseded/inactive)');
       }
@@ -291,6 +310,8 @@ export class TranslationManager {
   }
 
   stop(): void {
+    this.generation++;
+    this.starting = false;
     this.provider = null;
     this.emit = null;
     this.active = false;
@@ -306,7 +327,7 @@ export class TranslationManager {
     this.interimInFlight = false;
     this.interimSuperseded = false;
     this.lastInterimKey = '';
-    pipelineTelemetry.resetPipeline();
+    if (this.telemetryEnabled) pipelineTelemetry.resetPipeline();
   }
 
   private async processQueue(): Promise<void> {
@@ -324,12 +345,12 @@ export class TranslationManager {
       if (!emit || !provider) break;
 
       try {
-        pipelineTelemetry.beginTranslation();
+        if (this.telemetryEnabled) pipelineTelemetry.beginTranslation();
         const english = await provider.translate(text);
         log('translate result:', english);
-        pipelineTelemetry.endTranslationSuccess(english);
+        if (this.telemetryEnabled) pipelineTelemetry.endTranslationSuccess(english);
         if (this.active && this.emit === emit) {
-          emit({ type: 'translation:text', urdu: text, english });
+          emit({ type: 'translation:text', urdu: text, english, ...this.languages });
         }
       } catch (err) {
         if (err instanceof RateLimitError) {
@@ -337,7 +358,7 @@ export class TranslationManager {
           // the failed item is DROPPED (not queued/retried), so cooldown
           // expiry never replays stale transcripts.
           log('rate-limited:', errMessage(err));
-          pipelineTelemetry.endTranslationRateLimited();
+          if (this.telemetryEnabled) pipelineTelemetry.endTranslationRateLimited();
           if (this.active && this.emit === emit) {
             emit({
               type: 'translation:rate-limited',
@@ -346,7 +367,7 @@ export class TranslationManager {
           }
         } else {
           log('translate ERROR:', errMessage(err));
-          pipelineTelemetry.endTranslationError();
+          if (this.telemetryEnabled) pipelineTelemetry.endTranslationError();
           if (this.active && this.emit === emit) {
             emit({ type: 'translation:error', message: errMessage(err) });
           }

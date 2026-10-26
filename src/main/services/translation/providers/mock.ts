@@ -17,6 +17,7 @@
  */
 
 import type { TranslationProvider } from '../provider';
+import { requireLanguage, resolveTranslationLanguages, type TranslationLanguages } from '@shared/languages';
 
 const MOCK_TRANSLATIONS: Record<string, string> = {
   ہیلو: 'Hello',
@@ -36,12 +37,23 @@ const MOCK_TRANSLATIONS: Record<string, string> = {
   'موسم اچھا ہے': 'The weather is nice',
 };
 
-export function createMockTranslationProvider(): TranslationProvider {
+export function createMockTranslationProvider(languages: TranslationLanguages = {}): TranslationProvider {
+  const { sourceLanguage, targetLanguage } = resolveTranslationLanguages(languages);
   return {
     name: 'mock',
 
     async translate(text: string): Promise<string> {
       const trimmed = text.trim();
+      if (sourceLanguage === targetLanguage) return trimmed;
+      if (sourceLanguage !== 'ur' || targetLanguage !== 'en') {
+        // Deliberately labelled fixture, never presented as a live translation.
+        const samples: Record<string, string> = {
+          en: 'I can hear your voice',
+          ur: 'آپ کی آواز سنائی دے رہی ہے',
+          tr: 'Sesinizi duyabiliyorum',
+        };
+        return `[Mock ${requireLanguage(targetLanguage).name}] ${samples[targetLanguage] ?? trimmed}`;
+      }
 
       if (MOCK_TRANSLATIONS[trimmed]) {
         return MOCK_TRANSLATIONS[trimmed];

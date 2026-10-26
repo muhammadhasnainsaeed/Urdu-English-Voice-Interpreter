@@ -41,22 +41,29 @@ export class RateLimitError extends Error {
   }
 }
 
-export async function createTranslationProvider(): Promise<TranslationProvider | null> {
+import { resolveTranslationLanguages, type TranslationLanguages } from '@shared/languages';
+
+export async function createTranslationProvider(
+  languages: TranslationLanguages = {},
+): Promise<TranslationProvider | null> {
+  const pair = resolveTranslationLanguages(languages);
+  if (pair.sourceLanguage === pair.targetLanguage)
+    return { name: 'passthrough', translate: async (text) => text };
   const providerName = (process.env.TRANSLATION_PROVIDER || 'mock').toLowerCase();
 
   if (providerName === 'mock') {
     const { createMockTranslationProvider } = await import('./providers/mock');
-    return createMockTranslationProvider();
+    return createMockTranslationProvider(pair);
   }
 
   if (providerName === 'mymemory') {
     const { createMyMemoryProvider } = await import('./providers/mymemory');
-    return createMyMemoryProvider();
+    return createMyMemoryProvider(pair);
   }
 
   if (providerName === 'azure') {
     const { createAzureTranslatorProvider } = await import('./providers/azure');
-    return createAzureTranslatorProvider();
+    return createAzureTranslatorProvider(pair);
   }
 
   return null;

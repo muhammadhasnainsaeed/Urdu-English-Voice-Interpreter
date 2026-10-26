@@ -195,11 +195,11 @@ function normalizeSamples(samples: Int16Array): Int16Array {
   return scaled;
 }
 
-function transcribeFile(wavPath: string): Promise<Segment[]> {
+function transcribeFile(wavPath: string, language: string): Promise<Segment[]> {
   return new Promise((resolve, reject) => {
     execFile(
       EXECUTABLE_PATH,
-      ['-m', MODEL_PATH, '-f', wavPath, '-l', LANGUAGE, '-t', String(THREADS), '-np'],
+      ['-m', MODEL_PATH, '-f', wavPath, '-l', language, '-t', String(THREADS), '-np'],
       { timeout: RUN_TIMEOUT_MS, maxBuffer: 2 * 1024 * 1024 },
       (error, stdout) => {
         if (error) {
@@ -217,7 +217,7 @@ function transcribeFile(wavPath: string): Promise<Segment[]> {
   });
 }
 
-export function createWhisperSttProvider(): SttProvider {
+export function createWhisperSttProvider(language: string = LANGUAGE): SttProvider {
   let handlers: SttHandlers | null = null;
   let pending: Int16Array[] = [];
   let pendingSamples = 0;
@@ -301,7 +301,7 @@ export function createWhisperSttProvider(): SttProvider {
     const tempFile = path.join(os.tmpdir(), `urdu-interpreter-whisper-${process.pid}-${++tempCounter}.wav`);
     try {
       await fs.writeFile(tempFile, encodeWav(normalizeSamples(input)));
-      const segments = await transcribeFile(tempFile);
+      const segments = await transcribeFile(tempFile, language);
       const kept = segments
         .filter((segment) => segment.endSec > overlapSec)
         .map((segment) => segment.text)

@@ -31,6 +31,8 @@ import { registerSystemIpc } from './ipc/system';
 import { registerPreferencesIpc } from './ipc/preferences';
 import { registerTranscriptIpc } from './ipc/transcript';
 import { registerOverlayIpc } from './ipc/overlay';
+import { registerIncomingIpc } from './ipc/incoming';
+import { incomingManager } from './services/incoming';
 import { getMainWindow, setMainWindow } from './windows';
 import { resolveTtsProviderName } from './services/tts/voices';
 import { pipelineTelemetry } from './services/telemetry/pipeline-telemetry';
@@ -118,7 +120,7 @@ function createWindow() {
     height: 680,
     minWidth: 420,
     minHeight: 560,
-    title: 'Urdu → English Interpreter',
+    title: 'Voice Interpreter',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -128,6 +130,8 @@ function createWindow() {
   setMainWindow(mainWindow);
 
   mainWindow.on('closed', () => {
+    sessionManager.emergencyStop();
+    void incomingManager.stop();
     mainWindow = null;
     setMainWindow(null);
   });
@@ -145,13 +149,16 @@ app.whenReady().then(() => {
   registerAudioIpc();
   registerAudioOutputIpc(getMainWindow);
   registerSttIpc((text, isFinal) => translationManager.onSttText(text, isFinal));
-  registerTranslationIpc((english, interim) => ttsManager.onTranslationText(english, interim));
+  registerTranslationIpc((english, interim) => {
+    if (!interim) ttsManager.onTranslationText(english, false);
+  });
   registerTtsIpc(getMainWindow, audioOutputManager);
   registerSessionIpc(getMainWindow);
   registerSystemIpc();
   registerPreferencesIpc();
   registerTranscriptIpc(getMainWindow);
   registerOverlayIpc();
+  registerIncomingIpc();
 
   // Pipeline telemetry (development-only): forward events to the renderer
   // and accept playback lifecycle reports for output latency timing.
@@ -206,6 +213,7 @@ app.whenReady().then(() => {
 // Graceful shutdown — stop all services before quitting
 app.on('before-quit', () => {
   sessionManager.emergencyStop();
+  void incomingManager.stop();
 });
 
 app.on('window-all-closed', () => {

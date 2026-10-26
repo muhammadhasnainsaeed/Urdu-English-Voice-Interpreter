@@ -18,13 +18,21 @@
 
 import type { AudioChunk } from '@shared/index';
 import type { TtsProvider } from '../provider';
+import { defaultVoiceForLanguage, voiceMatchesLanguage } from '@shared/languages';
 
-export function createAzureTtsProvider(voiceId?: string): TtsProvider {
+export function resolveAzureVoiceName(voiceId?: string, language?: string): string {
+  const requested = voiceId?.trim() || process.env.AZURE_TTS_VOICE;
+  return language
+    ? requested && voiceMatchesLanguage(requested, language)
+      ? requested
+      : defaultVoiceForLanguage(language)
+    : requested || 'en-US-JennyNeural';
+}
+
+export function createAzureTtsProvider(voiceId?: string, language?: string): TtsProvider {
   const key = process.env.AZURE_SPEECH_KEY;
   const region = process.env.AZURE_SPEECH_REGION;
-  // A selected voice takes precedence; otherwise fall back to the historical
-  // env-configured default, then the documented default.
-  const voiceName = voiceId?.trim() || process.env.AZURE_TTS_VOICE || 'en-US-JennyNeural';
+  const voiceName = resolveAzureVoiceName(voiceId, language);
 
   if (!key || !region) {
     throw new Error('Azure TTS requires AZURE_SPEECH_KEY and AZURE_SPEECH_REGION in .env.');

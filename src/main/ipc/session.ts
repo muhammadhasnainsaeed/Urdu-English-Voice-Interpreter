@@ -21,6 +21,9 @@ import type { SessionEvent } from '@shared/index';
 import { sessionManager } from '../services/session';
 import { resolveTtsVoiceId } from './tts';
 import { sendToRenderer } from '../windows';
+import { loadPreferences } from './preferences';
+import { normalizeConversationSettings } from '@shared/conversation';
+import { incomingManager } from '../services/incoming';
 
 export { sessionManager };
 
@@ -35,6 +38,11 @@ export function registerSessionIpc(getWindow: () => BrowserWindow | null): void 
 
   sessionManager.setEmitter(emit);
 
-  ipcMain.handle('session:start', () => sessionManager.start());
-  ipcMain.handle('session:stop', () => sessionManager.stop());
+  ipcMain.handle('session:start', () =>
+    sessionManager.start(normalizeConversationSettings(loadPreferences().conversation)),
+  );
+  ipcMain.handle('session:stop', async () => {
+    await incomingManager.stop();
+    await sessionManager.stop();
+  });
 }

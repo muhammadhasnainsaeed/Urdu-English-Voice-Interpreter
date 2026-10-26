@@ -17,8 +17,10 @@
  */
 
 import type { TranslationProvider } from '../provider';
+import { resolveTranslationLanguages, type TranslationLanguages } from '@shared/languages';
 
-export function createAzureTranslatorProvider(): TranslationProvider {
+export function createAzureTranslatorProvider(languages: TranslationLanguages = {}): TranslationProvider {
+  const { sourceLanguage, targetLanguage } = resolveTranslationLanguages(languages);
   const key = process.env.AZURE_TRANSLATOR_KEY;
   const region = process.env.AZURE_TRANSLATOR_REGION;
   const endpoint = process.env.AZURE_TRANSLATOR_ENDPOINT || 'https://api.cognitive.microsofttranslator.com';
@@ -31,7 +33,8 @@ export function createAzureTranslatorProvider(): TranslationProvider {
     name: 'azure',
 
     async translate(text: string): Promise<string> {
-      const url = `${endpoint.replace(/\/+$/, '')}/translate?api-version=3.0&from=ur&to=en`;
+      if (sourceLanguage === targetLanguage) return text;
+      const url = `${endpoint.replace(/\/+$/, '')}/translate?api-version=3.0&from=${encodeURIComponent(sourceLanguage)}&to=${encodeURIComponent(targetLanguage)}`;
 
       const resp = await fetch(url, {
         method: 'POST',

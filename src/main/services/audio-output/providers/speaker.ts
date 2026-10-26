@@ -20,21 +20,24 @@ import type { BrowserWindow } from 'electron';
 import type { AudioChunk } from '@shared/index';
 import type { AudioOutputProvider } from '../provider';
 
-export function createSystemSpeakerOutput(getWindow: () => BrowserWindow | null): AudioOutputProvider {
+export function createSystemSpeakerOutput(
+  getWindow: () => BrowserWindow | null,
+  channelPrefix = 'audio-output',
+): AudioOutputProvider {
   return {
     name: 'speaker',
 
     async start(): Promise<void> {
       const win = getWindow();
       if (win && !win.isDestroyed()) {
-        win.webContents.send('audio-output:start');
+        win.webContents.send(`${channelPrefix}:start`);
       }
     },
 
     async writeAudio(chunk: AudioChunk): Promise<void> {
       const win = getWindow();
       if (win && !win.isDestroyed()) {
-        win.webContents.send('audio-output:audio', {
+        win.webContents.send(`${channelPrefix}:audio`, {
           data: chunk.data,
           format: chunk.format,
           playbackId: chunk.playbackId ?? null,
@@ -47,14 +50,14 @@ export function createSystemSpeakerOutput(getWindow: () => BrowserWindow | null)
     cancelPlayback(): void {
       const win = getWindow();
       if (win && !win.isDestroyed()) {
-        win.webContents.send('audio-output:cancel');
+        win.webContents.send(`${channelPrefix}:cancel`);
       }
     },
 
     async stop(): Promise<void> {
       const win = getWindow();
       if (win && !win.isDestroyed()) {
-        win.webContents.send('audio-output:stop');
+        win.webContents.send(`${channelPrefix}:stop`);
       }
     },
   };

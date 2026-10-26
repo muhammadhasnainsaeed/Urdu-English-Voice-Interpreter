@@ -93,6 +93,7 @@ function DiagnosticsView({ items }: { items: DiagnosticsItem[] }) {
 }
 
 interface SettingsScreenProps {
+  configurationLocked?: boolean;
   onBack: () => void;
   onRunSetupAgain: () => void;
   onResetConfiguration: () => void;
@@ -172,11 +173,19 @@ export default function SettingsScreen(props: SettingsScreenProps) {
           className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4"
           aria-label={`${active.label} settings`}
         >
+          {props.configurationLocked && ['audio', 'voice', 'setup'].includes(activeSection) && (
+            <p className="mb-3 text-xs text-muted-foreground">
+              Stop the meeting to change audio devices or voices.
+            </p>
+          )}
           {activeSection === 'audio' && (
-            <div className="flex flex-col gap-3">
+            <fieldset
+              disabled={props.configurationLocked}
+              className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0 disabled:opacity-60"
+            >
               <SectionHeading
                 title="Audio"
-                description="Choose where to capture your voice and where English audio plays."
+                description="Choose your microphone and the voice output sent to the meeting."
               />
               <MicSelector
                 permission={props.permission}
@@ -192,15 +201,15 @@ export default function SettingsScreen(props: SettingsScreenProps) {
                 selectedDeviceId={props.audioOutputSelectedId}
                 onSelect={props.onSelectAudioOutput}
               />
-            </div>
+            </fieldset>
           )}
 
           {activeSection === 'voice' && (
-            <div className="flex flex-col gap-3">
-              <SectionHeading
-                title="Voice"
-                description="Choose the English voice used to speak translations aloud."
-              />
+            <fieldset
+              disabled={props.configurationLocked}
+              className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0 disabled:opacity-60"
+            >
+              <SectionHeading title="Voice" description="Choose a voice for the language the client hears." />
               <TtsPanel
                 status={props.ttsStatus}
                 error={props.ttsError}
@@ -213,7 +222,7 @@ export default function SettingsScreen(props: SettingsScreenProps) {
                 onSelectVoice={props.onSelectVoice}
                 onTestVoice={props.onTestVoice}
               />
-            </div>
+            </fieldset>
           )}
 
           {activeSection === 'appearance' && (
@@ -281,7 +290,10 @@ export default function SettingsScreen(props: SettingsScreenProps) {
           )}
 
           {activeSection === 'setup' && (
-            <div className="flex flex-col gap-3">
+            <fieldset
+              disabled={props.configurationLocked}
+              className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0 disabled:opacity-60"
+            >
               <SectionHeading
                 title="Setup"
                 description="Review your setup or run first-launch setup again."
@@ -310,7 +322,7 @@ export default function SettingsScreen(props: SettingsScreenProps) {
                   Reset configuration
                 </Button>
               </div>
-            </div>
+            </fieldset>
           )}
         </main>
       </div>

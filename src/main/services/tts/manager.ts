@@ -24,6 +24,8 @@ import { pipelineTelemetry } from '../telemetry/pipeline-telemetry';
 
 const DEFAULT_DEDUPE_WINDOW_MS = 2000;
 const MAX_TTS_QUEUE = 5;
+/** Complete final speech is bounded, rather than replacing older sentences. */
+const MAX_CONVERSATION_TTS_QUEUE = 20;
 /** Interim audio playing longer than this is no longer reaped. */
 const INTERIM_STALE_MS = 8_000;
 
@@ -61,6 +63,8 @@ export class TtsManager {
   private audioOutput: AudioOutputManager | null = null;
   private emit: ((event: TtsEvent) => void) | null = null;
   private active: boolean = false;
+  private starting = false;
+  private generation = 0;
   private speaking: boolean = false;
   /** True while the in-flight synthesis (`currentSynthesis`) is an interim.
    *  Used to decide whether a final replacing it should preserve the shared
@@ -80,12 +84,18 @@ export class TtsManager {
   private currentSynthesisText: string = '';
   /** Correlation ids for final-path chunks (interim chunks use 0). */
   private nextPlaybackId: number = 1;
+  private pendingSentences = 0;
+  private pendingPlaybackIds = new Set<number>();
 
   private lastSpokenText: string = '';
   private lastSpokenTime: number = 0;
   private dedupeWindowMs: number;
 
-  constructor(dedupeWindowMs?: number) {
+  constructor(
+    dedupeWindowMs?: number,
+    private readonly telemetryEnabled: boolean = true,
+    private readonly speechPolicy: 'latest' | 'queue' = 'latest',
+  ) {
     if (dedupeWindowMs !== undefined) {
       this.dedupeWindowMs = dedupeWindowMs;
     } else {
@@ -114,12 +124,24 @@ export class TtsManager {
     audioOutput: AudioOutputManager,
     providerOverride?: TtsProvider,
     voiceId?: string,
+    language?: string,
   ): Promise<TtsStartResult> {
-    if (this.active) {
-      return { ok: false, message: 'TTS is already running.' };
-    }
+    if (this.active || this.starting) return { ok: false, message: 'TTS is already running.' };
+    const generation = ++this.generation;
+    this.starting = true;
 
-    const provider = providerOverride ?? (await createTtsProvider(voiceId));
+    let provider: TtsProvider | null;
+    try {
+      provider = providerOverride ?? (await createTtsProvider(voiceId, language));
+    } catch (err) {
+      if (generation === this.generation) this.starting = false;
+      return { ok: false, message: errMessage(err) };
+    }
+    if (generation !== this.generation) {
+      await provider?.stop();
+      return { ok: false, message: 'TTS start was canceled.' };
+    }
+    this.starting = false;
     if (!provider) {
       return {
         ok: false,
@@ -143,6 +165,13 @@ export class TtsManager {
    * stale interim audio. Interim chunks use playbackId 0.
    */
   handlePlaybackLifecycle(payload: PlaybackTelemetryEvent): void {
+    if (
+      payload?.event === 'complete' &&
+      typeof payload.playbackId === 'number' &&
+      this.pendingPlaybackIds.delete(payload.playbackId)
+    ) {
+      this.pendingSentences = Math.max(0, this.pendingSentences - 1);
+    }
     if (!payload || payload.playbackId !== 0) return;
     if (payload.event === 'start') {
       this.playingInterimAt = Date.now();
@@ -163,25 +192,35 @@ export class TtsManager {
     if (trimmed === this.lastSpokenText && now - this.lastSpokenTime < this.dedupeWindowMs) {
       log(`DEDUPED (within ${this.dedupeWindowMs}ms):`, trimmed);
       // Interim items have no FIFO trace — never drain telemetry for them.
-      if (!interim) pipelineTelemetry.markTtsSuppressed();
+      if (!interim) if (this.telemetryEnabled) pipelineTelemetry.markTtsSuppressed();
       return;
     }
 
+    if (this.speechPolicy === 'queue' && this.pendingSentences >= MAX_CONVERSATION_TTS_QUEUE + 1) {
+      this.emit?.({
+        type: 'tts:error',
+        message:
+          'Translated speech is falling behind. This sentence was not played; read it in the captions and pause to let speech catch up.',
+      });
+      if (!interim && this.telemetryEnabled) pipelineTelemetry.markTtsSuppressed();
+      return;
+    }
     this.lastSpokenText = trimmed;
     this.lastSpokenTime = now;
 
     // Preemption: newer translated content replaces whatever is currently
     // synthesizing/playing so first audio for the latest utterance starts
     // immediately instead of waiting behind stale audio.
-    this.interruptForNewUtterance(interim);
+    if (this.speechPolicy === 'latest') this.interruptForNewUtterance(interim);
 
     // Backpressure guard kept as an invariant (queue is normally emptied by
     // the interruption above).
-    if (this.queue.length >= MAX_TTS_QUEUE) {
+    if (this.speechPolicy === 'latest' && this.queue.length >= MAX_TTS_QUEUE) {
       this.queue.shift();
     }
 
     this.queue.push({ text: trimmed, interim });
+    if (this.speechPolicy === 'queue' && !interim) this.pendingSentences += 1;
     this.processQueue();
   }
 
@@ -213,9 +252,9 @@ export class TtsManager {
     // Only drain FIFO traces for stale synthesis/queue work (unless the
     // trace belongs to an in-flight interim that the final should adopt).
     if (!preserveInterimTrace && (this.speaking || this.queue.length > 0)) {
-      pipelineTelemetry.markTtsInterrupted();
+      if (this.telemetryEnabled) pipelineTelemetry.markTtsInterrupted();
       for (const item of this.queue) {
-        if (!item.interim) pipelineTelemetry.markTtsInterrupted();
+        if (!item.interim) if (this.telemetryEnabled) pipelineTelemetry.markTtsInterrupted();
       }
     }
     this.queue = [];
@@ -232,6 +271,8 @@ export class TtsManager {
   }
 
   stop(): void {
+    this.generation++;
+    this.starting = false;
     const provider = this.provider;
     const synthesis = this.currentSynthesis;
     this.provider = null;
@@ -246,12 +287,14 @@ export class TtsManager {
     this.lastSpokenTime = 0;
     this.currentSynthesis = null;
     this.currentSynthesisText = '';
+    this.pendingSentences = 0;
+    this.pendingPlaybackIds.clear();
     // Cancel any in-flight synthesis so a stopped session never forwards
     // stale streamed chunks or keeps consuming provider resources.
     if (synthesis) {
       synthesis.abort(new Error('TTS stopped'));
     }
-    pipelineTelemetry.resetPipeline();
+    if (this.telemetryEnabled) pipelineTelemetry.resetPipeline();
     if (provider) {
       provider.stop().catch(() => {});
     }
@@ -263,6 +306,7 @@ export class TtsManager {
     }
 
     const item = this.queue.shift()!;
+    const generation = this.generation;
     const text = item.text;
     this.speaking = true;
     this.speakingInterim = item.interim;
@@ -270,18 +314,19 @@ export class TtsManager {
     this.currentSynthesis = synthesis;
     this.currentSynthesisText = text;
     this.emit({ type: 'tts:speaking', text });
+    const playbackId = item.interim ? 0 : this.nextPlaybackId++;
+    if (this.speechPolicy === 'queue' && !item.interim) this.pendingPlaybackIds.add(playbackId);
 
     try {
       log(`synthesize${item.interim ? ' (interim)' : ''}:`, text);
-      if (!item.interim) pipelineTelemetry.beginTts();
-      const playbackId = item.interim ? 0 : this.nextPlaybackId++;
+      if (!item.interim) if (this.telemetryEnabled) pipelineTelemetry.beginTts();
       if (this.provider.synthesizeStream) {
         let first = true;
         await this.provider.synthesizeStream(
           text,
           async (audioChunk, isFinal) => {
-            if (synthesis.signal.aborted) return;
-            if (!item.interim && first) pipelineTelemetry.markTtsFirstChunk();
+            if (synthesis.signal.aborted || generation !== this.generation) return;
+            if (!item.interim && first) if (this.telemetryEnabled) pipelineTelemetry.markTtsFirstChunk();
             const chunk = {
               ...audioChunk,
               playbackId,
@@ -294,25 +339,31 @@ export class TtsManager {
           },
           synthesis.signal,
         );
-        if (!item.interim) pipelineTelemetry.endTtsSuccess();
+        if (synthesis.signal.aborted || generation !== this.generation) return;
+        if (!item.interim) if (this.telemetryEnabled) pipelineTelemetry.endTtsSuccess();
       } else {
         const audioChunk = await this.provider.synthesize(text, synthesis.signal);
+        if (synthesis.signal.aborted || generation !== this.generation) return;
         const chunk = { ...audioChunk, playbackId, streamStart: true, streamEnd: true };
-        if (!item.interim) pipelineTelemetry.endTtsSuccess();
+        if (!item.interim) if (this.telemetryEnabled) pipelineTelemetry.endTtsSuccess();
         log('writeAudio bytes:', chunk.data.byteLength);
         await this.audioOutput.writeAudio(chunk);
       }
+      if (synthesis.signal.aborted || generation !== this.generation) return;
       if (item.interim) this.playingInterimAt = Date.now();
       if (this.emit) {
         this.emit({ type: 'tts:spoken', text });
       }
     } catch (err) {
+      if (generation === this.generation && this.pendingPlaybackIds.delete(playbackId)) {
+        this.pendingSentences = Math.max(0, this.pendingSentences - 1);
+      }
       if (synthesis.signal.aborted) {
         // Interruption is intentional — not a user-facing error. The
         // trace was already finalized by markTtsInterrupted().
         log('synthesize aborted:', errMessage(err));
       } else {
-        if (!item.interim) pipelineTelemetry.endTtsError();
+        if (!item.interim) if (this.telemetryEnabled) pipelineTelemetry.endTtsError();
         if (this.emit) {
           this.emit({ type: 'tts:error', message: errMessage(err) });
         }
@@ -321,10 +372,10 @@ export class TtsManager {
       if (this.currentSynthesis === synthesis) {
         this.currentSynthesis = null;
         this.currentSynthesisText = '';
+        this.speaking = false;
+        this.speakingInterim = false;
+        this.processQueue();
       }
-      this.speaking = false;
-      this.speakingInterim = false;
-      this.processQueue();
     }
   }
 }

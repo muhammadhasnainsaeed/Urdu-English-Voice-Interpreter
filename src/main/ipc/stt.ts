@@ -20,6 +20,9 @@ import { ipcMain } from 'electron';
 import type { SttEvent } from '@shared/index';
 import { sttSession } from '../services/stt/manager';
 import { sendToRenderer } from '../windows';
+import { loadPreferences } from './preferences';
+import { normalizeConversationSettings } from '@shared/conversation';
+import { requireLanguage } from '@shared/languages';
 
 function toArrayBuffer(data: unknown): ArrayBuffer | null {
   if (data instanceof ArrayBuffer) {
@@ -41,7 +44,12 @@ export function registerSttIpc(onSttText?: (text: string, isFinal: boolean) => v
     }
   };
 
-  ipcMain.handle('stt:start', () => sttSession.start(emit));
+  ipcMain.handle('stt:start', () =>
+    sttSession.start(
+      emit,
+      requireLanguage(normalizeConversationSettings(loadPreferences().conversation).sourceLanguage).sttLocale,
+    ),
+  );
 
   ipcMain.on('stt:audio-data', (_event, data: unknown) => {
     const buffer = toArrayBuffer(data);

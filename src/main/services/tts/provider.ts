@@ -17,7 +17,8 @@
  */
 
 import type { AudioChunk } from '@shared/index';
-import { voiceIsAzure } from './voices';
+import { listVoices, selectSystemVoice, voiceIsAzure } from './voices';
+import { requireLanguage } from '@shared/languages';
 
 export interface TtsProvider {
   readonly name: string;
@@ -36,17 +37,27 @@ export interface TtsProvider {
   stop(): Promise<void>;
 }
 
-export async function createTtsProvider(voiceId?: string): Promise<TtsProvider | null> {
+async function createLocalProvider(voiceId?: string, language?: string): Promise<TtsProvider> {
+  const { createSayTtsProvider } = await import('./providers/say');
+  if (!language) return createSayTtsProvider(voiceId);
+  const { voices } = await listVoices(true, 'say', language);
+  return createSayTtsProvider(selectSystemVoice(voices, voiceId, language));
+}
+
+export async function createTtsProvider(voiceId?: string, language?: string): Promise<TtsProvider | null> {
+  if (language) requireLanguage(language);
+  const providerName = (process.env.TTS_PROVIDER || 'mock').toLowerCase();
   // A non-Azure voice id is a macOS system voice (selectable only in dev).
   // System voices are local `say` voices — route them to the `say` provider so
   // they are never passed to the Azure SDK (which would reject them). This
   // only affects dev/unpackaged builds; production only exposes Azure voices.
   if (voiceId && !voiceIsAzure(voiceId)) {
-    const { createSayTtsProvider } = await import('./providers/say');
-    return createSayTtsProvider(voiceId);
+    if (!language) return createLocalProvider(voiceId);
+    const { voices } = await listVoices(true, 'say', language);
+    if (voices.some((voice) => voice.id === voiceId)) return createLocalProvider(voiceId, language);
+    // Persisted system voices from a previous language must not override the configured provider.
+    voiceId = undefined;
   }
-
-  const providerName = (process.env.TTS_PROVIDER || 'mock').toLowerCase();
 
   if (providerName === 'mock') {
     const { createMockTtsProvider } = await import('./providers/mock');
@@ -54,13 +65,12 @@ export async function createTtsProvider(voiceId?: string): Promise<TtsProvider |
   }
 
   if (providerName === 'say') {
-    const { createSayTtsProvider } = await import('./providers/say');
-    return createSayTtsProvider(voiceId);
+    return createLocalProvider(voiceId && !voiceIsAzure(voiceId) ? voiceId : undefined, language);
   }
 
   if (providerName === 'azure') {
     const { createAzureTtsProvider } = await import('./providers/azure');
-    return createAzureTtsProvider(voiceId);
+    return createAzureTtsProvider(voiceId, language);
   }
 
   return null;

@@ -19,6 +19,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   ApplicationStatus,
+  AudioChunk,
+  IncomingEvent,
   AudioFormat,
   AudioOutputDevice,
   AudioOutputEvent,
@@ -85,7 +87,8 @@ const api: ElectronAPI = {
       ipcRenderer.removeListener('tts:event', listener);
     };
   },
-  getTtsVoices: () => ipcRenderer.invoke('tts:list-voices') as Promise<ListVoicesResult>,
+  getTtsVoices: (language?: string) =>
+    ipcRenderer.invoke('tts:list-voices', language) as Promise<ListVoicesResult>,
   testTtsVoice: () => ipcRenderer.invoke('tts:test') as Promise<TtsStartResult>,
   saveTranscript: (request: SaveTranscriptRequest) =>
     ipcRenderer.invoke('transcript:save', request) as Promise<SaveTranscriptResult>,
@@ -161,6 +164,30 @@ const api: ElectronAPI = {
   },
 
   /* Pipeline telemetry (development-only) */
+  startIncoming: () => ipcRenderer.invoke('incoming:start') as Promise<SessionStartResult>,
+  stopIncoming: () => ipcRenderer.invoke('incoming:stop') as Promise<void>,
+  sendIncomingAudio: (chunk: ArrayBuffer) => ipcRenderer.send('incoming:audio', chunk),
+  reportIncomingPlaybackEvent: (event: PlaybackTelemetryEvent) =>
+    ipcRenderer.send('incoming:playback', event),
+  onIncomingEvent: (handler: (event: IncomingEvent) => void) => {
+    const listener = (_event: unknown, payload: IncomingEvent) => handler(payload);
+    ipcRenderer.on('incoming:event', listener);
+    return () => ipcRenderer.removeListener('incoming:event', listener);
+  },
+  onIncomingAudio: (handler: (chunk: AudioChunk) => void) => {
+    const listener = (_event: unknown, payload: AudioChunk) => handler(payload);
+    ipcRenderer.on('incoming-output:audio', listener);
+    return () => ipcRenderer.removeListener('incoming-output:audio', listener);
+  },
+  onIncomingCancel: (handler: () => void) => {
+    const listener = () => handler();
+    ipcRenderer.on('incoming-output:cancel', listener);
+    ipcRenderer.on('incoming-output:stop', listener);
+    return () => {
+      ipcRenderer.removeListener('incoming-output:cancel', listener);
+      ipcRenderer.removeListener('incoming-output:stop', listener);
+    };
+  },
   pipelineDebugEnabled: process.env.PIPELINE_DEBUG === '1',
   onPipelineEvent: (handler: (event: PipelineEvent) => void) => {
     const listener = (_event: unknown, payload: PipelineEvent) => handler(payload);

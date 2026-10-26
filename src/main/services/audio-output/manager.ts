@@ -38,6 +38,10 @@ export function detectBlackHole(): boolean {
 }
 
 export class AudioOutputManager {
+  constructor(
+    private readonly channelPrefix = 'audio-output',
+    private readonly telemetryEnabled = true,
+  ) {}
   private provider: AudioOutputProvider | null = null;
   private emit: ((event: AudioOutputEvent) => void) | null = null;
   private active: boolean = false;
@@ -73,7 +77,7 @@ export class AudioOutputManager {
       return { ok: false, message: 'Audio output is already running.' };
     }
 
-    const provider = createSystemSpeakerOutput(getWindow);
+    const provider = createSystemSpeakerOutput(getWindow, this.channelPrefix);
     this.provider = provider;
     this.emit = emit;
     this.active = true;
@@ -107,7 +111,7 @@ export class AudioOutputManager {
     this.provider = null;
     this.emit = null;
     this.active = false;
-    pipelineTelemetry.resetPipeline();
+    if (this.telemetryEnabled) pipelineTelemetry.resetPipeline();
     if (provider) {
       provider.stop().catch(() => {});
     }

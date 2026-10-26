@@ -32,7 +32,7 @@ import {
 } from '../transcript/transcriptModel';
 
 /**
- * Live paired transcript (Urdu final → English translation) with export.
+ * Live paired transcript for each conversation direction, with export.
  *
  * Subscribes to the existing STT/translation event streams independently of
  * `useStt`/`useTranslation` (which keep the subtitle display), so the display
@@ -63,8 +63,34 @@ export function useTranscript(): {
         setState((current) =>
           applyTranslation(current, {
             english: event.english,
+            sourceText: event.urdu,
+            sourceLanguage: event.sourceLanguage,
+            targetLanguage: event.targetLanguage,
             interim: event.interim === true,
             atMs: at,
+          }),
+        );
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    return window.electron.onIncomingEvent((incoming) => {
+      const atMs = Date.now();
+      if (incoming.type === 'incoming:stt' && incoming.event.type === 'final') {
+        const text = incoming.event.text;
+        setState((current) => appendSttFinal(current, text, atMs, { direction: 'incoming' }));
+      } else if (incoming.type === 'incoming:translation' && incoming.event.type === 'translation:text') {
+        const event = incoming.event;
+        setState((current) =>
+          applyTranslation(current, {
+            english: event.english,
+            sourceText: event.urdu,
+            sourceLanguage: event.sourceLanguage,
+            targetLanguage: event.targetLanguage,
+            direction: 'incoming',
+            interim: event.interim === true,
+            atMs,
           }),
         );
       }

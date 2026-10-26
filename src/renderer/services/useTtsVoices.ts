@@ -33,15 +33,16 @@ export interface TtsVoicesApi {
  * process decides which sources apply (Azure always; macOS system voices only
  * in development/unpackaged builds).
  */
-export function useTtsVoices(): TtsVoicesApi {
+export function useTtsVoices(language?: string): TtsVoicesApi {
   const [voices, setVoices] = useState<TtsVoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [development, setDevelopment] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     window.electron
-      .getTtsVoices()
+      .getTtsVoices(language)
       .then((result) => {
         if (cancelled) return;
         setVoices(result.voices ?? []);
@@ -57,7 +58,7 @@ export function useTtsVoices(): TtsVoicesApi {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [language]);
 
   return { voices, loading, development };
 }

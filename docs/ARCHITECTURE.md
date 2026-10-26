@@ -1,7 +1,55 @@
 # Architecture
 
-Current and planned architecture for the Real-Time Urdu → English Voice
-Interpreter (macOS).
+Current and planned architecture for the multilingual Voice Interpreter
+(macOS; Urdu → English by default).
+
+## Multilingual and two-way expansion (2026-10-26)
+
+The maintainer explicitly expanded the original single-direction scope. Each
+direction has its own STT, translation, TTS, output manager, and renderer PCM
+queue. Existing outgoing singletons remain for compatibility; `IncomingManager`
+owns new independent instances with outgoing telemetry disabled. Stop/start
+generations and shared incoming stop cleanup prevent stale work after restart.
+
+```text
+Physical microphone → outgoing STT/translation/TTS → BlackHole 2ch → meeting mic
+Meeting speaker → BlackHole 16ch → incoming STT/translation/TTS → headphones
+```
+
+Manual meeting-device setup remains required. No screen/system capture,
+meeting SDK, automatic app control or native module was added. See
+`docs/two-way-translation.md`. Input/output ids can differ for the same cable,
+so renderer validation also compares hardware groups and labels. Two-way mode
+requires explicit routes and rejects shared cables and virtual listening
+outputs. Settings stay locked while a meeting starts/runs/stops.
+
+`packages/shared/languages.ts` is the curated 12-language intersection of Azure
+recognition, translation, and neural speech, with explicit recognition/synthesis
+locales. `ConversationSettings` stores independent pairs and return devices in
+the existing preferences store. Azure/MyMemory/Whisper language parameters and
+Azure/system voice selection follow the chosen pair; missing matching local
+voices fail rather than speaking the wrong language. Same-language pairs skip
+the translation network call.
+
+`PcmPlaybackQueue` schedules all available streamed chunks against one audio
+clock, with a 60 ms initial cushion, per-buffer formats and split-frame carry.
+It cancels every scheduled source on Stop and invalidates pending async work.
+Requested sink failure/device loss is an error, with no silent speaker fallback.
+`prepare()` validates/resumes the device before session start. Both actual
+meeting pipelines speak final translations in order; interim captions remain
+live. Accepted pending speech is bounded across synthesis and actual playback;
+excess speech is reported visibly. This trades speculative latency for complete
+spoken sentences.
+
+New IPC: `incoming:start`, `incoming:stop`, `incoming:audio`,
+`incoming:playback`, `incoming:event`, and `incoming-output:{audio,cancel,stop}`.
+The main window owns capture and playback; only `incoming:event` caption/status
+messages broadcast to the overlay. Credentials remain in main. Transcript
+entries include direction and source/target metadata, preserving the existing
+JSON fields and independently pairing the two lanes.
+
+The original milestone descriptions below document the outgoing pipeline;
+this section describes the current language/routing expansion.
 
 ## Current architecture (Milestones 1–7, M10 Phase 2/3, M11 complete)
 
@@ -522,17 +570,16 @@ appears as an additional option alongside "System Default."
   PCM to Float32, and plays via `AudioBufferSourceNode`.
 - **Device targeting**: calls `AudioContext.setSinkId(deviceId)` (Chrome 110+,
   Electron 42+) to route audio to the selected output device. Feature-detected
-  with `"setSinkId" in AudioContext.prototype`. Falls back gracefully to system
-  default when unsupported.
-- Recreates `AudioContext` when sample rate changes. Applies `setSinkId` to
-  both new and existing contexts when the device changes.
+  with `"setSinkId" in AudioContext.prototype`. Requested device failures stop
+  playback rather than silently using the default.
+- Keeps one hardware-rate context per direction; each buffer retains its own
+  sample rate. Device changes cancel old scheduled sources before retargeting.
 - Listens for `devicechange` events to refresh the device list automatically.
 
-**setSinkId() support** — requires Chrome 110+ (Electron 42 uses Chromium 130+).
+**setSinkId() support** — feature-detected in the running Electron audio engine.
 Type declaration in `src/renderer/types/electron.d.ts` augments the DOM types.
-If `setSinkId` is not supported, audio falls back to the system default output
-silently. Errors from `setSinkId` (e.g. invalid device ID) are caught and
-logged as warnings — audio still plays to the system default.
+If `setSinkId` is unavailable, only an explicitly selected system default can
+play. A failed requested sink stops with a visible error.
 
 **Cross-platform readiness** — the `AudioOutputProvider` abstraction isolates
 platform-specific output. BlackHole is macOS-only; Windows/Linux equivalents
@@ -644,8 +691,8 @@ BlackHole Virtual Microphone (when installed by user)           ✓ M6 (detectio
 Zoom / Google Meet / Microsoft Teams
 ```
 
-- Client/incoming audio (from other meeting participants) must NOT be
-  translated.
+- Client/incoming audio is translated only when explicitly enabled, through
+  the isolated return direction described above.
 - Main-process services live under `src/main/services/` and IPC handlers under
   `src/main/ipc/` (`audio.ts`, `audio-output.ts`, `stt.ts`, `translation.ts`,
   `tts.ts`, `session.ts`, `preferences.ts`, `system.ts`).

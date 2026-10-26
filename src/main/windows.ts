@@ -34,6 +34,7 @@ export const SUBTITLE_BROADCAST_CHANNELS: readonly string[] = [
   'stt:event',
   'translation:event',
   'session:event',
+  'incoming:event',
 ];
 
 export function isSubtitleChannel(channel: string): boolean {

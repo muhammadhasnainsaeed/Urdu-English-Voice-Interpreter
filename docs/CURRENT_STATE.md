@@ -1,6 +1,71 @@
 # Current State
 
-_Last updated: 2026-10-08_
+_Last updated: 2026-10-26_
+
+## Audio quality, language selection, and two-way translation (2026-10-26)
+
+Implemented the maintainer's explicit expansion beyond microphone-only Urdu →
+English. The published v1.1.0 release/DMG is unchanged; these changes are in the
+source checkout.
+
+- **Audio disturbance fixes:** PCM chunks now use continuous audio-clock
+  scheduling with a 60 ms initial cushion, per-buffer sample rates/channels,
+  split-frame reassembly, and cancellation of all scheduled sources. A failed
+  selected sink or device disconnect surfaces an error instead of falling back
+  to speakers. `prepare()` validates the output before a meeting starts.
+- **Complete spoken sentences:** real meeting pipelines speak final translations
+  in order. Interim captions remain live but no longer interrupt spoken words.
+  The conversation queue counts synthesis and scheduled playback, rejects
+  excess backlog visibly, and releases capacity on playback completion. This
+  adds finalization latency compared with speculative interim speech.
+- **Language controls:** Home has independent `You speak` / `Client hears` and
+  `Client speaks` / `You hear` selections. Curated languages: Urdu, English,
+  Turkish, Arabic, Hindi, Spanish, French, German, Portuguese, Russian,
+  Japanese, and Mandarin Chinese. Provider locales and voices follow the
+  selections, including Urdu `ur-IN` recognition / `ur-PK` synthesis.
+  Same-language pairs bypass translation; local `say` requires an installed
+  matching voice and fails clearly when unavailable.
+- **Two-way client audio:** opt-in `IncomingManager` owns independent STT,
+  translation, TTS, output channel and playback queue. The client input must
+  use a separate virtual cable from outgoing meeting audio; translated client
+  speech plays on explicitly selected physical headphones. Route validation
+  checks device groups/labels as well as ids; defaults and loopback listening
+  outputs are rejected. Live settings are locked against route changes.
+- **Lifecycle hardening:** failed starts roll back all resources and recover
+  the Start button; Stop cancels scheduled speech; asynchronous startup/stop
+  generations prevent resurrection; concurrent incoming stops share cleanup.
+  Stopping one direction cannot kill the other direction's macOS `say` child.
+  Home reuses the microphone level instead of opening a second microphone.
+- **Captions/export:** both directions have their own pairing, language labels,
+  text direction and history metadata. Overlay receives caption events only;
+  raw audio stays with the main window. Existing JSON fields remain compatible.
+- **Preferences and security:** language pairs and incoming device selections
+  persist in the existing local preference store. Keys remain in main; no new
+  dependencies, backend, database, authentication, or native capture module.
+
+### Validation and remaining work
+
+- Type-check, build, lint (0 errors; 14 pre-existing warnings), formatting,
+  and **215 automated test entries** pass. The usual `npm test` wrapper cannot
+  open its local tsx socket in the restricted runner; the same complete suite
+  passed with `node --import tsx --test tests/*.test.ts`.
+- Electron runtime smoke test passes: real preload bridge, no exposed Node,
+  persisted Turkish selection, locale-filtered voices, mock speech through
+  Turkish captions, one mic stream, locked active settings, Stop/Start, invalid
+  two-way route recovery, no horizontal overflow and no renderer errors.
+- Real Azure checks on the recovered source pass in both directions:
+  Urdu → Turkish produces `İyiyim, sen nasılsın?` and 11 streaming speech chunks
+  (118,200 bytes, 2.46 seconds, non-silent); Turkish → Urdu produces
+  `ہیلو، کیا آپ میری آواز سن سکتے ہیں؟` and 13 chunks (143,400 bytes,
+  2.99 seconds, non-silent). Azure `tr-TR` / `ur-IN` STT recognized each
+  synthesized phrase. These synthetic provider round trips do not prove a real
+  meeting's routing or subjective acoustic quality.
+- **Next required validation:** follow `docs/two-way-translation.md` with a real
+  meeting participant and headphones, listen for clicks/echo/cutoff, and confirm
+  both language pairs. This host currently has BlackHole 2ch installed; a second
+  isolated cable such as BlackHole 16ch is needed for the documented setup.
+- No commit, tag, release, package reinstall, credentials edit, driver install,
+  or system/meeting device-setting change was performed.
 
 ## Launch media and meeting validation (2026-10-08)
 

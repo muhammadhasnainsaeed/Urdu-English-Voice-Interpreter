@@ -26,6 +26,7 @@ test('parseSayVoices parses simple voices', () => {
     gender: 'unknown',
     source: 'system',
     country: 'US',
+    locale: 'en-US',
   });
   assert.equal(voices[1].id, 'Samantha');
   assert.equal(voices[2].id, 'Daniel');

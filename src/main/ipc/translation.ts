@@ -19,6 +19,8 @@
 import { ipcMain } from 'electron';
 import { TranslationManager } from '../services/translation/manager';
 import { sendToRenderer } from '../windows';
+import { loadPreferences } from './preferences';
+import { normalizeConversationSettings } from '@shared/conversation';
 
 export const translationManager = new TranslationManager();
 
@@ -32,7 +34,11 @@ export function registerTranslationIpc(
         onTranslationText(event.english, event.interim === true);
       }
     };
-    return translationManager.start(emit);
+    const settings = normalizeConversationSettings(loadPreferences().conversation);
+    return translationManager.start(emit, {
+      sourceLanguage: settings.sourceLanguage,
+      targetLanguage: settings.targetLanguage,
+    });
   });
 
   ipcMain.handle('translation:stop', () => {

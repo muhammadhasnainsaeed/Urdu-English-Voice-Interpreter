@@ -26,10 +26,12 @@ import {
   voiceIsAzure,
 } from '../services/tts/voices';
 import { loadPreferences } from './preferences';
+import { normalizeConversationSettings } from '@shared/conversation';
+import { requireLanguage } from '@shared/languages';
 
 const TEST_TEXT = 'Hello, this is a test of the selected voice.';
 
-export const ttsManager = new TtsManager();
+export const ttsManager = new TtsManager(undefined, true, 'queue');
 
 /**
  * macOS system voices are a development/testing-only convenience. In a
@@ -67,27 +69,37 @@ export function registerTtsIpc(getWindow: () => BrowserWindow | null, audioOutpu
         win.webContents.send('tts:event', event);
       }
     };
-    return ttsManager.start(emit, audioOutput, undefined, resolveTtsVoiceId() ?? undefined);
+    const language = normalizeConversationSettings(loadPreferences().conversation).targetLanguage;
+    return ttsManager.start(
+      emit,
+      audioOutput,
+      undefined,
+      resolveTtsVoiceId() ?? undefined,
+      requireLanguage(language).ttsLocale,
+    );
   });
 
   ipcMain.handle('tts:stop', () => {
     ttsManager.stop();
   });
 
-  ipcMain.handle('tts:list-voices', async (): Promise<import('@shared/index').ListVoicesResult> => {
-    try {
-      const provider = resolveTtsProviderName();
-      const {
-        voices,
-        development,
-        provider: resolvedProvider,
-      } = await listVoices(isTtsDevelopment(), provider);
-      return { ok: true, voices, development, provider: resolvedProvider };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { ok: false, voices: [], development: isTtsDevelopment(), message: msg };
-    }
-  });
+  ipcMain.handle(
+    'tts:list-voices',
+    async (_event, language?: string): Promise<import('@shared/index').ListVoicesResult> => {
+      try {
+        const provider = resolveTtsProviderName();
+        const {
+          voices,
+          development,
+          provider: resolvedProvider,
+        } = await listVoices(isTtsDevelopment(), provider, language);
+        return { ok: true, voices, development, provider: resolvedProvider };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { ok: false, voices: [], development: isTtsDevelopment(), message: msg };
+      }
+    },
+  );
 
   /**
    * Test the currently selected voice through the REAL TTS provider + audio
@@ -97,6 +109,7 @@ export function registerTtsIpc(getWindow: () => BrowserWindow | null, audioOutpu
    * speaks the test phrase, then stops itself and any audio output it started.
    */
   ipcMain.handle('tts:test', async (): Promise<import('@shared/index').TtsStartResult> => {
+    if (ttsManager.isActive) return { ok: false, message: 'Stop the meeting before testing a voice.' };
     const voiceId = resolveTtsVoiceId() ?? undefined;
     const win = getWindow();
 
@@ -130,7 +143,10 @@ export function registerTtsIpc(getWindow: () => BrowserWindow | null, audioOutpu
       }
     };
 
-    const result = await testManager.start(emit, audioOutput, undefined, voiceId);
+    const language = requireLanguage(
+      normalizeConversationSettings(loadPreferences().conversation).targetLanguage,
+    );
+    const result = await testManager.start(emit, audioOutput, undefined, voiceId, language.ttsLocale);
     if (!result.ok) {
       testManager.stop();
       if (startedAudioHere) audioOutput.stop();
@@ -138,7 +154,20 @@ export function registerTtsIpc(getWindow: () => BrowserWindow | null, audioOutpu
     }
     // Feed the test phrase through the existing TTS pipeline (the same path
     // real translations take) so the selected voice is exercised end-to-end.
-    testManager.onTranslationText(TEST_TEXT, false);
+    const testPhrases: Record<string, string> = {
+      ur: 'یہ منتخب آواز کا ایک ٹیسٹ ہے۔',
+      tr: 'Merhaba, bu seçilen sesin bir testidir.',
+      ar: 'مرحبًا، هذا اختبار للصوت المحدد.',
+      hi: 'नमस्ते, यह चयनित आवाज़ का परीक्षण है।',
+      es: 'Hola, esta es una prueba de la voz seleccionada.',
+      fr: 'Bonjour, ceci est un test de la voix sélectionnée.',
+      de: 'Hallo, dies ist ein Test der ausgewählten Stimme.',
+      pt: 'Olá, este é um teste da voz selecionada.',
+      ru: 'Здравствуйте, это проверка выбранного голоса.',
+      ja: 'こんにちは。選択した音声のテストです。',
+      'zh-Hans': '你好，这是所选语音的测试。',
+    };
+    testManager.onTranslationText(testPhrases[language.code] ?? TEST_TEXT, false);
     return result;
   });
 }

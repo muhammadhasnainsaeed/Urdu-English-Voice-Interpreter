@@ -30,10 +30,13 @@ import { useSession } from './services/useSession';
 import { useSetup } from './setup/useSetup';
 import { usePreferences } from './services/usePreferences';
 import { useTranscript } from './services/useTranscript';
+import { useIncoming } from './services/useIncoming';
+import { normalizeConversationSettings } from '@shared/conversation';
+import { validateConversationRouting } from './audio/conversationRouting';
 import { useReportedErrors } from './errors/useReportedErrors';
 import { useToast } from './errors/toast';
 import { RENDERER_OPEN_EXTERNAL_LINKS } from '@shared/index';
-import type { TranscriptFormat } from '@shared/index';
+import type { ConversationSettings, TranscriptFormat } from '@shared/index';
 
 type View = 'loading' | 'onboarding' | 'home' | 'settings';
 
@@ -42,14 +45,21 @@ export default function App() {
   const stt = useStt();
   const translation = useTranslation();
   const tts = useTts();
-  const ttsVoices = useTtsVoices();
   const audioOutput = useAudioOutput();
   const session = useSession();
   const preferences = usePreferences();
+  const conversation = normalizeConversationSettings(preferences.preferences?.conversation);
+  const ttsVoices = useTtsVoices(conversation.targetLanguage);
+  const incoming = useIncoming();
   const transcript = useTranscript();
   const { toast } = useToast();
 
   const [view, setView] = useState<View>('loading');
+  const [meetingError, setMeetingError] = useState<string | null>(null);
+  const [meetingStarting, setMeetingStarting] = useState(false);
+  const startInProgress = React.useRef(false);
+  const meetingGeneration = React.useRef(0);
+  const configurationLocked = meetingStarting || ['starting', 'active', 'stopping'].includes(session.status);
 
   const setup = useSetup({
     micPermission: microphone.permission,
@@ -128,29 +138,69 @@ export default function App() {
   }, [preferences.loaded, preferences.preferences, microphone.selectDevice, audioOutput.selectDevice]);
 
   const handleSelectMicrophone = async (deviceId: string) => {
+    if (configurationLocked || startInProgress.current) return;
     microphone.selectDevice(deviceId);
     await preferences.update({ micDeviceId: deviceId });
   };
 
   const handleSelectOutputDevice = async (deviceId: string) => {
+    if (configurationLocked || startInProgress.current) return;
     await audioOutput.selectDevice(deviceId);
     await preferences.update({ outputDeviceId: deviceId });
   };
 
   const handleMeetingStart = async () => {
-    const result = await session.start();
-    if (!result.ok) return;
-
-    const capture = await microphone.start();
-    if (!capture.ok) return;
-    if (capture.stream && capture.audioContext) {
-      await stt.start(capture.stream, capture.audioContext);
+    if (startInProgress.current) return;
+    startInProgress.current = true;
+    const generation = ++meetingGeneration.current;
+    const checkCurrent = () => {
+      if (generation !== meetingGeneration.current) throw new Error('Meeting start canceled.');
+    };
+    setMeetingStarting(true);
+    setMeetingError(null);
+    try {
+      const capture = await microphone.start();
+      checkCurrent();
+      if (!capture.ok || !capture.stream || !capture.audioContext)
+        throw new Error('Could not open your microphone. Check Settings.');
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const actualMicId =
+        capture.stream.getAudioTracks()[0]?.getSettings().deviceId ?? microphone.selectedDeviceId;
+      const routeError = validateConversationRouting(
+        conversation,
+        devices,
+        actualMicId,
+        audioOutput.selectedDeviceId,
+      );
+      if (routeError) throw new Error(routeError);
+      await audioOutput.prepare();
+      checkCurrent();
+      const result = await session.start();
+      checkCurrent();
+      if (!result.ok) throw new Error(result.message ?? 'Could not start the meeting.');
+      if (!(await stt.start(capture.stream, capture.audioContext)))
+        throw new Error('Could not start speech recognition. Check the speech error below.');
+      checkCurrent();
+      if (conversation.incomingEnabled && !(await incoming.start(conversation)))
+        throw new Error('Could not start client translation. Check the client audio settings below.');
+      checkCurrent();
+    } catch (err) {
+      if (generation === meetingGeneration.current)
+        setMeetingError(err instanceof Error ? err.message : String(err));
+      await Promise.allSettled([incoming.stop(), session.stop(), stt.stop(), audioOutput.stop()]);
+      microphone.stop();
+    } finally {
+      startInProgress.current = false;
+      setMeetingStarting(false);
     }
   };
 
   /** Unified meeting stop: everything in reverse */
   const handleMeetingStop = async () => {
+    ++meetingGeneration.current;
     try {
+      await audioOutput.stop();
+      await incoming.stop();
       await session.stop();
     } finally {
       try {
@@ -162,6 +212,7 @@ export default function App() {
   };
 
   const handleSelectVoice = async (voiceId: string) => {
+    if (configurationLocked || startInProgress.current) return;
     await preferences.update({ ttsVoiceId: voiceId });
   };
 
@@ -186,6 +237,19 @@ export default function App() {
     transcript.clear();
     stt.clear();
     translation.clearHistory();
+    incoming.clear();
+  };
+
+  const handleConversationChange = async (settings: ConversationSettings) => {
+    if (startInProgress.current || session.status === 'active') return;
+    const saved = await preferences.update({
+      conversation: settings,
+      ...(settings.targetLanguage !== conversation.targetLanguage ? { ttsVoiceId: null } : {}),
+    });
+    if (saved) {
+      setMeetingError(null);
+      handleClearTranscript();
+    } else toast({ variant: 'error', title: 'Could not save language settings' });
   };
 
   // Floating captions overlay: mirror the main-process window state so the
@@ -209,6 +273,7 @@ export default function App() {
   };
 
   const handleTestVoice = async () => {
+    if (configurationLocked || startInProgress.current) return;
     await window.electron.testTtsVoice();
   };
 
@@ -220,16 +285,19 @@ export default function App() {
   };
 
   const handleRunSetupAgain = async () => {
+    if (configurationLocked || startInProgress.current) return;
     await preferences.resetOnboarding();
     setView('onboarding');
   };
 
   const handleResetConfiguration = async () => {
+    if (configurationLocked || startInProgress.current) return;
     await preferences.resetOnboarding();
     setView('onboarding');
   };
 
   useEffect(() => {
+    if (startInProgress.current) return;
     if (microphone.status !== 'listening' && stt.isActive) {
       stt.stop();
     }
@@ -237,6 +305,7 @@ export default function App() {
 
   // Session auto-stops mic + STT when session stops
   useEffect(() => {
+    if (startInProgress.current) return;
     if (session.status === 'idle' || session.status === 'error') {
       if (stt.isActive) stt.stop();
       if (microphone.status === 'listening') microphone.stop();
@@ -288,8 +357,8 @@ export default function App() {
     return (
       <HomeScreen
         userName={undefined}
-        sessionStatus={session.status}
-        sessionError={session.error}
+        sessionStatus={meetingStarting ? 'starting' : session.status}
+        sessionError={meetingError ?? session.error}
         onMeetingStart={handleMeetingStart}
         onMeetingStop={handleMeetingStop}
         sttStatus={stt.status}
@@ -305,6 +374,19 @@ export default function App() {
         overlayOpen={overlayOpen}
         onToggleOverlay={() => void handleToggleOverlay()}
         onOpenSettings={() => setView('settings')}
+        conversation={conversation}
+        onConversationChange={(settings) => void handleConversationChange(settings)}
+        inputDevices={microphone.devices}
+        outputDevices={audioOutput.devices.map((device) => ({
+          deviceId: device.id,
+          label: device.label,
+          type: 'output' as const,
+        }))}
+        microphoneLevel={microphone.level}
+        incomingStatus={incoming.status}
+        incomingOriginal={incoming.original}
+        incomingTranslated={incoming.translated}
+        incomingError={incoming.error}
       />
     );
   }
@@ -312,6 +394,7 @@ export default function App() {
   // settings view
   return (
     <SettingsScreen
+      configurationLocked={configurationLocked}
       onBack={() => setView('home')}
       onRunSetupAgain={handleRunSetupAgain}
       onResetConfiguration={handleResetConfiguration}

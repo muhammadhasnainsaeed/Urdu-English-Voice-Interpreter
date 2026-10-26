@@ -73,6 +73,8 @@ export type TranslationEvent =
       english: string;
       /** True when produced from a stabilized STT partial, not a final. */
       interim?: boolean;
+      sourceLanguage?: string;
+      targetLanguage?: string;
     }
   | { type: 'translation:rate-limited'; message: string }
   | { type: 'translation:error'; message: string }
@@ -120,6 +122,8 @@ export interface TtsVoice {
   /** Country/region (e.g. "US", "GB", "IN"). Derivable from azure locale or
    *  macOS `_YY` region; may be `unknown` when the source does not advertise it. */
   country?: string;
+  /** BCP-47 locale advertised by the provider. */
+  locale?: string;
 }
 
 export interface ListVoicesResult {
@@ -361,7 +365,25 @@ export interface AppPreferences {
    * Same explicit-selection rule as `micDeviceId`.
    */
   outputDeviceId?: string | null;
+  conversation?: ConversationSettings;
 }
+
+/** Two independent language pairs and explicitly selected incoming audio routes. */
+export interface ConversationSettings {
+  sourceLanguage: string;
+  targetLanguage: string;
+  incomingEnabled: boolean;
+  incomingSourceLanguage: string;
+  incomingTargetLanguage: string;
+  incomingDeviceId: string | null;
+  listeningDeviceId: string | null;
+}
+
+export type IncomingEvent =
+  | { type: 'incoming:status'; status: SessionStatus }
+  | { type: 'incoming:stt'; event: SttEvent }
+  | { type: 'incoming:translation'; event: TranslationEvent }
+  | { type: 'incoming:error'; message: string };
 
 export interface GetPreferencesResult {
   ok: boolean;
@@ -428,7 +450,7 @@ export interface ElectronAPI {
   startTts: () => Promise<TtsStartResult>;
   stopTts: () => Promise<void>;
   onTtsEvent: (handler: (event: TtsEvent) => void) => () => void;
-  getTtsVoices: () => Promise<ListVoicesResult>;
+  getTtsVoices: (language?: string) => Promise<ListVoicesResult>;
   testTtsVoice: () => Promise<TtsStartResult>;
   /** Save a serialized transcript via the native save dialog. */
   saveTranscript: (request: SaveTranscriptRequest) => Promise<SaveTranscriptResult>;
@@ -456,6 +478,13 @@ export interface ElectronAPI {
   startSession: () => Promise<SessionStartResult>;
   stopSession: () => Promise<void>;
   onSessionEvent: (handler: (event: SessionEvent) => void) => () => void;
+  startIncoming: () => Promise<SessionStartResult>;
+  stopIncoming: () => Promise<void>;
+  sendIncomingAudio: (chunk: ArrayBuffer) => void;
+  onIncomingEvent: (handler: (event: IncomingEvent) => void) => () => void;
+  onIncomingAudio: (handler: (chunk: AudioChunk) => void) => () => void;
+  onIncomingCancel: (handler: () => void) => () => void;
+  reportIncomingPlaybackEvent: (event: PlaybackTelemetryEvent) => void;
   /** True when PIPELINE_DEBUG=1 — gates the dev-only performance panel. */
   pipelineDebugEnabled: boolean;
   onPipelineEvent: (handler: (event: PipelineEvent) => void) => () => void;

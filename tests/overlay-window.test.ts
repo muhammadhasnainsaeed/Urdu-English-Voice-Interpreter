@@ -47,8 +47,11 @@ test('overlay geometry clamps into a tiny work area', () => {
   assert.ok(geo.y >= 0, 'y must stay inside the work area');
 });
 
-test('subtitle channels are exactly stt/translation/session events', () => {
-  assert.deepEqual([...SUBTITLE_BROADCAST_CHANNELS], ['stt:event', 'translation:event', 'session:event']);
+test('subtitle channels include both conversation directions', () => {
+  assert.deepEqual(
+    [...SUBTITLE_BROADCAST_CHANNELS],
+    ['stt:event', 'translation:event', 'session:event', 'incoming:event'],
+  );
   for (const channel of SUBTITLE_BROADCAST_CHANNELS) {
     assert.equal(isSubtitleChannel(channel), true, `${channel} must broadcast`);
   }
@@ -62,6 +65,8 @@ test('pipeline, audio, telemetry and overlay control channels never broadcast', 
     'pipeline:event',
     'overlay:event',
     'stt:audio-data',
+    'incoming-output:audio',
+    'incoming-output:cancel',
   ];
   for (const channel of mainOnly) {
     assert.equal(isSubtitleChannel(channel), false, `${channel} must stay main-window only`);

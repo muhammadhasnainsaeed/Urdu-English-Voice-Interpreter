@@ -17,7 +17,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AudioFormat, AudioOutputDevice, AudioOutputEvent, AudioOutputStatus } from '@shared/index';
+import type { AudioOutputDevice, AudioOutputEvent, AudioOutputStatus } from '@shared/index';
+import { PcmPlaybackQueue } from '../audio/pcmPlayback';
 
 /**
  * Renderer-side audio output hook.
@@ -32,22 +33,22 @@ export function useAudioOutput() {
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<AudioOutputDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('default');
-  const [setSinkIdSupported] = useState(true);
+  const outputStartedRef = useRef(false);
+  const [setSinkIdSupported] = useState(
+    () => typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype,
+  );
+  const [player] = useState(
+    () => new PcmPlaybackQueue({ onPlaybackEvent: (event) => window.electron.reportPlaybackEvent(event) }),
+  );
 
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const currentSinkRef = useRef<string>('');
-  const queueRef = useRef<
-    Array<{ data: ArrayBuffer; playbackId: number | null; streamStart?: boolean; streamEnd?: boolean }>
-  >([]);
-  const playingRef = useRef(false);
-  const sampleRateRef = useRef(24000);
-  /** Set while a source is playing so cancellation can stop it mid-flight. */
-  const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const cancelPlaybackRef = useRef<() => void>(() => {});
-
-  const supportsSetSinkId = useCallback(() => {
-    return typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype;
-  }, []);
+  const playbackError = useCallback(
+    (err: unknown) => {
+      player.cancel();
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus('error');
+    },
+    [player],
+  );
 
   const enumerateOutputDevices = useCallback(async (): Promise<AudioOutputDevice[]> => {
     try {
@@ -86,25 +87,24 @@ export function useAudioOutput() {
     const onChange = () => {
       enumerateOutputDevices().then((devs) => {
         setDevices(devs);
-        // Device failure recovery: if selected device is gone, fall back to default
-        setSelectedDeviceId((current) => {
-          if (current === 'default') return current;
-          if (devs.some((d) => d.id === current)) return current;
-          // Selected device disconnected — fall back to system default
-          return 'default';
-        });
+        if (selectedDeviceId !== 'default' && !devs.some((d) => d.id === selectedDeviceId)) {
+          // A fallback to speakers can feed translated audio back into the mic.
+          playbackError(new Error('The selected audio output disconnected. Select an available device.'));
+          void player.close().catch(playbackError);
+        }
       });
     };
     navigator.mediaDevices.addEventListener('devicechange', onChange);
     return () => {
       navigator.mediaDevices.removeEventListener('devicechange', onChange);
     };
-  }, [supportsSetSinkId, enumerateOutputDevices]);
+  }, [enumerateOutputDevices, selectedDeviceId, player, playbackError]);
 
   useEffect(() => {
     return window.electron.onAudioOutputEvent((event: AudioOutputEvent) => {
       switch (event.type) {
         case 'audio-output:started':
+          outputStartedRef.current = true;
           setError(null);
           setStatus('active');
           break;
@@ -119,153 +119,29 @@ export function useAudioOutput() {
           break;
         case 'audio-output:error':
           setError(event.message);
+          setStatus('error');
           break;
         case 'audio-output:stopped':
+          outputStartedRef.current = false;
           setStatus('idle');
+          void player.close().catch(playbackError);
           break;
       }
     });
-  }, []);
-
-  const applySinkId = useCallback(
-    async (ctx: AudioContext, deviceId: string): Promise<void> => {
-      if (!supportsSetSinkId()) return;
-
-      const targetId = deviceId === 'default' || deviceId === '' ? '' : deviceId;
-      if (targetId === currentSinkRef.current) return;
-
-      try {
-        await ctx.setSinkId(targetId);
-        currentSinkRef.current = targetId;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`setSinkId(${deviceId}) failed: ${msg}`);
-        // Non-fatal: audio still plays to system default
-      }
-    },
-    [supportsSetSinkId],
-  );
-
-  const ensureContext = useCallback(
-    async (sampleRate: number, deviceId?: string): Promise<AudioContext> => {
-      const wantDevice = deviceId ?? selectedDeviceId;
-
-      // Recreate if closed or sample rate changed
-      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-        if (audioCtxRef.current.sampleRate !== sampleRate) {
-          audioCtxRef.current.close();
-          audioCtxRef.current = null;
-        }
-      }
-
-      if (!audioCtxRef.current) {
-        if (supportsSetSinkId() && wantDevice && wantDevice !== 'default') {
-          audioCtxRef.current = new AudioContext({ sampleRate });
-          await applySinkId(audioCtxRef.current, wantDevice);
-        } else {
-          audioCtxRef.current = new AudioContext({ sampleRate });
-        }
-      }
-
-      if (audioCtxRef.current.state === 'suspended') {
-        await audioCtxRef.current.resume();
-      }
-
-      return audioCtxRef.current;
-    },
-    [selectedDeviceId, supportsSetSinkId, applySinkId],
-  );
-
-  const playFromQueue = useCallback(async () => {
-    if (playingRef.current || queueRef.current.length === 0) return;
-    playingRef.current = true;
-
-    while (queueRef.current.length > 0) {
-      const item = queueRef.current.shift()!;
-      const data = item.data;
-      const playbackId = item.playbackId;
-      const sampleRate = sampleRateRef.current;
-
-      const ctx = await ensureContext(sampleRate);
-
-      const sampleCount = data.byteLength / 2;
-      const audioBuffer = ctx.createBuffer(1, sampleCount, sampleRate);
-      const int16 = new Int16Array(data);
-      const channelData = audioBuffer.getChannelData(0);
-      for (let i = 0; i < sampleCount; i++) {
-        channelData[i] = int16[i] / 32768;
-      }
-
-      await new Promise<void>((resolve) => {
-        let cancelled = false;
-        const source = ctx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(ctx.destination);
-        activeSourceRef.current = source;
-        const finish = () => {
-          activeSourceRef.current = null;
-          if (!cancelled && item.streamEnd !== false) {
-            window.electron.reportPlaybackEvent({
-              event: 'complete',
-              bytes: data.byteLength,
-              playbackId: playbackId,
-            });
-          }
-          resolve();
-        };
-        source.onended = finish;
-        if (item.streamStart !== false) {
-          window.electron.reportPlaybackEvent({
-            event: 'start',
-            bytes: data.byteLength,
-            playbackId: playbackId,
-          });
-        }
-        source.start();
-        // Cancellation: stop the source; onended still fires and resolves.
-        cancelPlaybackRef.current = () => {
-          cancelled = true;
-          try {
-            source.stop();
-          } catch {
-            // already stopped
-          }
-        };
-      });
-    }
-
-    playingRef.current = false;
-  }, [ensureContext]);
+  }, [player, playbackError]);
 
   useEffect(() => {
-    const unsub = window.electron.onAudioData(
-      (chunk: {
-        data: ArrayBuffer;
-        format: AudioFormat;
-        playbackId?: number | null;
-        streamStart?: boolean;
-        streamEnd?: boolean;
-      }) => {
-        sampleRateRef.current = chunk.format.sampleRate;
-        queueRef.current.push({
-          data: chunk.data,
-          playbackId: chunk.playbackId ?? null,
-          streamStart: chunk.streamStart,
-          streamEnd: chunk.streamEnd,
-        });
-        playFromQueue();
-      },
-    );
-    return unsub;
-  }, [playFromQueue]);
-
-  useEffect(() => {
-    return window.electron.onAudioCancel(() => {
-      queueRef.current = [];
-      cancelPlaybackRef.current();
-      cancelPlaybackRef.current = () => {};
+    const unsub = window.electron.onAudioData((chunk) => {
+      void player.enqueue(chunk).catch(playbackError);
     });
-  }, []);
+    return unsub;
+  }, [player, playbackError]);
+
+  useEffect(() => {
+    return window.electron.onAudioCancel(() => player.cancel());
+  }, [player]);
+
+  useEffect(() => () => void player.close().catch(() => {}), [player]);
 
   const start = useCallback(async () => {
     setError(null);
@@ -276,17 +152,22 @@ export function useAudioOutput() {
     }
   }, []);
 
+  const prepare = useCallback(async () => {
+    try {
+      await player.prepare();
+      setError(null);
+    } catch (err) {
+      playbackError(err);
+      throw err;
+    }
+  }, [player, playbackError]);
+
   const stop = useCallback(async () => {
     setStatus('idle');
-    queueRef.current = [];
-    playingRef.current = false;
-    currentSinkRef.current = '';
-    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-      audioCtxRef.current.close();
-      audioCtxRef.current = null;
-    }
+    outputStartedRef.current = false;
+    await player.close();
     await window.electron.stopAudioOutput();
-  }, []);
+  }, [player]);
 
   const refreshDevices = useCallback(async () => {
     const devs = await enumerateOutputDevices();
@@ -297,13 +178,15 @@ export function useAudioOutput() {
     async (deviceId: string) => {
       setSelectedDeviceId(deviceId);
       await window.electron.selectAudioOutput(deviceId);
-
-      // Apply to active AudioContext if one exists
-      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-        await applySinkId(audioCtxRef.current, deviceId);
+      try {
+        await player.selectDevice(deviceId);
+        setError(null);
+        setStatus(outputStartedRef.current ? 'active' : 'idle');
+      } catch (err) {
+        playbackError(err);
       }
     },
-    [applySinkId],
+    [player, playbackError],
   );
 
   return {
@@ -313,6 +196,7 @@ export function useAudioOutput() {
     selectedDeviceId,
     setSinkIdSupported,
     start,
+    prepare,
     stop,
     refreshDevices,
     selectDevice,

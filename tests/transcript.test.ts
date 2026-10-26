@@ -181,6 +181,125 @@ test('entryEnglish prefers the final over the interim', () => {
   assert.equal(entryEnglish(withInterim.entries[0]), 'Hell');
 });
 
+test('incoming and outgoing translations pair independently when responses interleave', () => {
+  let state = createTranscript();
+  state = appendSttFinal(state, 'کیسے ہیں آپ', 100);
+  state = appendSttFinal(state, 'Merhaba', 200, { direction: 'incoming' });
+  state = applyTranslation(state, {
+    english: 'ہیلو',
+    sourceText: 'Merhaba',
+    direction: 'incoming',
+    sourceLanguage: 'tr',
+    targetLanguage: 'ur',
+  });
+  state = applyTranslation(state, {
+    english: 'Nasılsın?',
+    sourceText: 'کیسے ہیں آپ',
+    sourceLanguage: 'ur',
+    targetLanguage: 'tr',
+  });
+  assert.equal(state.entries.length, 2);
+  assert.equal(state.entries[0].english, 'Nasılsın?');
+  assert.equal(state.entries[0].direction, 'outgoing');
+  assert.equal(state.entries[0].targetLanguage, 'tr');
+  assert.equal(state.entries[1].urdu, 'Merhaba');
+  assert.equal(state.entries[1].english, 'ہیلو');
+  assert.equal(state.entries[1].direction, 'incoming');
+  assert.equal(state.entries[1].sourceLanguage, 'tr');
+});
+
+test('an incoming final fills its interim placeholder even after outgoing speech arrives', () => {
+  let state = createTranscript();
+  state = applyTranslation(state, {
+    english: 'سلام',
+    interim: true,
+    direction: 'incoming',
+    sourceLanguage: 'tr',
+    targetLanguage: 'ur',
+    atMs: 100,
+  });
+  state = appendSttFinal(state, 'میری آواز', 200);
+  state = appendSttFinal(state, 'Merhaba', 300, { direction: 'incoming' });
+  assert.equal(state.entries.length, 2);
+  assert.equal(state.entries[0].urdu, 'Merhaba');
+  assert.equal(state.entries[0].interimEnglish, 'سلام');
+  assert.equal(state.entries[0].sourceLanguage, 'tr');
+  assert.equal(state.entries[1].urdu, 'میری آواز');
+  assert.equal(state.entries[1].interimEnglish, null);
+});
+
+test('a failed earlier translation cannot claim a later utterance result', () => {
+  let state = createTranscript();
+  state = appendSttFinal(state, 'first failed request', 100);
+  state = appendSttFinal(state, 'second request', 200);
+  state = applyTranslation(state, {
+    english: 'ikinci istek',
+    sourceText: 'second request',
+    sourceLanguage: 'en',
+    targetLanguage: 'tr',
+  });
+  assert.equal(state.entries[0].english, null);
+  assert.equal(state.entries[1].english, 'ikinci istek');
+});
+
+test('new language selections do not relabel previous transcript entries', () => {
+  let state = appendSttFinal(createTranscript(), 'سلام', 100);
+  state = applyTranslation(state, {
+    english: 'Merhaba',
+    sourceText: 'سلام',
+    sourceLanguage: 'ur',
+    targetLanguage: 'tr',
+  });
+  state = appendSttFinal(state, 'Hello', 200);
+  state = applyTranslation(state, {
+    english: 'Bonjour',
+    sourceText: 'Hello',
+    sourceLanguage: 'en',
+    targetLanguage: 'fr',
+  });
+  assert.equal(state.entries[0].sourceLanguage, 'ur');
+  assert.equal(state.entries[0].targetLanguage, 'tr');
+  assert.equal(state.entries[1].sourceLanguage, 'en');
+  assert.equal(state.entries[1].targetLanguage, 'fr');
+  const text = toTxt(state);
+  assert.ok(text.includes('Turkish: Merhaba'));
+  assert.ok(text.includes('French: Bonjour'));
+  const doc = toJsonDocument(state, new Date('2026-10-26T00:00:00.000Z'));
+  assert.equal(doc.entries[0].targetLanguage, 'tr');
+  assert.equal(doc.entries[1].targetLanguage, 'fr');
+});
+
+test('exports incoming speech with its language and direction while retaining legacy JSON fields', () => {
+  let state = appendSttFinal(createTranscript(), 'Merhaba', 100, { direction: 'incoming' });
+  state = applyTranslation(state, {
+    english: 'ہیلو',
+    sourceText: 'Merhaba',
+    direction: 'incoming',
+    sourceLanguage: 'tr',
+    targetLanguage: 'ur',
+  });
+  assert.match(toTxt(state), /Client · Turkish: Merhaba/);
+  assert.match(toTxt(state), /Client · Urdu: ہیلو/);
+  const document = toJsonDocument(state, new Date('2026-10-26T00:00:00.000Z'));
+  assert.equal(document.schemaVersion, 1);
+  assert.equal(document.entries[0].urdu, 'Merhaba');
+  assert.equal(document.entries[0].english, 'ہیلو');
+  assert.equal(document.entries[0].direction, 'incoming');
+});
+
+test('translation without a captured STT final retains its source text', () => {
+  const state = applyTranslation(createTranscript(), {
+    english: 'Hello',
+    sourceText: 'Merhaba',
+    direction: 'incoming',
+    sourceLanguage: 'tr',
+    targetLanguage: 'en',
+    atMs: 100,
+  });
+  assert.equal(state.entries[0].urdu, 'Merhaba');
+  assert.equal(state.entries[0].english, 'Hello');
+});
+
 /* ------------------------------------------------------------------ */
 /*  clear / hasContent                                                 */
 /* ------------------------------------------------------------------ */

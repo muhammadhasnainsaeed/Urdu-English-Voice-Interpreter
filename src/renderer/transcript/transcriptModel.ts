@@ -17,7 +17,7 @@
  */
 
 /**
- * Pure transcript model: paired Urdu → English history with TXT/JSON export.
+ * Pure transcript model: two independent translation histories with TXT/JSON export.
  *
  * Deliberately free of React, Electron, and the DOM so every pairing rule and
  * serializer is unit-testable. The `useTranscript` hook is a thin subscriber
@@ -36,20 +36,32 @@
  */
 
 import type { TranscriptFormat } from '@shared/index';
+import { getLanguage } from '@shared/languages';
 
 export type { TranscriptFormat };
+
+export type TranscriptDirection = 'outgoing' | 'incoming';
+
+export interface TranscriptMetadata {
+  direction?: TranscriptDirection;
+  sourceLanguage?: string;
+  targetLanguage?: string;
+}
 
 export interface TranscriptEntry {
   /** Monotonic id, stable across a session (never reused after clear). */
   id: number;
   /** Epoch ms anchoring the utterance (STT final, or interim claim time). */
   atMs: number;
-  /** Urdu final transcript. Empty string only for English-only placeholders. */
+  /** Original speech. Legacy field name retained for existing JSON consumers. */
   urdu: string;
-  /** Final English translation. Null until (or unless) it arrives. */
+  /** Final translation. Legacy field name retained for existing JSON consumers. */
   english: string | null;
   /** Provisional English awaiting its final; overwritten by the final. */
   interimEnglish: string | null;
+  direction: TranscriptDirection;
+  sourceLanguage: string;
+  targetLanguage: string;
 }
 
 export interface TranscriptState {
@@ -65,15 +77,33 @@ export function hasContent(state: TranscriptState): boolean {
   return state.entries.some((e) => e.urdu !== '' || e.english !== null || e.interimEnglish !== null);
 }
 
-/** Append an Urdu final; merges into a pending English-only placeholder. */
-export function appendSttFinal(state: TranscriptState, text: string, atMs: number): TranscriptState {
+function metadataWithDefaults(metadata: TranscriptMetadata): Required<TranscriptMetadata> {
+  const direction = metadata.direction ?? 'outgoing';
+  return {
+    direction,
+    sourceLanguage: metadata.sourceLanguage ?? (direction === 'incoming' ? 'en' : 'ur'),
+    targetLanguage: metadata.targetLanguage ?? (direction === 'incoming' ? 'ur' : 'en'),
+  };
+}
+
+/** Append speech; merges only with a pending placeholder in the same direction. */
+export function appendSttFinal(
+  state: TranscriptState,
+  text: string,
+  atMs: number,
+  metadata: TranscriptMetadata = {},
+): TranscriptState {
   const urdu = text.trim();
   if (urdu === '') return state;
 
   const entries = state.entries.slice();
-  const last = entries[entries.length - 1];
+  const resolved = metadataWithDefaults(metadata);
+  let lastIndex = entries.length - 1;
+  while (lastIndex >= 0 && entries[lastIndex].direction !== resolved.direction) lastIndex -= 1;
+  const last = entries[lastIndex];
   if (last && last.urdu === '' && last.english === null) {
-    entries[entries.length - 1] = { ...last, urdu };
+    // A placeholder can already know its language from an interim result.
+    entries[lastIndex] = { ...last, urdu };
     return { entries, nextId: state.nextId };
   }
 
@@ -83,6 +113,7 @@ export function appendSttFinal(state: TranscriptState, text: string, atMs: numbe
     urdu,
     english: null,
     interimEnglish: null,
+    ...resolved,
   });
   return { entries, nextId: state.nextId + 1 };
 }
@@ -90,18 +121,36 @@ export function appendSttFinal(state: TranscriptState, text: string, atMs: numbe
 /** Apply a translation result (final or interim) using the pairing rules. */
 export function applyTranslation(
   state: TranscriptState,
-  update: { english: string; interim?: boolean; atMs?: number },
+  update: TranscriptMetadata & { english: string; sourceText?: string; interim?: boolean; atMs?: number },
 ): TranscriptState {
   const english = update.english.trim();
   if (english === '') return state;
   const atMs = update.atMs ?? Date.now();
 
   const entries = state.entries.slice();
+  const metadata = metadataWithDefaults(update);
+  const sourceText = update.sourceText?.trim();
+  const matchesDirection = (entry: TranscriptEntry) => entry.direction === metadata.direction;
+  const mergeMetadata = (entry: TranscriptEntry): TranscriptEntry => ({
+    ...entry,
+    direction: metadata.direction,
+    sourceLanguage: update.sourceLanguage ?? entry.sourceLanguage,
+    targetLanguage: update.targetLanguage ?? entry.targetLanguage,
+  });
+  const pendingIndex = (interim: boolean): number => {
+    const claimable = (entry: TranscriptEntry) =>
+      matchesDirection(entry) && entry.english === null && (!interim || entry.interimEnglish === null);
+    if (!sourceText) return entries.findIndex(claimable);
+    const exact = entries.findIndex((entry) => claimable(entry) && entry.urdu === sourceText);
+    if (exact >= 0) return exact;
+    // Never consume another utterance after an earlier translation failed.
+    return entries.findIndex((entry) => claimable(entry) && entry.urdu === '');
+  };
 
   if (update.interim === true) {
-    const target = entries.findIndex((e) => e.english === null && e.interimEnglish === null);
+    const target = pendingIndex(true);
     if (target >= 0) {
-      entries[target] = { ...entries[target], interimEnglish: english };
+      entries[target] = { ...mergeMetadata(entries[target]), interimEnglish: english };
     } else {
       entries.push({
         id: state.nextId,
@@ -109,24 +158,31 @@ export function applyTranslation(
         urdu: '',
         english: null,
         interimEnglish: english,
+        ...metadata,
       });
       return { entries, nextId: state.nextId + 1 };
     }
     return { entries, nextId: state.nextId };
   }
 
-  const target = entries.findIndex((e) => e.english === null);
+  const target = pendingIndex(false);
   if (target >= 0) {
-    entries[target] = { ...entries[target], english, interimEnglish: null };
+    entries[target] = {
+      ...mergeMetadata(entries[target]),
+      urdu: entries[target].urdu || sourceText || '',
+      english,
+      interimEnglish: null,
+    };
     return { entries, nextId: state.nextId };
   }
 
   entries.push({
     id: state.nextId,
     atMs,
-    urdu: '',
+    urdu: sourceText ?? '',
     english,
     interimEnglish: null,
+    ...metadata,
   });
   return { entries, nextId: state.nextId + 1 };
 }
@@ -163,8 +219,11 @@ export function toTxt(state: TranscriptState): string {
     const english = entryEnglish(entry);
     if (entry.urdu === '' && english === null) continue;
     const stamp = `[${formatClock(entry.atMs)}]`;
-    if (entry.urdu !== '') lines.push(`${stamp} Urdu: ${entry.urdu}`);
-    if (english !== null) lines.push(`${stamp} English: ${english}`);
+    const source = getLanguage(entry.sourceLanguage)?.name ?? entry.sourceLanguage;
+    const target = getLanguage(entry.targetLanguage)?.name ?? entry.targetLanguage;
+    const speaker = entry.direction === 'incoming' ? 'Client · ' : '';
+    if (entry.urdu !== '') lines.push(`${stamp} ${speaker}${source}: ${entry.urdu}`);
+    if (english !== null) lines.push(`${stamp} ${speaker}${target}: ${english}`);
   }
   return lines.length > 0 ? `${lines.join('\n')}\n` : '';
 }
@@ -180,6 +239,9 @@ export interface TranscriptJsonDocument {
     urdu: string;
     english: string | null;
     interimEnglish: string | null;
+    direction: TranscriptDirection;
+    sourceLanguage: string;
+    targetLanguage: string;
   }>;
 }
 
@@ -196,6 +258,9 @@ export function toJsonDocument(state: TranscriptState, exportedAt: Date): Transc
       urdu: entry.urdu,
       english: entry.english,
       interimEnglish: entry.interimEnglish,
+      direction: entry.direction,
+      sourceLanguage: entry.sourceLanguage,
+      targetLanguage: entry.targetLanguage,
     })),
   };
 }

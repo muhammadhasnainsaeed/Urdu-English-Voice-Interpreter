@@ -20,6 +20,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { useTranscript } from '../services/useTranscript';
 import type { SessionEvent, SttEvent } from '@shared/index';
+import { getLanguage } from '@shared/languages';
+import { entryEnglish } from '../transcript/transcriptModel';
 
 const MAX_VISIBLE_ENTRIES = 4;
 
@@ -37,20 +39,40 @@ const NO_DRAG: React.CSSProperties = { WebkitAppRegion: 'no-drag' } as React.CSS
 export default function OverlayScreen() {
   const { entries } = useTranscript();
   const [partialText, setPartialText] = useState('');
+  const [incomingPartial, setIncomingPartial] = useState('');
   const [listening, setListening] = useState(false);
+  const [incomingListening, setIncomingListening] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const offStt = window.electron.onSttEvent((event: SttEvent) => {
       if (event.type === 'partial') setPartialText(event.text);
-      else if (event.type === 'final' || event.type === 'stopped') setPartialText('');
+      else if (event.type === 'final' || event.type === 'stopped' || event.type === 'error')
+        setPartialText('');
     });
     const offSession = window.electron.onSessionEvent((event: SessionEvent) => {
       if (event.type === 'session:status') setListening(event.stages.stt === 'listening');
+      else if (event.type === 'session:stopped' || event.type === 'session:error') {
+        setListening(false);
+        setPartialText('');
+      }
+    });
+    const offIncoming = window.electron.onIncomingEvent((incoming) => {
+      if (incoming.type === 'incoming:status') {
+        setIncomingListening(incoming.status === 'active');
+        if (incoming.status === 'idle' || incoming.status === 'error') setIncomingPartial('');
+      } else if (incoming.type === 'incoming:stt') {
+        const event = incoming.event;
+        if (event.type === 'partial') setIncomingPartial(event.text);
+        else if (event.type === 'final' || event.type === 'stopped' || event.type === 'error') {
+          setIncomingPartial('');
+        }
+      }
     });
     return () => {
       offStt();
       offSession();
+      offIncoming();
     };
   }, []);
 
@@ -59,7 +81,7 @@ export default function OverlayScreen() {
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [visible, partialText]);
+  }, [visible, partialText, incomingPartial]);
 
   return (
     <div
@@ -74,7 +96,7 @@ export default function OverlayScreen() {
       >
         <div className="flex items-center gap-2">
           <span
-            className={`inline-block size-2 rounded-full ${listening ? 'bg-emerald-400' : 'bg-white/30'}`}
+            className={`inline-block size-2 rounded-full ${listening || incomingListening ? 'bg-emerald-400' : 'bg-white/30'}`}
             aria-hidden="true"
           />
           <span className="text-[11px] font-medium tracking-wide text-white/70">Live captions</span>
@@ -93,26 +115,54 @@ export default function OverlayScreen() {
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2">
-        {visible.length === 0 && !partialText ? (
+        {visible.length === 0 && !partialText && !incomingPartial ? (
           <p className="py-4 text-center text-xs text-white/40">Waiting for speech…</p>
         ) : (
           <ul className="space-y-2">
-            {visible.map((entry) => (
-              <li key={entry.id}>
-                <div className="textbox-urdu leading-snug text-white" dir="rtl" style={{ fontSize: '17px' }}>
-                  {entry.urdu}
-                </div>
-                {entry.english ? (
-                  <div className="mt-0.5 text-[13px] leading-snug text-white/75">{entry.english}</div>
-                ) : null}
-              </li>
-            ))}
+            {visible.map((entry) => {
+              const source = getLanguage(entry.sourceLanguage);
+              const target = getLanguage(entry.targetLanguage);
+              const translation = entryEnglish(entry);
+              return (
+                <li key={entry.id}>
+                  <div className="mb-0.5 text-[10px] text-white/45">
+                    {entry.direction === 'incoming' ? 'Client' : 'You'} ·{' '}
+                    {source?.name ?? entry.sourceLanguage} → {target?.name ?? entry.targetLanguage}
+                  </div>
+                  {entry.urdu && (
+                    <div
+                      className="whitespace-pre-wrap text-[17px] leading-snug text-white"
+                      dir={source?.direction ?? 'auto'}
+                    >
+                      {entry.urdu}
+                    </div>
+                  )}
+                  {translation ? (
+                    <div
+                      className="mt-0.5 whitespace-pre-wrap text-[13px] leading-snug text-white/75"
+                      dir={target?.direction ?? 'auto'}
+                    >
+                      {translation}
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
         {partialText ? (
           <div className="mt-2 border-t border-white/10 pt-2">
-            <div className="textbox-urdu text-white/60 italic" dir="rtl" style={{ fontSize: '15px' }}>
+            <div className="mb-0.5 text-[10px] text-white/45">You · Listening…</div>
+            <div className="text-[15px] text-white/60 italic" dir="auto">
               {partialText}
+            </div>
+          </div>
+        ) : null}
+        {incomingPartial ? (
+          <div className="mt-2 border-t border-white/10 pt-2">
+            <div className="mb-0.5 text-[10px] text-white/45">Client · Listening…</div>
+            <div className="text-[15px] text-white/60 italic" dir="auto">
+              {incomingPartial}
             </div>
           </div>
         ) : null}

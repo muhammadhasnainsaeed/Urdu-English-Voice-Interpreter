@@ -72,7 +72,13 @@ export function useSession() {
 
   const stop = useCallback(async () => {
     setStatus('stopping');
-    await window.electron.stopSession();
+    try {
+      await window.electron.stopSession();
+    } finally {
+      // A failed start can leave main idle, whose stop emits no event.
+      setStatus('idle');
+      setStages(DEFAULT_STAGES);
+    }
   }, []);
 
   return {

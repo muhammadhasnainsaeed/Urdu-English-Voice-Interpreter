@@ -18,7 +18,15 @@
 
 import React from 'react';
 import { Captions, Download, Settings, Trash2 } from 'lucide-react';
-import type { SessionStatus, SttStatus, TranscriptFormat, TranslationStatus } from '@shared/index';
+import type {
+  AudioDevice,
+  ConversationSettings,
+  SessionStatus,
+  SttStatus,
+  TranscriptFormat,
+  TranslationStatus,
+} from '@shared/index';
+import { getLanguage } from '@shared/languages';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -28,7 +36,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { LiveWaveform } from '../components/ui/live-waveform';
+import ConversationControls from '../components/ConversationControls';
 import { ThemeSelector } from '../components/theme-selector';
 
 interface HomeScreenProps {
@@ -38,6 +46,15 @@ interface HomeScreenProps {
   sessionError: string | null;
   onMeetingStart: () => void;
   onMeetingStop: () => void;
+  conversation: ConversationSettings;
+  onConversationChange: (settings: ConversationSettings) => void;
+  inputDevices: AudioDevice[];
+  outputDevices: AudioDevice[];
+  microphoneLevel: number;
+  incomingStatus: SessionStatus;
+  incomingOriginal: string;
+  incomingTranslated: string;
+  incomingError: string | null;
   /** STT / subtitle output */
   sttStatus: SttStatus;
   sttPartialText: string;
@@ -99,15 +116,19 @@ export default function HomeScreen(props: HomeScreenProps) {
   const meetingActive = props.sessionStatus === 'active';
   const meetingBusy = props.sessionStatus === 'starting' || props.sessionStatus === 'stopping';
   const sessionBadge = SESSION_BADGE[props.sessionStatus];
+  const sourceLanguage = getLanguage(props.conversation.sourceLanguage);
+  const targetLanguage = getLanguage(props.conversation.targetLanguage);
+  const incomingSource = getLanguage(props.conversation.incomingSourceLanguage);
+  const incomingTarget = getLanguage(props.conversation.incomingTargetLanguage);
+  const microphoneLevel = Number.isFinite(props.microphoneLevel)
+    ? Math.max(0, Math.min(1, props.microphoneLevel))
+    : 0;
 
   return (
     <div className="home-screen flex h-full flex-col overflow-y-auto p-4">
-      {/* Minimal header — identity + theme/settings, no configuration controls */}
       <header className="flex items-center justify-between gap-3 pb-4">
         <div className="min-w-0">
-          <h1 className="m-0 truncate text-[15px] font-semibold tracking-tight">
-            Urdu → English Interpreter
-          </h1>
+          <h1 className="m-0 truncate text-[15px] font-semibold tracking-tight">Meeting Interpreter</h1>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {props.userName ?? 'Real-time meeting interpreter'}
           </p>
@@ -178,16 +199,22 @@ export default function HomeScreen(props: HomeScreenProps) {
           </CardHeader>
           <CardContent className="flex flex-col gap-3 p-4 pt-1">
             {meetingActive ? (
-              <LiveWaveform
-                mode="static"
-                active
-                processing={false}
-                height={72}
-                barWidth={3}
-                barGap={2}
-                fadeEdges
-                className="w-full"
-              />
+              <div className="flex flex-col gap-1.5 rounded-md bg-muted/40 px-3 py-2">
+                <span className="text-xs text-muted-foreground">Your microphone</span>
+                <div
+                  role="meter"
+                  aria-label="Microphone level"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(microphoneLevel * 100)}
+                  className="h-2 overflow-hidden rounded-full bg-muted"
+                >
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${microphoneLevel * 100}%` }}
+                  />
+                </div>
+              </div>
             ) : (
               <div className="flex h-9 w-full items-end justify-between gap-0.5 rounded-md bg-muted/40 px-3 py-2">
                 <span className="text-[12px] font-medium text-muted-foreground">Ready to interpret</span>
@@ -219,57 +246,114 @@ export default function HomeScreen(props: HomeScreenProps) {
           </CardContent>
         </Card>
 
-        {/* 2. Speech to Text — readable Urdu subtitle output */}
+        {/* Outgoing speech and translation */}
         <Card data-demo="stt-card">
           <CardHeader className="flex-row items-center justify-between p-4 pb-2">
-            <CardTitle className="text-[13px]">Speech to Text</CardTitle>
+            <CardTitle className="text-[13px]">You · {sourceLanguage?.name ?? 'Speech'}</CardTitle>
             {sttStatusShown(props.sttStatus) && <Badge variant="outline">{STT_LABEL[props.sttStatus]}</Badge>}
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div
               className="flex max-h-40 min-h-[72px] flex-col gap-2 overflow-y-auto rounded-md border bg-muted/40 p-3 text-[15px] leading-relaxed"
-              dir="rtl"
+              dir={sourceLanguage?.direction ?? 'auto'}
             >
               {props.sttFinalText ? (
-                <div className="textbox-urdu text-foreground">{props.sttFinalText}</div>
+                <div className="whitespace-pre-wrap text-foreground">{props.sttFinalText}</div>
               ) : (
                 <div className="text-xs text-muted-foreground">
                   {props.sttStatus === 'listening' || props.sttStatus === 'processing'
-                    ? 'Listening for Urdu speech…'
+                    ? `Listening for ${sourceLanguage?.name ?? 'your'} speech…`
                     : 'No speech yet.'}
                 </div>
               )}
               {props.sttPartialText && (
-                <div className="textbox-urdu italic text-muted-foreground">{props.sttPartialText}</div>
+                <div className="whitespace-pre-wrap italic text-muted-foreground">{props.sttPartialText}</div>
               )}
             </div>
             {props.sttError && <p className="mt-2 m-0 text-xs text-destructive">{props.sttError}</p>}
           </CardContent>
         </Card>
 
-        {/* 3. Translation — readable English output */}
         <Card data-demo="translation-card">
           <CardHeader className="flex-row items-center justify-between p-4 pb-2">
-            <CardTitle className="text-[13px]">Translation</CardTitle>
+            <CardTitle className="text-[13px]">
+              Client hears · {targetLanguage?.name ?? 'Translation'}
+            </CardTitle>
             {translationStatusShown(props.translationStatus) && (
               <Badge variant="outline">{TRANSLATION_LABEL[props.translationStatus]}</Badge>
             )}
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <div className="flex max-h-40 min-h-[72px] flex-col gap-2 overflow-y-auto rounded-md border bg-muted/40 p-3 text-[15px] leading-relaxed">
+            <div
+              className="flex max-h-40 min-h-[72px] flex-col gap-2 overflow-y-auto rounded-md border bg-muted/40 p-3 text-[15px] leading-relaxed"
+              dir={targetLanguage?.direction ?? 'auto'}
+            >
               {props.finalEnglish ? (
-                <div className="text-foreground">{props.finalEnglish}</div>
+                <div className="whitespace-pre-wrap text-foreground">{props.finalEnglish}</div>
               ) : (
                 <div className="text-xs text-muted-foreground">
                   {props.translationStatus === 'active'
                     ? 'Translation active — waiting for speech…'
-                    : 'English translation will appear here.'}
+                    : `${targetLanguage?.name ?? 'The'} translation will appear here.`}
                 </div>
               )}
             </div>
             {props.translationError && (
               <p className="mt-2 m-0 text-xs text-destructive">{props.translationError}</p>
             )}
+          </CardContent>
+        </Card>
+        {props.conversation.incomingEnabled && (
+          <Card data-demo="incoming-card">
+            <CardHeader className="flex-row items-center justify-between p-4 pb-2">
+              <CardTitle className="text-[13px]">Client → You</CardTitle>
+              <Badge variant={SESSION_BADGE[props.incomingStatus].variant} dot>
+                {SESSION_BADGE[props.incomingStatus].label}
+              </Badge>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2 p-4 pt-0">
+              <p className="m-0 text-xs font-medium text-muted-foreground">
+                Client · {incomingSource?.name ?? 'Speech'}
+              </p>
+              <div
+                dir={incomingSource?.direction ?? 'auto'}
+                className="max-h-32 min-h-[48px] overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-sm leading-relaxed"
+              >
+                {props.incomingOriginal || (
+                  <span className="text-xs text-muted-foreground">Client speech will appear here.</span>
+                )}
+              </div>
+              <p className="mb-0 mt-1 text-xs font-medium text-muted-foreground">
+                You hear · {incomingTarget?.name ?? 'Translation'}
+              </p>
+              <div
+                dir={incomingTarget?.direction ?? 'auto'}
+                className="max-h-40 min-h-[64px] overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-[15px] leading-relaxed"
+              >
+                {props.incomingTranslated || (
+                  <span className="text-xs text-muted-foreground">Client translation will appear here.</span>
+                )}
+              </div>
+              {props.incomingError && (
+                <p className="m-0 text-xs text-destructive" role="alert">
+                  {props.incomingError}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+        <Card data-demo="conversation-controls">
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-[13px]">Languages &amp; audio</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-1">
+            <ConversationControls
+              settings={props.conversation}
+              onChange={props.onConversationChange}
+              inputDevices={props.inputDevices}
+              outputDevices={props.outputDevices}
+              disabled={meetingActive || meetingBusy}
+            />
           </CardContent>
         </Card>
       </div>
